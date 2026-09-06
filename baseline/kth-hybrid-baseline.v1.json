@@ -1,0 +1,294 @@
+{
+  "schema": "kth-irl-hybrid-baseline.v1",
+  "frozen_at": "2026-09-06",
+  "milestone": "M0",
+  "说明": "本文件为唯一权威基线钉定。变更仅允许经差异审核后升版本（v2+），禁止就地修改。",
+  "authority_hierarchy": {
+    "L0": "Owner 明确业务要求（2026-09-06 最终覆盖指令与交接书）",
+    "L1": "未被 Owner 改变的业务行为以批准 wheel 为 canonical",
+    "L2": "KTH 三件材料仅用于解释与发现差异，不覆盖 wheel 行为",
+    "rule": "文档与 wheel 冲突时模型不得改变算法；分歧登记 divergence-ledger，由 Owner/KTH 专家裁定；无专家则维持 wheel 行为并登记 future methodology review"
+  },
+  "execution_oracle": {
+    "asset": "kth_irl_evaluator-0.1.5-py3-none-any.whl",
+    "source_path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/kth_irl_evaluator-0.1.5-py3-none-any.whl",
+    "sha256_expected": "2c49050858555ebb063a7b82177ee43e7caf7d2b93e2319998d7d0b047a471fe",
+    "sha256_actual": "2c49050858555ebb063a7b82177ee43e7caf7d2b93e2319998d7d0b047a471fe",
+    "bytes": 713160,
+    "module_count": 81,
+    "total_lines": 70709,
+    "verification": "PASS（哈希逐字节一致）"
+  },
+  "source_interpretation_baseline": {
+    "root": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator-0.1.5/kth-irl-evaluator-v0.1.5-it-development/kth-irl-evaluator-v0.1.5-it-development/src/kth_irl",
+    "main_repo_head_at_verification": "29159951ebe614aeed33567dfa314463f0e6ef80",
+    "branch": "dev",
+    "last_commit_touching_path": {
+      "commit": "8059ba27c1127389aa187930e0ff4243d2ff610d",
+      "date": "2026-08-10 09:06:12 +0800",
+      "subject": "功能：增加 KTH IRL 命令入口"
+    },
+    "working_tree_clean_on_pinned_paths": true,
+    "module_count": 81,
+    "identical_with_wheel": 80,
+    "differing_modules": [
+      {
+        "module": "v1/model_gateway.py",
+        "src_sha256": "7bc611ea1c2613baa6d5221997105d43450409493179f8f6fbb67c94070a5142",
+        "wheel_sha256": "6c4a72fd14e9a6aac287e6b308346fd6fe5e686bc79899b2969524e331817446",
+        "classification": "已批准的内部网关部署差异（Owner 2026-09-06 审核意见），非业务差异；判据提取与业务等价测试不使用该模块语义"
+      }
+    ],
+    "src_only_modules": [],
+    "wheel_only_modules": [],
+    "expected": "81 模块、80 与 wheel 逐字节一致、唯一差异 v1/model_gateway.py",
+    "verification": "PASS"
+  },
+  "drift_failure_cases": {
+    "root": "D:/UGit/sunny-skills/.codex-temp/agent-driven-staged-product-completion/plugins/kth-irl-evaluator-0.1.5/kth-irl-evaluator-v0.1.5-it-development/kth-irl-evaluator-v0.1.5-it-development/src/kth_irl",
+    "old_worktree_head": "0ffca7a1a04419b238ca893b478f21f57d4ac4b5",
+    "module_count": 92,
+    "identical_with_wheel": 58,
+    "drifted_count": 23,
+    "drifted_modules": [
+      "__init__.py",
+      "delivery.py",
+      "v1/__init__.py",
+      "v1/acquisition.py",
+      "v1/active_crl_brl_runtime.py",
+      "v1/active_evidence.py",
+      "v1/active_iprl_runtime.py",
+      "v1/active_trl_tmrl_runtime.py",
+      "v1/capsule.py",
+      "v1/crl_community.py",
+      "v1/dimension_integration.py",
+      "v1/dimension_ports.py",
+      "v1/iprl_competition.py",
+      "v1/iprl_patent_discovery.py",
+      "v1/iprl_predispatch.py",
+      "v1/local_whole_chain.py",
+      "v1/model_gateway.py",
+      "v1/patent_adapters.py",
+      "v1/provider_host.py",
+      "v1/research_dispatch.py",
+      "v1/research_frames.py",
+      "v1/subject_identity.py",
+      "v1/tmrl_professional_runtime.py"
+    ],
+    "staged_only_modules": [
+      "v1/active_assessment_scope.py",
+      "v1/active_d2_source.py",
+      "v1/active_dimension_set.py",
+      "v1/active_product_case_orchestration.py",
+      "v1/active_publication_authority.py",
+      "v1/active_semantic_control_authority.py",
+      "v1/active_shared_snapshot.py",
+      "v1/active_unit_dimension_source.py",
+      "v1/formal_dimension_report_source.py",
+      "v1/staged_decision_input.py",
+      "v1/unit_scoped_professional_authority.py"
+    ],
+    "expected": "58/81 一致、23 模块漂移（与 Owner 独立复核一致）",
+    "disposition": "禁止导入新仓库任何部分；仅作反漂移回归对照样本",
+    "verification": "PASS"
+  },
+  "kth_materials": [
+    {
+      "file": "KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+      "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47"
+    },
+    {
+      "file": "KTH-IRL-user-guide_A-1.pdf",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/sources/kth/KTH-IRL-user-guide_A-1.pdf",
+      "sha256": "4668831a5ad986c4ad46828e7edfebb920cadd9ea91166a906ecd613d774fda4"
+    },
+    {
+      "file": "KTH-IRL-dashboard_C.xlsx",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/sources/kth/KTH-IRL-dashboard_C.xlsx",
+      "sha256": "10eb775b00aecf4aeec7c7b94fee86247c245898f73a00dfbd492be0ccd3b648"
+    }
+  ],
+  "registries_v1": [
+    {
+      "file": "baseline-registry.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/baseline-registry.json",
+      "sha256": "1a941a0222d4228b27d8ccb192c06344d5f9682cad688cec0bbcd3b0836bfcc1"
+    },
+    {
+      "file": "crl-issue-family-registry.v1.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/crl-issue-family-registry.v1.json",
+      "sha256": "521fa76909e28e03d7e9370be6dc121013507f08d8580789d2260e60a07cd780"
+    },
+    {
+      "file": "primary-market-controller-method-registry.v1.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/primary-market-controller-method-registry.v1.json",
+      "sha256": "cfcf19953e902fadb73f5f9502538f69d1bba7d342788a761ce9914cd103df63"
+    },
+    {
+      "file": "product-class-research-routing.v1.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/product-class-research-routing.v1.json",
+      "sha256": "c4500251bff995f9c31c21ff4836523af116d0bc49e93a16451ec25df9278818"
+    },
+    {
+      "file": "research-dimension-routing.v1.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/research-dimension-routing.v1.json",
+      "sha256": "8423b0355147fce8ea20b2f9cf8c179bd0fc6e4a7972f0fb25cf03d825c7ab93"
+    },
+    {
+      "file": "source-policy-registry.v1.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/source-policy-registry.v1.json",
+      "sha256": "f761fd76ebb2688c550925f71fd10836f70cb00c6cc6f9f634c19219df5165da"
+    },
+    {
+      "file": "terminal-value-axis-registry.v1.json",
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/terminal-value-axis-registry.v1.json",
+      "sha256": "791963d20d6bd7b6cd73afccb186ffdd6714c0c132b049502a2db7eaf3645302"
+    }
+  ],
+  "original_tests": [
+    {
+      "file": "kth_irl_publication_crash_helper.py",
+      "sha256": "3407afa4b4fb19a974584200d11b694f0a3b06b1837bfe478fb7d24ec3ee3a15"
+    },
+    {
+      "file": "kth_irl_test_launcher_runner.py",
+      "sha256": "497e4de8ff5647453e70391d0ad6f99f204e1a8212540e1e23d69f784a440b0f"
+    },
+    {
+      "file": "test_active_output_transaction.py",
+      "sha256": "d1c39d41edb087eba93beece2575caf419fd8abe1d038b5a0f19afc666032aff"
+    },
+    {
+      "file": "test_bootstrap_runtime.py",
+      "sha256": "129f7233b17334854595134e9227eba08df2da7fde3bc6938746fc21f7d52bca"
+    },
+    {
+      "file": "test_complete_report.py",
+      "sha256": "90d1e384a04047a11ac9e520397d364ea332245e142b53f39f449e8aa73f89fd"
+    },
+    {
+      "file": "test_dual_host_compatibility.py",
+      "sha256": "910970bf7b9005e45a105c3d6119bcde3ff92df6f6bd7d6613e15b52fafa0423"
+    },
+    {
+      "file": "test_entry_skill_contract.py",
+      "sha256": "ee94e977d71295589fe3b6fb0a281275cc6a3cc64d85adcdb0a1eedea3a1be9b"
+    },
+    {
+      "file": "test_fresh_checkout_tool.py",
+      "sha256": "4fe74ff640de10caa5cd01c94b6335e808d55ff34ccdb6261968a781b2f90b37"
+    },
+    {
+      "file": "test_launcher_passthrough.py",
+      "sha256": "22d8c3bee638000e584dba8ad322bd96b34b85b774708d8e695a326a0f2345ab"
+    },
+    {
+      "file": "test_natural_language_entry.py",
+      "sha256": "1766236c5300283c719d5148511aa73d66b61a0dcbfc4f16660530032fe010c2"
+    },
+    {
+      "file": "test_payload_integrity.py",
+      "sha256": "40ebcdcc164ad60772b1635b9aba15e06e329202e8238572f0286f48bfdcdfb5"
+    },
+    {
+      "file": "test_skill_integrity.py",
+      "sha256": "84c6026d7323351088b0a660630c726a6f4f4efc6b4e262e507b5e93e8e6a132"
+    },
+    {
+      "file": "test_staged_crl_brl_adapter.py",
+      "sha256": "8de41135559c842abe498f410da18673191b4469b2f35cba14b33c2bdcf3105a"
+    },
+    {
+      "file": "test_staged_dimension_adapter.py",
+      "sha256": "35851ed7980fec89149b34b2235258acee32181cf033902f9c752be318ea60cb"
+    },
+    {
+      "file": "test_staged_frl_adapter.py",
+      "sha256": "919d57777639ad905ec3ea208407db3283d096ab1ce16fad3d58f960584560bb"
+    },
+    {
+      "file": "test_staged_inspect.py",
+      "sha256": "e0f7189606d2f008b6a399f5432a41630515b496dc28761f761d3d6f10957792"
+    },
+    {
+      "file": "test_staged_iprl_adapter.py",
+      "sha256": "4893fde727018e8a3b61ba041089ff9624caa76f11d56b0453d9535e2eea9a25"
+    },
+    {
+      "file": "test_staged_trl_tmrl_adapter.py",
+      "sha256": "8094e0d361aed51ace02003db8e41b76f4cc8110113d0a2d5a104050f7e5c688"
+    },
+    {
+      "file": "test_wheel_governance_contract.py",
+      "sha256": "3809fe1ac7078cfebc1946bab9b01398ef6c0275903375f8315949d4cad19c23"
+    },
+    {
+      "file": "test_wrapper_equivalence.py",
+      "sha256": "d828124c2a31aee36754e6f8f146d8af88cf36e6015521a9c29cc0def1699b53"
+    }
+  ],
+  "quarantined": {
+    "kth-0.15-0828": {
+      "path": "D:/UGit/sunny-skills/kth-0.15-0828",
+      "reason": "未授权开发态快照：含 it-development 源（94 模块，多出 13 个 wheel 没有的模块）与另一只 wheel（sha256 前缀 920c36f7）；完全隔离，任何文件禁止导入，差异审核是唯一未来入口"
+    },
+    "rev744_session_state": {
+      "path": "D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session",
+      "reason": "旧 revision/action 状态机、744 个 ACTION 文件与 receipts 永不迁移；仅证据资产池（附件/RawCapture/receipt）按 golden-case 条目复用"
+    }
+  },
+  "golden_case": {
+    "case_id": "LOCAL-CASE-e7edcba32c19969a317f4bca",
+    "session_root": "D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session",
+    "session_state": {
+      "revision": 744,
+      "phase": "dimension_set",
+      "session_hash": "a93e446f63b6ed7be004900af93f5fddd86197b6131b63e36b5d2d80dd675965",
+      "formal_admission": false
+    },
+    "attachments": {
+      "0000.bin": {
+        "sha256": "d2d8a79d6b5202e6b15f7db44c5b14db6125ee025f880e510beab6d2df4284e8",
+        "bytes": 3355758
+      },
+      "0001.bin": {
+        "sha256": "12d7ab408f01ed81d484559a94b3557d216e18b7dd60fc7b63d30778d85034a7",
+        "bytes": 79326
+      }
+    },
+    "attachment_inventory_crosscheck": "两附件 sha256 与 attachment-inventory.json 记录值逐字节一致",
+    "captures": {
+      "complete_dir_count": 80,
+      "raw_all_hashed": 80,
+      "receipt_count": 80,
+      "transport_count": 80,
+      "research_total_files": 490,
+      "per_capture_hash_list": "provenance/manifest.v1.json -> entries.golden_case_captures"
+    },
+    "abandoned_failed_actions": {
+      "dirs": [
+        "FAMILY-PRIVATE-RESEARCH-ACTION-e155ecd20583e2c7a0c35f5b3fc7635d7cc71a98a78b41d09791cb305024a676",
+        "RESEARCH-ACTION-17edc3cb6901865b347684d9441db7191e0fa6960a824addd62c477a06544426"
+      ],
+      "content": "abandonment.json + request.json + transport-attempt.json + transport-failure.json（无 frozen-capture）",
+      "classification": "显式放弃的失败传输 action，属诚实失败证据，非资产缺失/损坏"
+    },
+    "bookkeeping_dirs": {
+      "dirs": [
+        "inventory-history"
+      ],
+      "classification": "旧 gate 世代簿记，不构成证据资产"
+    },
+    "qualification_files": 183,
+    "verification": "PASS（核心附件与 80 个 RawCapture 完整、哈希已钉；无缺失、无损坏）"
+  },
+  "source_tree_tests": {
+    "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator-0.1.5/kth-irl-evaluator-v0.1.5-it-development/kth-irl-evaluator-v0.1.5-it-development/tests",
+    "py_file_count": 81,
+    "fixture_file_count": 5,
+    "whole_chain_tests": "test_v1_local_whole_chain.py（149 测试，5,834 行）",
+    "coverage": "PVS1–6 六维 vertical、cross_dimension_decision、d2_projections、decision_authority、investment_report、ceo_decision_brief 等",
+    "note": "M0.5 链 A fixture 来源（spec-freeze-questions Q11）；逐文件哈希 M0.5/M1 导入时钉定"
+  }
+}

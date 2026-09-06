@@ -1,0 +1,1240 @@
+{
+  "schema": "kth-irl-hybrid-provenance-manifest.v1",
+  "milestone": "M0",
+  "created_at": "2026-09-06",
+  "说明": "M0 未向仓库导入任何文件。本清单登记全部外部钉定资产；M1 起每批导入必须逐文件对应本清单条目并追加导入记录（导入 commit、实际哈希复核）。无条目文件不得出现在仓库。",
+  "entry_fields": [
+    "id",
+    "类别",
+    "源路径",
+    "源身份",
+    "sha256",
+    "bytes",
+    "许可与归属",
+    "计划处置"
+  ],
+  "entries": {
+    "oracle_wheel": {
+      "id": "oracle-wheel",
+      "类别": "执行 oracle（原版 wheel）",
+      "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/kth_irl_evaluator-0.1.5-py3-none-any.whl",
+      "源身份": "主仓 dev HEAD 29159951ebe614aeed33567dfa314463f0e6ef80；sha256=2c49050858555ebb063a7b82177ee43e7caf7d2b93e2319998d7d0b047a471fe",
+      "sha256": "2c49050858555ebb063a7b82177ee43e7caf7d2b93e2319998d7d0b047a471fe",
+      "bytes": 713160,
+      "许可与归属": "公司内部件（原版实现）",
+      "计划处置": "M1 审计导入 reference/（oracle 差分测试与判据机械提取的唯一执行基准）",
+      "条目类型": "文件/树级"
+    },
+    "source_tree": {
+      "id": "source-tree",
+      "类别": "源码解释基线（attached source）",
+      "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator-0.1.5/kth-irl-evaluator-v0.1.5-it-development/kth-irl-evaluator-v0.1.5-it-development/src/kth_irl",
+      "源身份": "最后提交 8059ba27c1127389aa187930e0ff4243d2ff610d（2026-08-10）；81 模块、80 与 wheel 一致、唯一差异 v1/model_gateway.py（部署差异）",
+      "sha256": "见 baseline.source_interpretation_baseline（逐模块哈希在 M1 导入时按本条展开登记）",
+      "bytes": null,
+      "许可与归属": "公司内部件（原版源码）",
+      "计划处置": "M1 审计导入 reference/src（判据机械提取的代码指针目标）",
+      "条目类型": "文件/树级"
+    },
+    "kth_materials": [
+      {
+        "id": "kth-material-1",
+        "类别": "KTH 方法材料",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47",
+        "bytes": 771187,
+        "许可与归属": "KTH 第三方材料（解释性权威，不覆盖 wheel 行为）",
+        "计划处置": "M1 审计导入 sources/kth/"
+      },
+      {
+        "id": "kth-material-2",
+        "类别": "KTH 方法材料",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/sources/kth/KTH-IRL-user-guide_A-1.pdf",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "4668831a5ad986c4ad46828e7edfebb920cadd9ea91166a906ecd613d774fda4",
+        "bytes": 704213,
+        "许可与归属": "KTH 第三方材料（解释性权威，不覆盖 wheel 行为）",
+        "计划处置": "M1 审计导入 sources/kth/"
+      },
+      {
+        "id": "kth-material-3",
+        "类别": "KTH 方法材料",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/sources/kth/KTH-IRL-dashboard_C.xlsx",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "10eb775b00aecf4aeec7c7b94fee86247c245898f73a00dfbd492be0ccd3b648",
+        "bytes": 49671,
+        "许可与归属": "KTH 第三方材料（解释性权威，不覆盖 wheel 行为）",
+        "计划处置": "M1 审计导入 sources/kth/"
+      }
+    ],
+    "registries_v1": [
+      {
+        "id": "registry-baseline-registry",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/baseline-registry.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "1a941a0222d4228b27d8ccb192c06344d5f9682cad688cec0bbcd3b0836bfcc1",
+        "bytes": 1932,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      },
+      {
+        "id": "registry-crl-issue-family-registry",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/crl-issue-family-registry.v1.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "521fa76909e28e03d7e9370be6dc121013507f08d8580789d2260e60a07cd780",
+        "bytes": 5643,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      },
+      {
+        "id": "registry-primary-market-controller-method-registry",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/primary-market-controller-method-registry.v1.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "cfcf19953e902fadb73f5f9502538f69d1bba7d342788a761ce9914cd103df63",
+        "bytes": 17864,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      },
+      {
+        "id": "registry-product-class-research-routing",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/product-class-research-routing.v1.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "c4500251bff995f9c31c21ff4836523af116d0bc49e93a16451ec25df9278818",
+        "bytes": 3543,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      },
+      {
+        "id": "registry-research-dimension-routing",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/research-dimension-routing.v1.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "8423b0355147fce8ea20b2f9cf8c179bd0fc6e4a7972f0fb25cf03d825c7ab93",
+        "bytes": 8359,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      },
+      {
+        "id": "registry-source-policy-registry",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/source-policy-registry.v1.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "f761fd76ebb2688c550925f71fd10836f70cb00c6cc6f9f634c19219df5165da",
+        "bytes": 8989,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      },
+      {
+        "id": "registry-terminal-value-axis-registry",
+        "类别": "Registry v1（判据/方法数据）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/data/v1/terminal-value-axis-registry.v1.json",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "791963d20d6bd7b6cd73afccb186ffdd6714c0c132b049502a2db7eaf3645302",
+        "bytes": 5123,
+        "许可与归属": "公司内部件（Registry 数据）",
+        "计划处置": "M1 逐条审核后升 v2 导入 registry/（baseline-registry 判据显式化按机械提取规则进行）"
+      }
+    ],
+    "original_tests": [
+      {
+        "id": "original-test-kth_irl_publication_crash_helper",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/kth_irl_publication_crash_helper.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "3407afa4b4fb19a974584200d11b694f0a3b06b1837bfe478fb7d24ec3ee3a15",
+        "bytes": 4712,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-kth_irl_test_launcher_runner",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/kth_irl_test_launcher_runner.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "497e4de8ff5647453e70391d0ad6f99f204e1a8212540e1e23d69f784a440b0f",
+        "bytes": 4184,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_active_output_transaction",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_active_output_transaction.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "d1c39d41edb087eba93beece2575caf419fd8abe1d038b5a0f19afc666032aff",
+        "bytes": 45458,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_bootstrap_runtime",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_bootstrap_runtime.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "129f7233b17334854595134e9227eba08df2da7fde3bc6938746fc21f7d52bca",
+        "bytes": 17210,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_complete_report",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_complete_report.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "90d1e384a04047a11ac9e520397d364ea332245e142b53f39f449e8aa73f89fd",
+        "bytes": 16992,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_dual_host_compatibility",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_dual_host_compatibility.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "910970bf7b9005e45a105c3d6119bcde3ff92df6f6bd7d6613e15b52fafa0423",
+        "bytes": 5711,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_entry_skill_contract",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_entry_skill_contract.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "ee94e977d71295589fe3b6fb0a281275cc6a3cc64d85adcdb0a1eedea3a1be9b",
+        "bytes": 7618,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_fresh_checkout_tool",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_fresh_checkout_tool.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "4fe74ff640de10caa5cd01c94b6335e808d55ff34ccdb6261968a781b2f90b37",
+        "bytes": 933,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_launcher_passthrough",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_launcher_passthrough.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "22d8c3bee638000e584dba8ad322bd96b34b85b774708d8e695a326a0f2345ab",
+        "bytes": 23867,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_natural_language_entry",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_natural_language_entry.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "1766236c5300283c719d5148511aa73d66b61a0dcbfc4f16660530032fe010c2",
+        "bytes": 17061,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_payload_integrity",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_payload_integrity.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "40ebcdcc164ad60772b1635b9aba15e06e329202e8238572f0286f48bfdcdfb5",
+        "bytes": 11144,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_skill_integrity",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_skill_integrity.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "84c6026d7323351088b0a660630c726a6f4f4efc6b4e262e507b5e93e8e6a132",
+        "bytes": 5331,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_staged_crl_brl_adapter",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_staged_crl_brl_adapter.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "8de41135559c842abe498f410da18673191b4469b2f35cba14b33c2bdcf3105a",
+        "bytes": 41845,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_staged_dimension_adapter",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_staged_dimension_adapter.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "35851ed7980fec89149b34b2235258acee32181cf033902f9c752be318ea60cb",
+        "bytes": 42237,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_staged_frl_adapter",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_staged_frl_adapter.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "919d57777639ad905ec3ea208407db3283d096ab1ce16fad3d58f960584560bb",
+        "bytes": 28902,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_staged_inspect",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_staged_inspect.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "e0f7189606d2f008b6a399f5432a41630515b496dc28761f761d3d6f10957792",
+        "bytes": 25459,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_staged_iprl_adapter",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_staged_iprl_adapter.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "4893fde727018e8a3b61ba041089ff9624caa76f11d56b0453d9535e2eea9a25",
+        "bytes": 32210,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_staged_trl_tmrl_adapter",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_staged_trl_tmrl_adapter.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "8094e0d361aed51ace02003db8e41b76f4cc8110113d0a2d5a104050f7e5c688",
+        "bytes": 48812,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_wheel_governance_contract",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_wheel_governance_contract.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "3809fe1ac7078cfebc1946bab9b01398ef6c0275903375f8315949d4cad19c23",
+        "bytes": 11456,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      },
+      {
+        "id": "original-test-test_wrapper_equivalence",
+        "类别": "原版测试（oracle 语料）",
+        "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/tests/test_wrapper_equivalence.py",
+        "源身份": "主仓 dev HEAD 2915995…",
+        "sha256": "d828124c2a31aee36754e6f8f146d8af88cf36e6015521a9c29cc0def1699b53",
+        "bytes": 11475,
+        "许可与归属": "公司内部件（测试）",
+        "计划处置": "M1 审计导入 reference/tests/ 作为 oracle 对照语料（不直接充当新测试）"
+      }
+    ],
+    "golden_case_attachments": [
+      {
+        "id": "golden-att-0000",
+        "类别": "微玖 Golden Case 附件",
+        "源路径": "D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session/inputs/attachments/0000.bin",
+        "源身份": "封存 session（LOCAL-CASE-e7edcba32c19969a317f4bca）；原名 微玖光电BP260716.pdf",
+        "sha256": "d2d8a79d6b5202e6b15f7db44c5b14db6125ee025f880e510beab6d2df4284e8",
+        "bytes": 3355758,
+        "许可与归属": "Owner 私有 Case 数据（不入 Git，仓库外 Case 工作区使用）",
+        "计划处置": "M1 intake 冒烟导入（1 附件）"
+      },
+      {
+        "id": "golden-att-0001",
+        "类别": "微玖 Golden Case 附件",
+        "源路径": "D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session/inputs/attachments/0001.bin",
+        "源身份": "封存 session；原名 Pre-A高管及客户访谈.zip",
+        "sha256": "12d7ab408f01ed81d484559a94b3557d216e18b7dd60fc7b63d30778d85034a7",
+        "bytes": 79326,
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M1 起按 intake 流程复用"
+      }
+    ],
+    "golden_case_captures": [
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-04172c39d593c41fc7d16446b1e784896de197e77caa3281f2a91535e473220d",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-0cd67097f5506b43ce88f02c0376da4d053baaddcd1c09d46bf6172fd5590bc1",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-1315bbd143045e45e8d6dfbf57141ce162a254e6e058b2d0171768ae99931b57",
+        "raw_body_sha256": "8bd0fcdb4a80a4b18e4df64786143c5dc4bf8bd8141b53b3ca6ec3e5ffe52d4c",
+        "raw_body_bytes": 162855,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-13a964b580aba9327ad59d5888cc217a9087e294872674e933bee1ee9b22e6b3",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-159097e6677835f49b93d86c18921a4f0a33d23a0f1aed9ef3d37958026dbcd2",
+        "raw_body_sha256": "456fbb7b8f0770b917c4d38a22739e861fbb3fed3cddf96a7cf464723091fb76",
+        "raw_body_bytes": 223274,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-173c6ab03aabaebd8166aa6bcf66876aa30ccec5c4ed77ddf667c3fa38ad0af1",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-348abca944d5e1a3dfd6bccb6a0ee35e16f3b582d4d81d910440a4464b9ddfcc",
+        "raw_body_sha256": "db9e7c25730a9820ffe27d8d222fb32ab7c775d11f104ea8e4458359dc35268b",
+        "raw_body_bytes": 435071,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-37da044ab8f2cfd6753e514dc339cab752cd9f0968a6f2bc8629fbc7fb34caae",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-40188e8e027f4f2e1f40e770387212372eb13542750f98db41d2e1df70919ac1",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-457842a8ae7afb508d9095fef572fc898db1fa6c7dc64c714216d7816c600ca0",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-484f8921c6330256d4881c670716941f026796072ccd2c50ec1ae00c98f33689",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-4ad50a3ab00ce6739177b8f36dcafa8f8d1e5994df3d759a9ab4ddfbc8e30277",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-4c3692fb3737452f95fec40c2f52d3ab1da4890b24a35f46e171e7bf0d29c2a7",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-650eaa44298eb336ff6054947108acb5a5b4fc9a0ae6d95e954dec93035dfbae",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-66c35bfc6a76441c10b88a278653628685ef2a9f91bf5855655e890565f1b3d8",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-67312cf6b36e1eccaaba88a8ce666eb2f65cb243c50347d39441f0d246982bd3",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-68f97e2d31c7b9bd98375468bc2de7b72e9db521556c43f8c8e2d36f1b9e816f",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-71548b90ed110b29000bbb5c18968aa460416eeee7ba07549ff8b4517b2b4205",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-71a97e7f1bceeaa2755acf8341744dc6eb7d5807c29fea05b6dc14d2bf8d40e7",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-74b2b670f7cb569030a73538c85e9da77978635e9f52d3eebf7358c265853a91",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-7ca90ad6d60c51a325710391dce19c18000d2ab5d5d49f1b934af31439b23ef0",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-83a3ad166c3e5e7fb7b0c02709199b385c891120f7656c594837d965859a1939",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-8bfb6a606dbb9bd890b51cb8e3f8973b9c202403ca4fb978643b3760b771f72d",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-9c15056cd71109e551c96c195a9e55f708b3af8de84e454f468ed69915ca78ce",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-b23ac07bedf774c6f506b8194afa7198e778b5380eb7fc77ca84b3da6c50b0ab",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-b75fab4b0265dc43f89735c78736194d97ea6111507495e37204786687acaeea",
+        "raw_body_sha256": "edc38fae03b2c6a6937b2b273e62d9467555cb442b3f6ae4f101fe6ea0a6f6d7",
+        "raw_body_bytes": 235364,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-bac632cf5664f62c006f53c0bd8a249bf6820e66fb9d87c9277deaf314bfb42e",
+        "raw_body_sha256": "065ce2661915b01380149d973c61276522cf2d5fa074e5de31602d884d34068b",
+        "raw_body_bytes": 585603,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-bb150c29e8751a22f4d6eb43c17fab3663dccb4a77d0d2d10b9ec64b62ece918",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-bc23ce2ebe2095fc4e7944fb59d4901d84c6bb4e73f5448ee4f94b300d2bb34a",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-c50df1094cb6fa8802ad03330ede5910d9b1f64067d8768dab060032f3e53d0a",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-c53c9e55815d896002a36f401406b49b033a2fa63bd1d58a9664817762c57521",
+        "raw_body_sha256": "db9e7c25730a9820ffe27d8d222fb32ab7c775d11f104ea8e4458359dc35268b",
+        "raw_body_bytes": 435071,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-caeff8430d2f2249cd9bc078d9b5f686be05b204ca9a3b655a6ec3f91a41dd5a",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-d898b941e100f50c74423ec08cff94ac9ebb66f392c897d470d382d167793d76",
+        "raw_body_sha256": "47fb56fff7850348cf79165fc7690cee2d0611fbfc247ffa0a8c817537615ef4",
+        "raw_body_bytes": 471708,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-e16317b7f93d9632abeb9fc28fc42ad998866730c15a753e93d9951d82986268",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-e7add6b1c6eda3158a5e13252350744062f2f4f20ed053f30ce9f27405ae1b8a",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-e7f1fa2e13c5907fe36977e82245edb20b8e98b1d2cd6cec8b2c0eaeabb5d9e3",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-e8737a546a8dedd7f6bf41d10b179d239a3e110b61380e3eb3875d2619af549f",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-eaa44f7bccda1db4fb63d863f9dc7b69ffc46fc5cf45a1c94b35d68366512054",
+        "raw_body_sha256": "065ce2661915b01380149d973c61276522cf2d5fa074e5de31602d884d34068b",
+        "raw_body_bytes": 585603,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-fb22cf18f55cc8a32485451b6d534b151d75e3ab40ad73916ac8142ca5f49737",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-fb8e46f2482cae6d3ebe6249b10f33c7017990835a75a0a23cd339dfbb8a3b27",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-fec19b88ca4dc888e98eb2829f670d37e1d0106b8f9a7f895ba9bccb4f2f4b5e",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "FAMILY-PRIVATE-RESEARCH-ACTION-ff198c86a1a351c3b28a405c5e931aba6f2fb56cd44110f733bd92947948f008",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-2af5684ab41c41d5f650c8c8219c7da420ee986e9cc1b5880de465a5444307b6",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-31edf804c5410a566773389b5c8bfaf7e8265d597228f29254e26e850b292fa0",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-3a6ca275ffe947b96ae2c4706ac35175b1ab1326ef95ade03a9406e8c49614a5",
+        "raw_body_sha256": "ed1dcd7969e57908b0b79c85fb1e11e6d7038ade0789ffec7ec1f9f50b98f7ff",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-3afee21bac98a1270de11512fa5b3dfaf502f91e4265d5a5ba8d1a0614425ed3",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-5f07a8dba6d479ccc79ce8f29c020e07c83491673fb4ffa6d0329d9afdffd087",
+        "raw_body_sha256": "ed1dcd7969e57908b0b79c85fb1e11e6d7038ade0789ffec7ec1f9f50b98f7ff",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-7f0d6c76742eb345b39a7cbd4724e034aaec9272b1d8cc3b331500e5d3eef8ac",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-c34528be664cbf918695b4417570c445786a7f64d44a33cbdeaa7218587188a9",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-cff6012ab8aa1f9079ba4e5e7486b342681683b9d68659e2a70a195bb391ad6d",
+        "raw_body_sha256": "ed1dcd7969e57908b0b79c85fb1e11e6d7038ade0789ffec7ec1f9f50b98f7ff",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-IDENTITY-ACTION-d390ff97e47aaa4579685236cfdd94060d336f8cf9c4fdae51b5afceca9882ca",
+        "raw_body_sha256": "ed1dcd7969e57908b0b79c85fb1e11e6d7038ade0789ffec7ec1f9f50b98f7ff",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-26d3d1a1222943f85c7cebcf90745bd57937997481ce63ad4ba9205228793ac1",
+        "raw_body_sha256": "c9d52f0a04185cdd4e8eeebc90de0b6c7f19458fb8eb4a30b57ae34bdd1de3cc",
+        "raw_body_bytes": 29279,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-2b27b34893e5f8a89930c2e360f3d0ad72f192e47c35d55f536323430b8c749b",
+        "raw_body_sha256": "aedf7007a46f3fb06a2c2a8a17a80cc6401e51e121b2e1ee548b8d04d14e0a11",
+        "raw_body_bytes": 23564,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-5e19f1335c9546c017adc7f35114954d781d0465da01477e9ba909f65d982084",
+        "raw_body_sha256": "b02448197cc0bb08f875b70335c75b643347d49cd8ecfc6cd2125f8f0874f42c",
+        "raw_body_bytes": 24232,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-5f5d5009ef5c3d408ebfe461720421f751d344bde8111eef809a60d54ef21e4f",
+        "raw_body_sha256": "bfeba958e67a328c74b0d5cde4db2b118a77e1e590b19d44900dd7956012a133",
+        "raw_body_bytes": 32452,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-833f2184cf0c2d79160a214035780bbdef763f9d5a7d32dad68b098a3e452cc2",
+        "raw_body_sha256": "a00670f887ce6e47116bfec8253d552487b86d69a0ba95c70d4b3563652c65df",
+        "raw_body_bytes": 43382,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-af890918a60587c190f2ff431f0613caa09e487261ec820fe4f53191924ea59b",
+        "raw_body_sha256": "6076e6d1f161537a012f1c925b96b9563a4378cab296409f3225ec145cad0f1c",
+        "raw_body_bytes": 39493,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-b0bceb90f0f3b7ec248d3de743b0ad984ae1332ad9170a3a3548e4474d68fce6",
+        "raw_body_sha256": "66ad5ecca98a7c8bdef6627ad82b274dc757dedf43e17cb911bc6ce1eaaf040f",
+        "raw_body_bytes": 36203,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-b8684a554f66720b664ece76435631d36655a7fde55782ead5495f86b29a5385",
+        "raw_body_sha256": "a605d4cbaf29719c539ed081de803f7b4854c5b5bb8050f3d06d91421eb43269",
+        "raw_body_bytes": 46437,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "PREDISPATCH-PATENT-ACTION-bb12f320ed0038192733d1b8754aa795540f42cb84b6422319f8c47a629195e7",
+        "raw_body_sha256": "c8ec02a7359b949416965db4fbb322fd14b9efe1c78085c05bd7b04d6d93ab64",
+        "raw_body_bytes": 46116,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-004e2450361e97d0eed3c1e93af3b4d421893d6eb4eed59ba83e35dc235d0b43",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-03736072eae58c5cb38dbeb4e043fc4998237b9ea1c2504f040e0c69212b1104",
+        "raw_body_sha256": "a42bda71a2363f6ec2cbcd6aac050f28f6f1b606e4d0a27fb73adffbed1047b7",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-0c72d7707275f5623f78fcf4dfbf299751c723daba234ac277855825ff6328c2",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-16df13c73afed6f7b5777777999a65cf99f83202b148c96dd6ceca06decb3d5a",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-25d1ea83b2566d8e0623af719b28154201e6e24979c82aeaf4c80ef4445ba9db",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-2d33a3973f14842557637dcf249464536c081e9059e760425e4a1e189bb150a1",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-4ef42ad0a694fa492f7140a27b5ccb97a6aa06f9071b9ecab2135b52dcf541ec",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-866f77ec6080d68dae5b2622873724500ef84b054117a892ade93a4277f7c72f",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-abcc41c1f594e49a208df3cd980689f91d7c98afd4dbb8918e90de8a542a623d",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-b30ae9a17e05a5ef704181b064b67a16dcf8d46e1ecb2c4695fb3b402b8da60e",
+        "raw_body_sha256": "a42bda71a2363f6ec2cbcd6aac050f28f6f1b606e4d0a27fb73adffbed1047b7",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-c0801e3c03314a7d5498329a7580c080d540b692eff57d1fdfff0a320d072b9d",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-c5b9aa858a72e991b17067d2b82b1dd2ce9fc124e2746b5394e52828fe1f9755",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-ca83ff95598678bbfc9500a512d4a4453ad4fbd3e61629c615081461374fe6d6",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-dfdd857d848cf1d4f74eac0783bc3495b173fe8c3b338d6960e33722c67b9afc",
+        "raw_body_sha256": "718e402e82d5fb1c77550f4e4057b0f39fbb8ab9c49e515227e35523e0ff1b1c",
+        "raw_body_bytes": 47857,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-e5a8defc0b3dbfc607c5367cbb18e2714d6ff83699bae40cedd2691f55b51db6",
+        "raw_body_sha256": "a42bda71a2363f6ec2cbcd6aac050f28f6f1b606e4d0a27fb73adffbed1047b7",
+        "raw_body_bytes": 433130,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-e5c2037ca961cef062bce7a11c47d626f0a7c0c1611931b9c4170109b633688c",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-ea3dee449d88dc371c6c4b128c000cdca9b5b8434c9dc01d23e08edf9dc697f0",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-f2576a05174304fe099663a660ee74d421895e975c39240a67e002f0cfd07741",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-f9b16393f35949b6cfeb45fe76509990714398851758499feb5ca647238e0103",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      },
+      {
+        "dir": "RESEARCH-ACTION-f9e0c5cdd2efb8acebfc21a31f08916e719badf8bdccc14e77bfd6af9a81c7c1",
+        "raw_body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_body_bytes": 0,
+        "has_receipt": true,
+        "has_transport": true,
+        "源身份": "封存 session research/",
+        "许可与归属": "Owner 私有 Case 数据（不入 Git）",
+        "计划处置": "M2 开工段全量重验证（哈希比对）后重资格化装入新 Evidence Store；恢复只读 sealed capture"
+      }
+    ],
+    "golden_case_comparison_baseline": {
+      "id": "golden-disposition-baseline",
+      "类别": "旧业务 disposition 对照（非权威校准件）",
+      "源身份": "Owner 交接书 2026-09-06（源自封存 session）",
+      "内容": {
+        "研究任务": "12/12 已封存",
+        "专利任务": "9/9 已封存",
+        "CRL": "2 项 met，其余未满足",
+        "BRL": "证据不足为主",
+        "TRL": "25 项 not_met",
+        "TMRL": "38 项 not_met",
+        "IPRL": "5 项 met、27 项 not_met",
+        "FRL": "36 项 not_met",
+        "callbacks": {
+          "crl_brl": 17,
+          "trl_tmrl": 17,
+          "iprl": 8,
+          "frl": 10
+        }
+      },
+      "许可与归属": "Owner 交接事实",
+      "计划处置": "M2 起作逐判据分歧台账对照；禁止作为权威输入",
+      "条目类型": "事实级（非文件资产）",
+      "源路径": "不适用（源自 Owner 交接书 2026-09-06 的事实基线，非文件）",
+      "sha256": "不适用",
+      "bytes": null
+    },
+    "source_tree_tests": {
+      "id": "source-tree-tests",
+      "类别": "原版源树自带测试套件（oracle 语料，M0.5 链 A 主要输入）",
+      "源路径": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator-0.1.5/kth-irl-evaluator-v0.1.5-it-development/kth-irl-evaluator-v0.1.5-it-development/tests",
+      "源身份": "最后提交 8059ba27c1127389aa187930e0ff4243d2ff610d（2026-08-10）；81 个 .py（含 case_preflight_fixtures.py 与 test_v1_local_whole_chain.py 149 测试）+ fixtures 5 件（terminal-value-workflow 4、kth-hybrid-controller 1）",
+      "sha256": "树级登记；逐文件哈希在 M0.5/M1 导入时按本条展开",
+      "bytes": null,
+      "许可与归属": "公司内部件（原版测试）",
+      "计划处置": "M0.5 链 A fixture 组装与 M1 审计导入 reference/tests-src/（oracle 对照语料）",
+      "条目类型": "文件/树级"
+    }
+  },
+  "forbidden_sources": [
+    {
+      "id": "old-worktree-drifted-source",
+      "path": "D:/UGit/sunny-skills/.codex-temp/agent-driven-staged-product-completion/plugins/kth-irl-evaluator-0.1.5/kth-irl-evaluator-v0.1.5-it-development/kth-irl-evaluator-v0.1.5-it-development/src/kth_irl",
+      "reason": "23 模块相对批准 wheel 漂移，另有 11 个旧 staged 私有模块；仅作反漂移回归对照，禁止导入"
+    },
+    {
+      "id": "old-worktree-receipts-and-gates",
+      "path": "D:/UGit/sunny-skills/.codex-temp/agent-driven-staged-product-completion/docs/superpowers/implementation-receipts",
+      "reason": "91 相位目录 2066 份 receipts 与 gate r145–r158、Decision A/B 封印：旧治理机械，永不迁移"
+    },
+    {
+      "id": "kth-0.15-0828",
+      "path": "D:/UGit/sunny-skills/kth-0.15-0828",
+      "reason": "未授权开发态快照（94 模块源 + 异 wheel 920c36f7…），完全隔离；差异审核为唯一未来入口"
+    },
+    {
+      "id": "rev744-session-state",
+      "path": "D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session",
+      "reason": "revision/action 状态机与 744 ACTION 文件永不迁移；仅证据资产池按 golden_case 条目复用"
+    },
+    {
+      "id": "family-runs",
+      "path": "D:/kth-family-runs-e7edcba32c19969a317f4bca",
+      "reason": "旧 gate 世代运行工件，只读封存"
+    },
+    {
+      "id": "old-stage-runtime",
+      "path": "D:/t/kth-family-native-runtime-plugin-4e42e71-b742",
+      "reason": "非发布包旧运行时，只读封存"
+    }
+  ]
+}

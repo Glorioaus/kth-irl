@@ -1,0 +1,13 @@
+59f8440e1fc175aaf20c61d50eb1ccdee457abca5617f845dd86844726dd9fab *./.gitignore
+777853f6074ce16f501934915d548ab0b8e42f7f778a9858c12c0cca6b27c197 *./AGENTS.md
+6038065fd3df443b2ed60c9bbbd9342462727be8b3a7e436b5e11769c884e81b *./README.md
+702f546c132ca572601d1faffa89acb3a092e60c903f00b2697dae36f73ccdb5 *./baseline/kth-hybrid-baseline.v1.json
+1e8b1a9d7c97a503c7252f733a807ac6d0c8861c83a69b9772bdb1b50b6129e1 *./docs/M0-authority-baseline.md
+fbefe402888e2f23e159e60ae6cf6d77b0895cfef1ecf592e9e8774bb3620829 *./docs/M0-business-invariants.md
+affdd9144c8ab1df15d351c996588ed24b9ba457d20d7cec94e9d6e82e7c2cd6 *./docs/M0-golden-case-inventory.md
+6081a731bd04cac6d0b05695525b97d354f3201d4fb9d9ec2b2a4ae9100ee7fc *./docs/M0-module-disposition.md
+e88237b77130aa22aedb728fbe07ba0278e715fddb1413f12642b4f21e5f2991 *./docs/M0-source-drift-audit.md
+a8855b42840b233a1bb6e5c5d1933ba81fb3e65eefaf602f637bd24356bfdd61 *./docs/M0-spec-freeze-questions.md
+4c3156f2d0460c797f01fa2860b393709a71382ebab0bb08675b6b6983a787c2 *./docs/divergence-ledger.md
+f62c640fbd9beac46a0a19f759fb076542c37896bafef1946301747ea289b57d *./docs/policy/org-d1-policy-draft-v0.md
+71d288ab8c082f5a9c003b00459731bc0c302003e80c6d38054d45bfca16bbdc *./provenance/manifest.v1.json

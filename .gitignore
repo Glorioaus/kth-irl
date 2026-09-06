@@ -1,0 +1,26 @@
+# 凭据与环境（永不入库；真实 kth-env 仅存在于本地部署位与内部交付包）
+kth-env
+kth-env.*
+*.env
+.env
+.env.*
+
+# 真实 Case 数据一律存放于仓库外的 Case 工作区
+cases/
+case-output/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# 工具与系统
+Thumbs.db
+.DS_Store
+*.log
