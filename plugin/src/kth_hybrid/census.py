@@ -111,24 +111,37 @@ class CensusResult:
             "来源独立性": "未知（同hash仅表示字节相同；转载/同源关系未审查）",
         }
 
-    def layer3_claims(self) -> dict:
+    def layer3_claims(self, case: CaseStore | None = None) -> dict:
+        claims = quals = qualified = 0
+        if case is not None:
+            claims = len(case.fetch_all("claims"))
+            quals = len(case.fetch_all("qualifications"))
+            qualified = sum(
+                1 for q in case.fetch_all("qualifications") if q["status"] == "qualified"
+            )
         return {
             "已登记资格候选引用(旧session, 仅候选)": sum(
                 c.qualification_candidate_count for c in self.captures if c.readable
             ),
-            "新系统已审Claim": 0,
-            "新系统资格通过": 0,
-            "新系统待审": 0,
-            "说明": "R1 样本阶段：新主张审查由 T05/T06 填写；未审原文不假定存在固定数量Claim",
+            "新系统已审Claim": claims,
+            "新系统资格通过": qualified,
+            "新系统已审未通过": quals - qualified,
+            "说明": "R1 样本阶段：未审原文不假定存在固定数量Claim，按源记录待主张提取",
         }
 
-    def layer4_criteria(self) -> dict:
+    def layer4_criteria(self, case: CaseStore | None = None) -> dict:
+        supporting = 0
+        if case is not None:
+            supporting = sum(
+                1 for r in case.fetch_all("criterion_results")
+                if r["product_status"] == "succeeded"
+            )
         return {
-            "可支持正向判据的已资格主张": 0,
-            "说明": "R1 样本阶段由 T06 真实判据消费结果回填；资格通过不自动等于 criterion met",
+            "可支持正向判据的已资格主张": supporting,
+            "说明": "R1 样本阶段由真实判据消费结果回填；资格通过不自动等于 criterion met",
         }
 
-    def summary(self) -> dict:
+    def summary(self, case: CaseStore | None = None) -> dict:
         return {
             "schema_version": "kth-rebuild.evidence-census.v1",
             "session_root": self.session_root,
@@ -136,8 +149,8 @@ class CensusResult:
             "L0_原资产盘点": self.layer0_assets(),
             "L1_字节可用性": self.layer1_bytes(),
             "L2_内容去重": self.layer2_dedup(),
-            "L3_主张资格": self.layer3_claims(),
-            "L4_判据可用性": self.layer4_criteria(),
+            "L3_主张资格": self.layer3_claims(case),
+            "L4_判据可用性": self.layer4_criteria(case),
             "errors": self.errors,
         }
 
@@ -296,7 +309,7 @@ def render_chinese(summary: dict, rows: list[dict]) -> str:
         f"- 旧 session 登记的资格候选引用 {l3['已登记资格候选引用(旧session, 仅候选)']} 条"
         "（仅候选，不继承权威）",
         f"- 新系统已审 Claim {l3['新系统已审Claim']}；通过 {l3['新系统资格通过']}；"
-        f"待审 {l3['新系统待审']}",
+        f"已审未通过 {l3['新系统已审未通过']}",
         f"- {l3['说明']}",
         "## L4 判据可用性（R1 样本阶段）",
         f"- 可支持正向判据的已资格主张 {l4['可支持正向判据的已资格主张']}",
@@ -340,13 +353,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run_census(args.session_root, manifest_path=Path(args.manifest),
                             blobs=blobs, case=case, do_import=args.do_import)
+        summary = result.summary(case=case)
     finally:
         if case is not None:
             case.close()
 
     audit_dir = case_dir / "audit"
     audit_dir.mkdir(parents=True, exist_ok=True)
-    summary = result.summary()
     (audit_dir / "evidence-census.json").write_text(
         json.dumps({"summary": summary, "rows": result.rows(),
                     "attachments": result.attachments,
