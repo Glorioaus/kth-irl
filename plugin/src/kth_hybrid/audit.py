@@ -66,6 +66,55 @@ def _load_json(value: str) -> list:
         return []
 
 
+def _verify_projection(claim: dict, blob_data: bytes) -> str | None:
+    """按抽取投影核验 pdf_page / zip_member 定位的主张。
+
+    使用与导入时相同的成熟解析库重抽，比对登记的文本 hash；
+    失败返回中文问题描述，成功返回 None。
+    """
+    locator_kind = claim.get("locator_kind")
+    try:
+        locator_ref = json.loads(claim.get("locator_ref") or "{}")
+    except (TypeError, ValueError):
+        return f"定位引用（{locator_kind}）解析失败"
+    try:
+        if locator_kind == "pdf_page":
+            from .intake import extract_pdf_pages
+
+            projection = extract_pdf_pages(blob_data)
+            page = locator_ref.get("page")
+            page_rows = [p for p in projection.locators if p["page"] == page]
+            if not page_rows:
+                if any(str(page) in u for u in projection.unprocessed):
+                    return f"第 {page} 页无文本层（登记时也未抽取成功）"
+                return f"第 {page} 页不在抽取投影中"
+            if page_rows[0]["text_sha256"] != claim["excerpt_sha256"]:
+                return "页面投影文本 hash 与登记不一致（原文可能被篡改）"
+            return None
+        if locator_kind == "zip_member":
+            import io
+            import zipfile
+
+            from .intake import extract_docx_paragraphs
+
+            member = locator_ref.get("member")
+            if not member:
+                return "zip 成员定位缺 member"
+            with zipfile.ZipFile(io.BytesIO(blob_data)) as archive:
+                member_data = archive.read(member)
+            projection = extract_docx_paragraphs(member_data)
+            paragraph = locator_ref.get("paragraph")
+            rows = [p for p in projection.locators if p["paragraph"] == paragraph]
+            if not rows:
+                return f"成员 {member} 第 {paragraph} 段不在抽取投影中"
+            if rows[0]["text_sha256"] != claim["excerpt_sha256"]:
+                return "段落投影文本 hash 与登记不一致（原文可能被篡改）"
+            return None
+        return f"未知定位类型 {locator_kind}"
+    except Exception as exc:  # 投影重核的任何失败都可见，不吞
+        return f"抽取投影重核失败：{type(exc).__name__}: {exc}"
+
+
 def trace(case: CaseStore, blobs: BlobStore, result_id: str,
           *, strict: bool = True) -> TraceReport:
     """反向解析并核验一条判据结果的证据链。
@@ -151,7 +200,7 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
             continue
         report.edges.append(edge_b)
 
-        # 摘录核验：byte_range 主张必须与封存字节区间一致
+        # 摘录核验：按定位类型分别重核
         if claim["locator_kind"] == "byte_range":
             start, end = claim["locator_start"], claim["locator_end"]
             if not (isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(data)):
@@ -169,6 +218,13 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
                 )
                 continue
             report.verified_excerpt_hashes.append(actual)
+        else:
+            # pdf_page / zip_member：按抽取投影重核（不假装文本偏移是原字节偏移）
+            problem = _verify_projection(claim, data)
+            if problem:
+                report.broken.append(f"主张 {claim['claim_id']} {problem}")
+                continue
+            report.verified_excerpt_hashes.append(claim["excerpt_sha256"])
 
     for gap_id in report.gap_refs:
         gap = case.fetch_one("gaps", "gap_id", gap_id)

@@ -123,23 +123,45 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
 
     # ---- 定位核验（失败 → Gap，不伪装资格结论）----
     start, end = claim.get("locator_start"), claim.get("locator_end")
-    if claim.get("locator_kind") != "byte_range" or not (
-        isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(data)
-    ):
+    locator_kind = claim.get("locator_kind")
+    if locator_kind == "byte_range":
+        if not (isinstance(start, int) and isinstance(end, int)
+                and 0 <= start < end <= len(data)):
+            return GapOutcome(
+                claim_id=claim["claim_id"], gap_type="invalid_locator",
+                pipeline_fault=False,
+                investigation=f"定位非法：kind={locator_kind} 区间=[{start},{end})，"
+                              f"对象长度={len(data)}",
+                unconfirmed=["主张定位是否被篡改"],
+            )
+        excerpt_bytes = data[start:end]
+        if sha256_hex(excerpt_bytes) != claim["excerpt_sha256"]:
+            return GapOutcome(
+                claim_id=claim["claim_id"], gap_type="excerpt_hash_mismatch",
+                pipeline_fault=False,
+                investigation="摘录 hash 与封存原字节区间不一致",
+                unconfirmed=["原文或摘录是否被篡改"],
+            )
+        excerpt_text = excerpt_bytes.decode("utf-8", errors="replace")
+    elif locator_kind in ("pdf_page", "zip_member"):
+        # 抽影定位：原件 hash + 页面/成员投影重核，不假装文本偏移是原字节偏移
+        from .audit import _verify_projection
+
+        problem = _verify_projection(claim, data)
+        if problem:
+            return GapOutcome(
+                claim_id=claim["claim_id"], gap_type="projection_mismatch",
+                pipeline_fault=False,
+                investigation=f"抽取投影核验失败：{problem}",
+                unconfirmed=["原文或投影是否被篡改"],
+            )
+        excerpt_text = claim.get("excerpt_text") or ""
+    else:
         return GapOutcome(
             claim_id=claim["claim_id"], gap_type="invalid_locator",
             pipeline_fault=False,
-            investigation=f"定位非法：kind={claim.get('locator_kind')} "
-                          f"区间=[{start},{end})，对象长度={len(data)}",
+            investigation=f"未知定位类型：{locator_kind}",
             unconfirmed=["主张定位是否被篡改"],
-        )
-    excerpt_bytes = data[start:end]
-    if sha256_hex(excerpt_bytes) != claim["excerpt_sha256"]:
-        return GapOutcome(
-            claim_id=claim["claim_id"], gap_type="excerpt_hash_mismatch",
-            pipeline_fault=False,
-            investigation="摘录 hash 与封存原字节区间不一致",
-            unconfirmed=["原文或摘录是否被篡改"],
         )
 
     if family in policy["discovery_only_families"]:
@@ -156,7 +178,6 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         )
 
     # ---- 2) 身份判断（第一方 / 第三方提及 / 未提及分开）----
-    excerpt_text = excerpt_bytes.decode("utf-8", errors="replace")
     mentions_subject = subject in excerpt_text or any(
         alias in excerpt_text for alias in aliases
     )

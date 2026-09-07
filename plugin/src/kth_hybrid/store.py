@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS sources (
     retrieved_at TEXT,
     published_at TEXT,
     published_at_provenance TEXT,
+    time_evidence TEXT,
     source_family TEXT,
     capture_status TEXT NOT NULL,
     import_id INTEGER REFERENCES import_records(import_id),
@@ -213,11 +214,20 @@ class CaseStore:
         self._conn.execute("PRAGMA synchronous=FULL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
             (_SCHEMA_VERSION,),
         )
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """已建库的增量列迁移（R1 开发期：sources.time_evidence）。"""
+        columns = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(sources)").fetchall()}
+        if "time_evidence" not in columns:
+            self._conn.execute("ALTER TABLE sources ADD COLUMN time_evidence TEXT")
+            self._conn.commit()
 
     # ---- 阶段与运行 ----
 
@@ -269,6 +279,7 @@ class CaseStore:
                    media_type: str | None = None, locator: str | None = None,
                    retrieved_at: str | None = None, published_at: str | None = None,
                    published_at_provenance: str | None = None,
+                   time_evidence: dict | None = None,
                    source_family: str | None = None, capture_status: str = "imported",
                    import_id: int | None = None) -> None:
         if not is_sha256_hex(blob_sha256):
@@ -277,11 +288,23 @@ class CaseStore:
             self._conn.execute(
                 "INSERT INTO sources(source_id, blob_sha256, byte_length, media_type, "
                 "locator, retrieved_at, published_at, published_at_provenance, "
-                "source_family, capture_status, import_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "time_evidence, source_family, capture_status, import_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (source_id, blob_sha256, byte_length, media_type, locator, retrieved_at,
-                 published_at, published_at_provenance, source_family, capture_status,
-                 import_id),
+                 published_at, published_at_provenance,
+                 json.dumps(time_evidence, ensure_ascii=False) if time_evidence else None,
+                 source_family, capture_status, import_id),
             )
+
+    def set_source_time_evidence(self, source_id: str, time_evidence: dict) -> None:
+        """为已导入来源登记时间证据（文档自述日期等），不改动封存字节。"""
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE sources SET time_evidence=? WHERE source_id=?",
+                (json.dumps(time_evidence, ensure_ascii=False), source_id),
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"来源 {source_id} 不存在")
 
     def add_claim(self, claim_id: str, source_id: str, *, locator_kind: str,
                   excerpt_start: int, excerpt_end: int, excerpt_sha256: str,

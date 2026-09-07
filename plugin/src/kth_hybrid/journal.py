@@ -193,6 +193,26 @@ class Journal:
                 (state, detail, claim.attempt_no),
             )
 
+    def mark_recovered_unknown(self, task_key: str) -> None:
+        """恢复期保守解释：dispatch 已落账但无持久结果 → outcome_unknown。
+
+        仅当任务仍处于 ``dispatch_recorded`` 时转换；已有终态不改动。
+        """
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE tasks SET state='outcome_unknown', "
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE task_key=? AND state='dispatch_recorded'",
+                (task_key,),
+            )
+            if cur.rowcount:
+                self._conn.execute(
+                    "UPDATE task_attempts SET outcome='outcome_unknown', "
+                    "detail=COALESCE(detail,'') || 'recovered:dispatch_recorded;' "
+                    "WHERE task_key=? AND outcome='dispatch_recorded'",
+                    (task_key,),
+                )
+
     # ---- 读取 ----
 
     def task_state(self, task_key: str) -> dict:
