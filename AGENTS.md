@@ -1,5 +1,33 @@
 # AGENTS.md —— 本仓库工作纪律（对所有实现/审核 Agent 生效）
 
+**当前上位文件（2026-09-08 起）：**《KTH整体重建执行计划v3》＋ Owner 2026-09-08 开工授权
+（仅 R0＋R1：T01–T06 及 I/O 历史交接、audit/trace、证据 census、R1 交接工件）。工程决定
+记录见 `docs/decisions/runtime-v3.md`。旧上位文件《Hybrid v1.1 实施计划》降为 M0 历史。
+
+按开工授权，以下旧约束**仅在 R0＋R1 期间被取代**：M0-only 写入限制（plugin\ 目录自 T02
+起按工作包写代码/测试）；M0.5 Walking Skeleton 强制门（被 R1 验收口径取代：真实证据存量
+表、核据消费、trace、恢复记录）；"48 模块抽取矩阵"；"C/薄入口优先、原版完整 D1/D2 接口
+尽量沿用"。旧审计文件只用于磁盘事实和反例，不能选择性恢复已废止路线。
+
+仍然完全有效的纪律（未被取代）：
+
+- **原始资产只读**：主仓 `D:\UGit\sunny-skills`（dev）、旧 staged worktree、rev744 封存
+  session、family-runs、旧 stage runtime、`kth-0.15-0828`、旧 receipts/gates。
+- **凭证**：不读取、不打印、不显示具体值；凭证治理为非阻断 backlog（§4 原文保留）。
+- **业务不变量**（v3 §1.2）：真实原件不改写；来源/身份/时间不合格不得提升成熟度；无合格
+  证据不得 met；六维不可总分替代；系统/方法失败不得转业务 NO；未知外部结果不盲重发。
+- **禁止**：monkeypatch 原版模块、validator bypass、模型补写 Evidence/成熟度/结论、
+  fixture 冒充真实 Case、merge/push/tag/release、配置远端。
+- **网络**：首批零网络、零真实 Provider/运行时模型 API、不联网装依赖。
+- **写入范围**：仓库内仅 T01–T06 计划文件＋项目环境/忽略规则/R1 检查点（逐项记理由）；
+  真实 Case 数据只写 `D:\t\kth-rebuild-cases\<case_id>`（仓库外）；测试只写受控临时目录
+  和新 Case 目录。
+- **语言与提交**：简体中文沟通/注释/文档/本地提交；不 push。
+
+以下为 M0 时期原文（历史保留，冲突处以上节为准）：
+
+---
+
 上位文件：《KTH IRL Hybrid Clean-Slate 实施计划 v1.1》（2026-09-06 批准，仅至 M0）与
 Owner 2026-09-06 最终覆盖指令。本文与其冲突时以上位文件为准。
 

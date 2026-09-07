@@ -1,16 +1,18 @@
-# kth-irl-hybrid —— KTH IRL Evaluator 混合式 Clean-Slate 重构
+# kth-irl-hybrid —— KTH IRL Evaluator 整体重建实施仓
 
-本仓库是 KTH IRL Evaluator 的全新独立实现线（Hybrid Clean-Slate）：可信业务内核从原版
-抽取复用，产品外壳彻底重写。依据《KTH IRL Hybrid Clean-Slate 实施计划 v1.1》（2026-09-06
-获批，仅批准至 M0）与 Owner 同日最终覆盖指令建立。
+本仓库承载 KTH IRL Evaluator 的整体重建（runtime-rebuild）：运行层、内部数据合同、编排、
+恢复、决策准入与报告流水线按新合同重建；旧七万行系统不是改造宿主。当前授权：
+**《KTH整体重建执行计划v3》，Owner 2026-09-08 批准，仅 R0＋R1**（T01–T06＋I/O 历史交接、
+audit/trace、证据 census、R1 交接工件）。工程决定见 `docs/decisions/runtime-v3.md`。
 
 ## 当前状态
 
-- 里程碑：**M0 已完成**（权威基线冻结、微玖资产清单冻结、逐模块处置矩阵、政策草案）。
-- 里程碑顺序（Owner 2026-09-06 硬门补充）：M0 审核 → **M0.5 Walking Skeleton 可行性
-  证明（强制，3–5 工作日量级，失败即停止整个当前实现方案）** → GPT-5.6-sol fresh-context
-  审核 → Owner 决定是否批准 M1。原 M1–M7 未自动获批。
-- 本仓库当前不含任何业务代码；M0.5/M1 起经审计导入原版参照资产并实现。
+- 里程碑：**M0 已完成**（权威基线冻结、微玖资产清单冻结、逐模块处置矩阵、政策草案），
+  作为历史底稿保留；v3 已取代其"仅至 M0"写入限制与 M0.5 强制门。
+- 当前阶段：**R0＋R1 进行中**（分支 `codex/runtime-rebuild`）：可靠原件仓与事务台账、
+  全量分层证据盘点、样本资格判断与真实判据消费、trace 与恢复。首批完成即停止送审，
+  不自动 R2。
+- 真实 Case 工作区：`D:\t\kth-rebuild-cases\<case_id>`（仓库外；原文/盘点/日志不入 Git）。
 - 无远端、不 push；发布以单一受审快照回导 sunny-skills（仅凭 Owner 指令）。
 
 ## 权威基线（详见 baseline/kth-hybrid-baseline.v1.json）
@@ -27,18 +29,13 @@
 
 ```
 baseline\     权威基线钉定（哈希、复验结果、禁入清单）
-provenance\   外部资产来源清单（M1 起的审计导入台账）与 SHA256SUMS
-docs\         M0 冻结文、分歧台账、政策草案；后续里程碑文档
+provenance\   外部资产来源清单（审计导入台账）与 SHA256SUMS
+docs\         决定、规格、检查点；M0 冻结文、分歧台账、政策草案（历史保留）
+plugin\       新插件本体（R1 起：src\kth_hybrid、tests；按工作包增量创建）
 ```
 
-规划中的后续目录（M1 起，按里程碑 allowlist 创建）：
-
-```
-reference\    经审计导入的原版源码/测试（只读参照，非发布件）
-registry\     七 Registry v2
-sources\kth\  KTH 三件方法材料
-plugin\       新插件本体（src\kth_hybrid、commands、skills、tests、tools、deploy）
-```
+规划中的后续目录（R2+ 按授权创建）：`reference\`（原版源码/测试只读参照）、
+`sources\kth\`（KTH 三件方法材料）、`commands\`、`skills\`、`.codex-plugin\`。
 
 ## 纪律（详见 AGENTS.md）
 
