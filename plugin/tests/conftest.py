@@ -76,14 +76,11 @@ def _install_guard() -> None:
         if event.startswith("socket."):
             raise RuntimeError(f"执行边界：离线测试禁止网络（{event}）")
         if event == "subprocess.Popen":
-            from kth_hybrid import catalog
-
-            if not catalog.probe_active():
-                raise RuntimeError("执行边界：禁止无豁免子进程（仅批准 wheel 隔离探针放行）")
-            # 事件参数：(executable, args, cwd, env)；Windows 下 executable 可能为 None。
+            # 受控子进程白名单：仅本项目解释器且以 -I（隔离模式）启动。
+            # 目录探针（catalog）与崩溃恢复测试都走此通道；其余一律拒绝。
             program = args[0] if args and args[0] else None
-            if program is None and len(args) > 1:
-                argv = args[1]
+            argv = args[1] if len(args) > 1 else None
+            if program is None:
                 if isinstance(argv, (list, tuple)) and argv:
                     program = argv[0]
                 elif isinstance(argv, str):
@@ -91,6 +88,13 @@ def _install_guard() -> None:
             program = os.fsdecode(program) if program else ""
             if program.lower() != sys.executable.lower():
                 raise RuntimeError(f"执行边界：仅允许受控解释器，拒绝 {program}")
+            tokens = argv if isinstance(argv, (list, tuple)) else (
+                argv.split() if isinstance(argv, str) else []
+            )
+            if "-I" not in tokens[:3]:
+                raise RuntimeError(
+                    f"执行边界：子进程必须以 -I 隔离模式启动，拒绝 {tokens[:3]}"
+                )
             return
         if event == "sqlite3.connect":
             target = args[0] if args else ""

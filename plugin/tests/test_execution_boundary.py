@@ -21,16 +21,16 @@ def test_network_is_blocked():
 
 
 def test_unexempted_subprocess_is_blocked():
-    with pytest.raises(RuntimeError, match="子进程"):
+    # 未带 -I 隔离标志的解释器子进程被拒。
+    with pytest.raises(RuntimeError, match="隔离模式"):
         subprocess.run([sys.executable, "-c", "pass"])
 
 
-def test_probe_exempted_subprocess_is_allowed_and_counted():
-    with catalog.isolated_wheel_probe():
-        result = subprocess.run(
-            [sys.executable, "-I", "-c", "print(7*6)"],
-            capture_output=True, text=True, timeout=60,
-        )
+def test_isolated_interpreter_child_is_allowed():
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", "print(7*6)"],
+        capture_output=True, text=True, timeout=60,
+    )
     assert result.returncode == 0 and result.stdout.strip() == "42"
 
 
