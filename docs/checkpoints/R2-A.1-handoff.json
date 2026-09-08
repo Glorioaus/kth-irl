@@ -1,0 +1,163 @@
+{
+  "schema_version": "kth-hybrid.r2a1-handoff.v1",
+  "generated_at": "2026-09-08T23:04:13+08:00",
+  "authorization": {
+    "instruction": "D:/t/kth-r2a-review-20260908/给执行者的R2-A.1限定修复指令.md",
+    "scope": "仅R2-A.1完整资格视图限定修复；不进入其他维度或后续阶段",
+    "reviewer_approval_claimed": false
+  },
+  "baseline": {
+    "repository": "D:/UGit/kth-irl-hybrid",
+    "branch": "codex/runtime-rebuild",
+    "start_head": "194a8f3e7ebc18b5afbc5e6ff93929deb95bf54e",
+    "implementation_commit": "465de9b81c2d08a63555cc33d5863bf03a5907e7",
+    "imported_package": "D:/UGit/kth-irl-hybrid/plugin/src/kth_hybrid/__init__.py",
+    "new_case": "D:/t/kth-rebuild-cases/weijiu-r2a-1",
+    "copied_records_sha256": "82470ac923d03c1aec22bac3bff2ea1a5715f8297d40df2f6a21d6931fe3b094"
+  },
+  "changes": [
+    {
+      "id": "R2A1-QUAL-VIEW",
+      "files": [
+        "plugin/src/kth_hybrid/qualification.py",
+        "plugin/src/kth_hybrid/runner.py",
+        "plugin/src/kth_hybrid/audit.py"
+      ],
+      "result": "冻结实际时间修订与内容、完整QualificationOutcome、存储资格及CaseBasis/时区/第一方/别名/登记时间证明绑定；完整视图进入维度输入摘要"
+    },
+    {
+      "id": "R2A1-SHARED-VALIDATION",
+      "result": "发布前与trace共同调用validate_crl_dimension_payload；故障不暴露met并保持execution_failed/完整性失败语义"
+    },
+    {
+      "id": "R2A1-VERSIONING",
+      "result": "历史trace按结果绑定修订重建，不用latest替代；不同资格依据生成不同输入与结果身份"
+    }
+  ],
+  "counterexamples": {
+    "before": {
+      "source": "D:/t/kth-r2a-review-20260908/dimension-observations.json",
+      "timezone_proof_removed_trace_ok": true,
+      "time_revision_removed_trace_ok": true,
+      "changed_actual_time_same_digest": true,
+      "transplanted_core_tests": "4 failed on 194a8f3; runtime paths printed from current repository"
+    },
+    "after": {
+      "artifact": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/r2a1-counterexample-results.json",
+      "artifact_sha256": "fd94f59a8da4f965ebb7f88ce6bdee45f4d84f9257fcdaf96e02657d0e06b2b1",
+      "timezone_proof_removed_trace_ok": false,
+      "time_revision_removed_trace_ok": false,
+      "old_revision": 1,
+      "new_revision": 4,
+      "before_result_id": "CRLR2A::364e41be3c22a70cc7ff236697b734284d4ded0e2768719d0f0b14ac56c478f5",
+      "after_result_id": "CRLR2A::6c3ed4fb97851ffc0f8d0c53e76766d045cc2e824f9b58fd5a70156df88df5a4",
+      "old_trace_after_append_ok": true,
+      "new_trace_ok": true,
+      "paired_proofs": "规范名/合法别名第一方均冻结归属；删除归属、别名、时区或时间修订均有断链测试"
+    }
+  },
+  "real_case": {
+    "subject": "微玖（苏州）光电科技有限公司（claimed，未工商核验）",
+    "cutoff": "2026-08-27T03:02:29Z",
+    "result_schema": "kth-hybrid.r2a-crl-dimension.v3",
+    "dimension_result_id": "CRLR2A::364e41be3c22a70cc7ff236697b734284d4ded0e2768719d0f0b14ac56c478f5",
+    "input_digest": "364e41be3c22a70cc7ff236697b734284d4ded0e2768719d0f0b14ac56c478f5",
+    "result_blob_sha256": "acd29e3f1defa0877dff36499e90280444ee3385a05e7d88ffe29400d46b5301",
+    "qualification_view_digest": "a8f36650ab78c279fbf179ae6554d0179a5cc6846af1a6df56eb0a4a14b73027",
+    "time_evidence_revision": 1,
+    "qualification_rule_version": "kth-hybrid.qualification.v4",
+    "proof_binding_keys": ["case_basis", "timezone"],
+    "met": ["CRL1-C1"],
+    "insufficient": [
+      "CRL1-C2", "CRL1-C3", "CRL2-C1", "CRL2-C2", "CRL2-C3",
+      "CRL3-C1", "CRL3-C2", "CRL3-C3", "CRL4-C1", "CRL4-C2",
+      "CRL4-C3", "CRL4-C4"
+    ],
+    "attained_level": null,
+    "first_unmet_level": 1,
+    "product_status": "insufficient",
+    "trace_ok": true,
+    "replay_same_result": true,
+    "dimension_history_count": 2,
+    "legacy_v2_trace_ok": false,
+    "legacy_note": "旧v2不可变结果保留，但缺R2-A.1完整资格视图；未覆盖或伪装为新版本"
+  },
+  "test_runs": [
+    {
+      "name": "R2-A/R2-A.1专项与真实门控",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r2a-1'; $env:KTH_REAL_CASE_DIR_R2A='D:/t/kth-rebuild-cases/weijiu-r2a-1'; python -X utf8 -B -m pytest tests/test_r2a_crl.py tests/test_r2a_crl_runner.py tests/test_r2a1_qualification_view.py -q",
+      "exit_code": 0,
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/real-gate-r2a1.log",
+      "log_sha256": "4206fc7724cb0f20cb531324fcd26c82a2bf5d83e5405435ec7a717e26b00501"
+    },
+    {
+      "name": "真实runner重放与维度trace",
+      "command": "当前kth_hybrid.runner.run_crl_dimension_slice两次重放；随后trace_crl_dimension并输出完整资格视图摘要",
+      "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/real-runner-trace-r2a1.log",
+      "log_sha256": "6e773372219b724fa48e0b90866a651add794e69cc5470e97fae290e498b6ea9"
+    },
+    {
+      "name": "R1.6真实三切片门控",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r2a-1'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_6='D:/t/kth-rebuild-cases/weijiu-r2a-1'; python -X utf8 -B -m pytest tests/test_vertical_slice.py::TestRealCaseSlicesR16 -q",
+      "exit_code": 0,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/real-gate-r1-r2a1.log",
+      "log_sha256": "0ee807d4b6a747086268b1d21099bdd558e549d0c5397a7069bb5ee31f28c84b"
+    },
+    {
+      "name": "R2-A.1最终全套（含R1.6与R2-A真实门控）",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r2a-1'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_6='D:/t/kth-rebuild-cases/weijiu-r2a-1'; $env:KTH_REAL_CASE_DIR_R2A='D:/t/kth-rebuild-cases/weijiu-r2a-1'; python -X utf8 -B -m pytest tests -q",
+      "exit_code": 0,
+      "passed": 264,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "warning_note": "zipfile重复成员拒绝测试触发Python UserWarning，测试通过",
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/full-suite-r2a1.log",
+      "log_sha256": "3eb40931899f296bae3d598ee525e25cee65b38835c8987b46d1c08121828f80"
+    },
+    {
+      "name": "测试后最终L0-L4与版本快照",
+      "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/snapshot-final-r2a1.log",
+      "log_sha256": "a8ec2e1942af8c4006bb6be016bc9c6e35d2bc6554929c1866e8cd548e7f74be",
+      "output_ref": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/r2a1-final-snapshot.json",
+      "output_sha256": "a8ec2e1942af8c4006bb6be016bc9c6e35d2bc6554929c1866e8cd548e7f74be"
+    }
+  ],
+  "final_snapshot": {
+    "records_sha256": "493deb41afabd1b6053e64f042c7afb600578770f364ce09bbe5b04146d1a302",
+    "sources": 85,
+    "claims": 3,
+    "qualifications": {"qualified": 1, "needs_review": 1, "rejected": 1},
+    "r1_criterion_results": 3,
+    "imports": 87,
+    "runs": 33,
+    "crl_evidence_reviews": 1,
+    "crl_dimension_results": 2,
+    "coverage": {"total": 180, "implemented_crl": 13, "later_unimplemented": 167},
+    "dimension_artifact": "D:/t/kth-rebuild-cases/weijiu-r2a-1/audit/crl-dimension-r2a.json",
+    "dimension_artifact_sha256": "e88540e4cfc2b75af87e5d08b8f4ecea2bc54a993f431ac8e0207e9ddc9470c6"
+  },
+  "protection": {
+    "r2a_source_records_sha256": "82470ac923d03c1aec22bac3bff2ea1a5715f8297d40df2f6a21d6931fe3b094",
+    "r1_6_records_sha256": "285dc517d9975a309d83e9fad470dc6435910f41999a579e8d1a97336b425dc2",
+    "old_session_sha256": "dc3e31b086b9fdb9857a9179478b469791f458e35c1a3cf24b74776a28b49375",
+    "network": "零网络；未读凭证；未调用真实Provider/运行时模型API；未改ACL/注册表；未运行旧修复脚本；未push/merge/tag/release"
+  },
+  "method_limits": [
+    "保留13条CRL规则，不重开R1，不实现其他维度",
+    "CRL仍仅1-4级，不生成或推断5-9级",
+    "真实材料仅支持CRL1-C1，其余不足不等于不存在",
+    "主体仍为claimed；不包含工商核验、补证、D1/D2或报告"
+  ],
+  "stop_condition": "R2-A.1交接包完成后停止送审；不自动进入R2其他阶段。"
+}
