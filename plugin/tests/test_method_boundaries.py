@@ -76,11 +76,14 @@ def test_frl_na_never_policy_rejects_na():
     frl1 = {"criterion_id": "FRL1-NEED", "dimension": "FRL", "level": 1,
             "na_policy": "never"}
     candidate = _qualified_candidate()
-    candidate["na_proposal"] = "not_applicable"
+    candidate["na_proposal"] = {"proposal": "not_applicable", "basis": "适用性依据（合成）",
+                          "case_flag_source": "Case登记的融资策略声明"}
     result = evaluate_criterion(frl1, candidate, FRL_VIEW)
     assert any("N/A 提案被拒" in n for n in result.notes)
     assert result.product_status != "succeeded"
-    legal, basis = check_na_legality(frl1, "not_applicable", {})
+    legal, basis = check_na_legality(
+        frl1, {"proposal": "not_applicable", "basis": "b",
+               "case_flag_source": "s"}, {})
     assert not legal and "不允许 N/A" in basis
 
 
@@ -88,13 +91,15 @@ def test_frl_restricted_na_requires_explicit_no_external_financing():
     frl4_pitch = {"criterion_id": "FRL4-PITCH", "dimension": "FRL", "level": 4,
                   "na_policy": "explicit_no_external_financing_only"}
     candidate = _qualified_candidate()
-    candidate["na_proposal"] = "not_applicable"
-    # 未声明 → 非法
+    candidate["na_proposal"] = {"proposal": "not_applicable", "basis": "适用性依据（合成）",
+                          "case_flag_source": "Case登记的融资策略声明"}
+    # flag 缺失 → 非法
     result = evaluate_criterion(frl4_pitch, candidate, FRL_VIEW)
     assert any("N/A 提案被拒" in n for n in result.notes)
     assert result.product_status != "succeeded"
-    # 显式声明不计划外部融资 → 合法 N/A
-    view = {**FRL_VIEW, "case_flags": {"explicit_no_external_financing": True}}
+    # 显式声明不计划外部融资（有源 flag）→ 合法 N/A
+    view = {**FRL_VIEW, "case_flags": {"explicit_no_external_financing": {
+        "value": True, "source": "Case登记的融资策略声明"}}}
     result2 = evaluate_criterion(frl4_pitch, candidate, view)
     assert result2.product_status == "succeeded"
     assert "受限 N/A 合法成立" in result2.rationale
@@ -141,9 +146,16 @@ def test_only_implemented_rule_consumes_positive_channel():
     crl1 = {"criterion_id": "CRL1-C1", "dimension": "CRL", "level": 1}
     rule = implemented_criterion("CRL1-C1")
     assert rule and rule["rule_kind"] == "specific" and rule["provenance"]
-    result = evaluate_criterion(crl1, _qualified_candidate(), CRL_VIEW)
+    candidate = _qualified_candidate()
+    candidate["criterion_mapping"] = {
+        "status": "mapped", "quote_sha256": "0" * 64,
+        "basis": "引文逐字核验通过（合成）"}
+    result = evaluate_criterion(crl1, candidate, CRL_VIEW)
     assert result.product_status == "succeeded"
     assert "不是原生 met" in result.rationale
+    # 无映射 → 不成功（映射是必要条件）
+    result2 = evaluate_criterion(crl1, _qualified_candidate(), CRL_VIEW)
+    assert result2.product_status == "insufficient"
 
 
 def test_registered_but_unimplemented_is_method_unsupported():
@@ -183,5 +195,5 @@ def test_dimensions_do_not_aggregate_into_single_score():
         {"CRL1-C1": _qualified_candidate()},
     )
     statuses = [c.product_status for c in dimension.criterion_results]
-    assert statuses == ["succeeded", "method_unsupported", "method_unsupported"]
+    assert statuses == ["insufficient", "method_unsupported", "method_unsupported"]
     assert not hasattr(dimension, "total_score")  # 无总分

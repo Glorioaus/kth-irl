@@ -6,6 +6,7 @@ v2 变化：BASIS 必须带 subject_source_basis；第一方需 document_subject
 
 from __future__ import annotations
 
+import json
 import pytest
 
 from kth_hybrid.contracts import sha256_hex
@@ -23,7 +24,10 @@ BASIS = {
     "subject_legal_name": SUBJECT,
     "subject_aliases": ["微玖"],
     "evidence_cutoff": CUTOFF,
-    "subject_source_basis": "合成CaseBasis（synthetic）：主体/截止来自登记依据",
+    "subject_source_basis": json.dumps({
+        "kind": "field_reference",
+        "path": "synthetic:identity-plan#/subjects/0/canonical_name_claimed",
+        "status": "claimed"}, ensure_ascii=False),
 }
 
 REPORT = (
@@ -105,14 +109,22 @@ def test_qualified_narrow_claim_with_publication_time(blobs):
 
 
 def test_first_party_requires_matching_document_subject(blobs):
-    ref = blobs.put_bytes(REPORT)
-    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    dated = (REPORT.decode("utf-8") + " 文档日期：2026年7月16日。").encode("utf-8")
+    ref = blobs.put_bytes(dated)
+    text = dated.decode("utf-8")
+    pos = text.find("2026年7月16日")
+    dstart = len(text[:pos].encode("utf-8"))
+    dend = dstart + len("2026年7月16日".encode("utf-8"))
+    claim = _range(dated, 0, len(SUBJECT.encode("utf-8")))
     common = dict(
+        byte_length=len(dated),
         source_family="owner_attachment", capture_status="attachment",
         retrieved_at=None, published_at=None,
         published_at_provenance="附件无发布时间",
         time_evidence={"kind": "document_self_date", "date": "2026-07-16",
-                       "basis": "封面自述", "date_locator": "封面页"},
+                       "basis": "封面自述",
+                       "date_locator": {"kind": "byte_range", "start": dstart,
+                                        "end": dend}},
     )
     same = _source(ref.sha256, len(REPORT), document_subject=SUBJECT,
                    document_subject_basis="封面载明主体", **common)

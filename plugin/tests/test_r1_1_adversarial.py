@@ -25,7 +25,10 @@ BASIS_A = {
     "subject_legal_name": SUBJECT_A,
     "subject_aliases": ["A公司"],
     "evidence_cutoff": "2026-08-27T03:02:29Z",
-    "subject_source_basis": "合成CaseBasis（synthetic）：主体与截止来自有依据的登记",
+    "subject_source_basis": json.dumps({
+        "kind": "field_reference",
+        "path": "synthetic:identity-plan#/subjects/0/canonical_name_claimed",
+        "status": "claimed"}, ensure_ascii=False),
 }
 CUTOFF = "2026-08-27T03:02:29Z"
 
@@ -127,10 +130,18 @@ class TestR101Qualification:
     def test_three_meanings_separated(self, tmp_path):
         # Owner提供 ≠ 主体第一方 ≠ 文档记载主体：用途必须区分
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_A_MENTIONS,
-                           time_evidence={"kind": "document_self_date",
-                                          "date": "2026-07-01", "basis": "正文日期",
-                                          "date_locator": "page 1"})
+        dated = (DOC_A_MENTIONS.decode("utf-8") + " 发布于2026年7月1日。"
+                 ).encode("utf-8")
+        text = dated.decode("utf-8")
+        pos = text.find("2026年7月1日")
+        dstart = len(text[:pos].encode("utf-8"))
+        dend = dstart + len("2026年7月1日".encode("utf-8"))
+        outcome = _qualify(
+            blobs, dated, byte_length=len(dated),
+            time_evidence={"kind": "document_self_date", "date": "2026-07-01",
+                           "basis": "正文日期",
+                           "date_locator": {"kind": "byte_range", "start": dstart,
+                                            "end": dend}})
         assert "company_self_statement" not in outcome.allowed_uses, \
             "仅Owner提供且正文只提及主体，不得给第一方自述用途"
         assert outcome.status in ("needs_review", "qualified")
@@ -361,7 +372,10 @@ class TestR103TraceFreeze:
             case.set_case_basis(
                 subject_legal_name=SUBJECT_A, subject_aliases=["A公司"],
                 evidence_cutoff=CUTOFF,
-                subject_source_basis="合成登记：Owner交接书（synthetic）")
+                subject_source_basis=json.dumps({
+                    "kind": "field_reference",
+                    "path": "synthetic:owner-handover#/case/subject",
+                    "status": "claimed"}, ensure_ascii=False))
             basis = case.get_case_basis()
             assert basis["subject_source_basis"]
             assert basis["evidence_cutoff"] == CUTOFF
@@ -406,17 +420,19 @@ class TestR103TraceFreeze:
                 "interpretation": "解释一",
                 "subject_scope": SUBJECT_A,
             }
+            from kth_hybrid.catalog import build_catalog_from_wheel
+
             first = run_criterion_slice(
-                tmp_path, source_id="SRC-RR", claim_spec=spec, criterion=CRL1_C1,
-                dimension_levels_supported=[1, 2, 3, 4], case_basis=BASIS_A,
-                approved_criterion_ids={"CRL1-C1"})
+                tmp_path, source_id="SRC-RR", claim_spec=spec,
+                criterion_id="CRL1-C1",
+                catalog=build_catalog_from_wheel(), case_basis=BASIS_A)
             spec_changed = dict(spec, interpretation="解释二（不同输入）",
                                 subject_scope="别的主体范围")
             with pytest.raises((RuntimeError, ValueError), match="输入"):
                 run_criterion_slice(
                     tmp_path, source_id="SRC-RR", claim_spec=spec_changed,
-                    criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-                    case_basis=BASIS_A, approved_criterion_ids={"CRL1-C1"})
+                    criterion_id="CRL1-C1",
+                    catalog=build_catalog_from_wheel(), case_basis=BASIS_A)
             assert first["result_id"]
         finally:
             if case._conn:

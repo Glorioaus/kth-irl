@@ -160,11 +160,25 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
                             ("gap_refs", gap_err)):
         if err:
             report.broken.append(f"结果 {result_id} 的 {field_name} {err}")
-    # 正向结果必须有非空资格链（失败关闭：空链/畸形链不得显示通过）
-    if result["product_status"] == "succeeded" and not qual_err and not qual_refs:
+    # 正向结果必须有非空资格链（失败关闭：空链/畸形链不得显示通过）；
+    # 合法 N/A 例外：需 na_basis（basis+case_flag_source 均非空）可解析
+    na_basis_raw = result["na_basis"] if "na_basis" in result.keys() else None
+    na_basis_valid = False
+    if na_basis_raw:
+        try:
+            na_basis = json.loads(na_basis_raw)
+            na_basis_valid = (
+                isinstance(na_basis, dict)
+                and str(na_basis.get("basis") or "").strip()
+                and str(na_basis.get("case_flag_source") or "").strip()
+            )
+        except (TypeError, ValueError):
+            na_basis_valid = False
+    if result["product_status"] == "succeeded" and not qual_err and not qual_refs \
+            and not na_basis_valid:
         report.broken.append(
-            f"结果 {result_id} 为 succeeded 但资格引用为空（正向结果必须有"
-            "非空、完整、一致的来源闭包）"
+            f"结果 {result_id} 为 succeeded 但资格引用为空且无合法 N/A 依据"
+            "（正向结果必须有非空、完整、一致的来源闭包）"
         )
 
     closure_sources: set[str] = set()
@@ -189,6 +203,22 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
             report.edges.append(edge_c)
             continue
         report.edges.append(edge_c)
+
+        # 冻结内容校验（R1.2-C）：主张行内容摘要重算比对——冻结后改动
+        # 解释/主体/定位/摘录文本任意字段 → 可见失败
+        stored_content_digest = claim["content_digest"] \
+            if "content_digest" in claim.keys() else None
+        if stored_content_digest:
+            from .contracts import claim_content_digest
+
+            recomputed = claim_content_digest(claim)
+            if recomputed != stored_content_digest:
+                report.broken.append(
+                    f"主张 {claim['claim_id']} 内容摘要不一致（存档 "
+                    f"{stored_content_digest[:12]}… vs 重算 {recomputed[:12]}…）："
+                    "冻结后内容被改动"
+                )
+                continue
 
         source = case.fetch_one("sources", "source_id", claim["source_id"])
         edge_s = TraceEdge("claim", claim["claim_id"], "source", claim["source_id"], True)
@@ -273,16 +303,68 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
         report.edges.append(edge)
 
     # 正向闭包一致性：结果列出的 evidence_refs 必须与资格→主张→来源闭包一致
-    if result["product_status"] == "succeeded" and not ev_err:
+    if result["product_status"] == "succeeded" and not ev_err and not na_basis_valid:
         if set(evidence_refs) != closure_sources:
             report.broken.append(
                 f"结果 {result_id} 的 Evidence 集合与资格→主张→来源闭包不符："
                 f"列出 {sorted(set(evidence_refs))}，闭包 {sorted(closure_sources)}"
             )
 
+    # 冻结输入校验（R1.2-C）：frozen_inputs + 主张行重算完整输入摘要，
+    # 与存档 input_digest 比对；CaseBasis 按结果绑定的版本快照校验
+    frozen_raw = result["frozen_inputs"] \
+        if "frozen_inputs" in result.keys() else None
+    stored_input_digest = result["input_digest"] \
+        if "input_digest" in result.keys() else None
+    if frozen_raw and stored_input_digest:
+        try:
+            frozen = json.loads(frozen_raw)
+            claim_for_digest = case.fetch_one("claims", "claim_id",
+                                              _first_claim_id(qual_refs, case))
+            if claim_for_digest is not None:
+                from .contracts import run_input_digest_v3
+
+                recomputed_run = run_input_digest_v3(frozen, claim_for_digest)
+                if recomputed_run != stored_input_digest:
+                    report.broken.append(
+                        f"结果 {result_id} 完整输入摘要不一致（存档 "
+                        f"{stored_input_digest[:12]}… vs 重算 "
+                        f"{recomputed_run[:12]}…）：冻结输入（判据/CaseBasis/flags/"
+                        "映射/主张内容）在求值后被改动"
+                    )
+                # CaseBasis 版本绑定：结果绑定的版本快照必须仍可读且未被改写
+                bound_version = result["case_basis_version"] \
+                    if "case_basis_version" in result.keys() else None
+                if bound_version is not None:
+                    snapshot = case.get_case_basis_version(bound_version)
+                    if snapshot is None:
+                        report.broken.append(
+                            f"结果 {result_id} 绑定的 CaseBasis 版本 "
+                            f"{bound_version} 快照缺失（版本不可变被破坏）"
+                        )
+                    elif frozen.get("case_basis", {}).get(
+                            "subject_legal_name") != snapshot.get(
+                            "subject_legal_name") \
+                            or frozen.get("case_basis", {}).get(
+                                "evidence_cutoff") != snapshot.get("evidence_cutoff"):
+                        report.broken.append(
+                            f"结果 {result_id} 的 frozen_inputs 与其绑定的 "
+                            f"CaseBasis 版本 {bound_version} 快照不一致"
+                        )
+        except (TypeError, ValueError) as exc:
+            report.broken.append(f"结果 {result_id} 的 frozen_inputs 解析失败：{exc}")
+
     if strict and report.broken:
         raise TraceBroken(report)
     return report
+
+
+def _first_claim_id(qual_refs: list, case: CaseStore) -> str | None:
+    for qual_id in qual_refs:
+        qual = case.fetch_one("qualifications", "qual_id", qual_id)
+        if qual:
+            return qual["claim_id"]
+    return None
 
 
 def render_trace(report: TraceReport) -> str:

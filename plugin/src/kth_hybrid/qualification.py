@@ -15,6 +15,8 @@ R1.1 修复（验收 R1-01）：
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
@@ -26,14 +28,127 @@ VERDICT_OK = "ok"
 VERDICT_FAIL = "fail"
 VERDICT_UNKNOWN = "unknown"
 
-RULE_VERSION = "kth-hybrid.qualification.v2"
+# ---- 依据核验（R1.2-A：引用的材料必须真实存在、定位可解析、内容支持该字段）----
+
+def _date_text_variants(value) -> list[str]:
+    """由日期生成在正文中可能出现的文本形式（ISO/本地化/带时刻）。"""
+    dt = parse_iso_datetime(value)
+    if dt is None:
+        return []
+    y, m, d = dt.year, dt.month, dt.day
+    variants = [
+        f"{y:04d}-{m:02d}-{d:02d}", f"{y}-{m}-{d}", f"{y:04d}/{m:02d}/{d:02d}",
+        f"{y}年{m}月{d}日",
+    ]
+    if (dt.hour, dt.minute, dt.second) != (0, 0, 0):
+        for sep in (" ", "T"):
+            variants.append(f"{y:04d}-{m:02d}-{d:02d}{sep}{dt.hour:02d}:{dt.minute:02d}")
+            variants.append(
+                f"{y:04d}-{m:02d}-{d:02d}{sep}{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}")
+    return variants
+
+
+def _resolve_locator_text(locator, data: bytes, blobs=None) -> tuple[str | None, str | None]:
+    """解析日期/主体证明定位到实际文本。
+
+    返回 (text, error)。byte_range：区间合法并解码；pdf_page：抽取投影页文本。
+    字符串型 locator（不可解析的任意文字）→ 错误。
+    """
+    if isinstance(locator, str) or locator is None:
+        return None, f"定位不可解析（期望结构化 {{kind,start,end}}/{{kind,page}}，" \
+                     f"得到 {locator!r}）"
+    if not isinstance(locator, dict) or "kind" not in locator:
+        return None, f"定位结构非法：{locator!r}"
+    if locator["kind"] == "byte_range":
+        start, end = locator.get("start"), locator.get("end")
+        if not (isinstance(start, int) and isinstance(end, int)
+                and 0 <= start < end <= len(data)):
+            return None, f"byte_range [{start},{end}) 越界（对象长度 {len(data)}）"
+        return data[start:end].decode("utf-8", errors="replace"), None
+    if locator["kind"] == "pdf_page":
+        try:
+            from .intake import extract_pdf_pages
+
+            projection = extract_pdf_pages(data)
+        except Exception as exc:  # 抽取失败必须可见
+            return None, f"PDF 投影抽取失败：{type(exc).__name__}: {exc}"
+        page = locator.get("page")
+        rows = [p for p in projection.locators if p["page"] == page]
+        if not rows:
+            return None, f"第 {page} 页不在抽取投影中（不存在或无文本层）"
+        return rows[0]["text"], None
+    return None, f"未知定位类型：{locator.get('kind')!r}"
+
+
+def _resolve_registration_proof(proof, blobs) -> tuple[datetime | None, str | None]:
+    """核验登记时间证明：封存记录可读、字段可解析且与声明一致。
+
+    proof: {"blob_sha256": ..., "field": "a.b[0].c"}；返回 (记录中的时间, 错误)。
+    """
+    if not isinstance(proof, dict) or not proof.get("blob_sha256") \
+            or not proof.get("field"):
+        return None, "登记证明缺少 blob_sha256/field（不能凭空声明登记时间）"
+    try:
+        raw = blobs.read_bytes(proof["blob_sha256"])
+    except (OSError, StoreIntegrityError, KeyError) as exc:
+        return None, f"登记记录不可读：{exc}"
+    try:
+        record = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        return None, f"登记记录解析失败：{exc}"
+    node = record
+    for token in re.split(r"\.|(\[|\])", proof["field"]):
+        if token in (None, "", "[", "]"):
+            continue
+        if isinstance(node, list):
+            try:
+                node = node[int(token)]
+            except (ValueError, IndexError):
+                return None, f"登记记录字段路径失败于 {token!r}"
+        elif isinstance(node, dict):
+            if token not in node:
+                return None, f"登记记录无字段 {token!r}"
+            node = node[token]
+        else:
+            return None, f"登记记录字段路径失败于 {token!r}"
+    if not isinstance(node, str):
+        return None, "登记字段不是字符串时间"
+    parsed = parse_iso_datetime(node)
+    if parsed is None:
+        return None, f"登记字段值不可解析为时间：{node!r}"
+    return parsed, None
+
+
+def _parse_subject_source_basis(raw) -> dict:
+    """主体来源依据必须是可解析的字段引用（R1.2-A：不接受一句断言文字）。"""
+    if isinstance(raw, dict):
+        parsed = raw
+    else:
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"subject_source_basis 必须是可解析的字段引用 JSON：{exc}"
+            ) from exc
+    if parsed.get("kind") != "field_reference" or not parsed.get("path") \
+            or not parsed.get("status"):
+        raise ValueError(
+            "subject_source_basis 必须为 {kind:'field_reference', path, status}"
+            "（主体依据须可核验到具体字段，不接受断言文字）"
+        )
+    return parsed
+
+
+RULE_VERSION = "kth-hybrid.qualification.v3"
 
 # 已知来源族白名单（未知族 → 来源判断 unknown，不得默认放行）
 KNOWN_FAMILIES = {
     "owner_attachment",          # Owner 提供（提供方事实，不代表主体归属）
     "company-official",          # 主体官方渠道
     "news-media",                # 第三方新闻/报道
-    "public_original_page",      # 原版采集 provider id 之一
+    "gov-agency",                # 政府机构站点（第三方权威，R1.2 按域名分类）
+    "academic",                  # 学术站点
+    "public_original_page",      # 原版采集 provider id 之一（历史兼容）
     "patent-office",             # 专利局
 }
 
@@ -112,11 +227,13 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
     ``source`` 可携带 ``document_subject``/``document_subject_basis``（文档自识
     主体及其依据）与 ``time_evidence``（结构化时间证据）。
     """
-    if not case_basis.get("subject_source_basis", "").strip():
+    if not case_basis.get("subject_source_basis"):
         raise ValueError(
             "case_basis 缺少 subject_source_basis：主体/截止必须有登记依据，"
             "不接受无源硬编码"
         )
+    subject_basis_ref = _parse_subject_source_basis(
+        case_basis["subject_source_basis"])
     policy = _default_policy()
     if source_policy:
         policy.update(source_policy)
@@ -230,15 +347,24 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
     scope_matches_subject = any(name in scope for name in subject_names) and scope
 
     if family in policy["first_party_families"]:
-        if document_subject and document_subject in subject_names:
+        if document_subject and document_subject in subject_names \
+                and document_subject_basis.strip():
             identity_judgment = Judgment(
                 VERDICT_OK,
                 f"第一方材料：文档自识主体'{document_subject}'"
-                f"（依据：{document_subject_basis or '未登记'}）与评估主体一致，"
+                f"（依据：{document_subject_basis}）与评估主体一致，"
                 "支持'主体自述'类主张",
             )
             allowed_uses.append("company_self_statement")
             cannot_prove.append("自述内容的独立核实")
+        elif document_subject and document_subject in subject_names \
+                and not document_subject_basis.strip():
+            identity_judgment = Judgment(
+                VERDICT_UNKNOWN,
+                f"文档自识主体与评估主体一致，但第一方依据为空（document_subject_basis"
+                "）：不能仅凭字段相等认定第一方，需补充可核验依据",
+            )
+            cannot_prove.append("文档归属主体依据")
         elif document_subject:
             identity_judgment = Judgment(
                 VERDICT_UNKNOWN,
@@ -309,32 +435,43 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
             )
     elif time_evidence.get("kind") == "document_self_date":
         doc_dt = _dt(time_evidence.get("date"))
-        locator_proof = time_evidence.get("date_locator")
         if doc_dt is None:
             time_judgment = Judgment(
                 VERDICT_FAIL,
                 f"文档自述日期缺失或非法：{time_evidence.get('date')!r}",
             )
-        elif not locator_proof:
-            time_judgment = Judgment(
-                VERDICT_FAIL,
-                "文档自述日期缺少定位依据（date_locator），不能作为时点证明",
-            )
-        elif doc_dt > cutoff_dt:
-            time_judgment = Judgment(
-                VERDICT_FAIL,
-                f"文档自述日期 {time_evidence.get('date')} 晚于截止 "
-                f"{case_basis['evidence_cutoff']}",
-            )
         else:
-            time_judgment = Judgment(
-                VERDICT_OK,
-                f"文档自述日期 {time_evidence.get('date')}（定位：{locator_proof}；"
-                f"{time_evidence.get('basis', '')}）≤ 截止。"
-                "仅支持'截至自述日期文档如此载明'类主张",
-            )
-            allowed_uses.append("document_dated_statement")
-            cannot_prove.append("自述日期之后文档是否变更")
+            # R1.2-A：定位必须真实可解析，且定位内容确含该日期
+            locator_text, locator_err = _resolve_locator_text(
+                time_evidence.get("date_locator"), data)
+            if locator_err:
+                time_judgment = Judgment(
+                    VERDICT_FAIL,
+                    f"日期证明定位不可解析/不存在：{locator_err}（"
+                    f"date_locator={time_evidence.get('date_locator')!r}）",
+                )
+            elif not any(v in locator_text
+                         for v in _date_text_variants(time_evidence.get("date"))):
+                time_judgment = Judgment(
+                    VERDICT_FAIL,
+                    f"定位内容不含所声明日期（{time_evidence.get('date')}）："
+                    "定位与日期不符，不能作为时点证明",
+                )
+            elif doc_dt > cutoff_dt:
+                time_judgment = Judgment(
+                    VERDICT_FAIL,
+                    f"文档自述日期 {time_evidence.get('date')} 晚于截止 "
+                    f"{case_basis['evidence_cutoff']}",
+                )
+            else:
+                time_judgment = Judgment(
+                    VERDICT_OK,
+                    f"文档自述日期 {time_evidence.get('date')}（定位解析成功且内容"
+                    f"含该日期；{time_evidence.get('basis', '')}）≤ 截止。"
+                    "仅支持'截至自述日期文档如此载明'类主张",
+                )
+                allowed_uses.append("document_dated_statement")
+                cannot_prove.append("自述日期之后文档是否变更")
     elif time_evidence.get("kind") == "filename_derived_date":
         time_judgment = Judgment(
             VERDICT_UNKNOWN,
@@ -344,18 +481,38 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         )
         cannot_prove.append("文档在证据截止前已存在")
     elif time_evidence.get("kind") == "registered_at":
+        # R1.2-A：登记时间必须对应真实封存记录，不能凭一个过去日期加空basis
         reg_dt = _dt(time_evidence.get("date"))
-        if reg_dt is not None and reg_dt <= cutoff_dt:
+        record_dt, proof_err = _resolve_registration_proof(
+            time_evidence.get("registration_proof"), blobs)
+        claimed_dt = reg_dt
+        if reg_dt is None:
             time_judgment = Judgment(
-                VERDICT_OK,
-                f"登记时间 {time_evidence.get('date')} ≤ 截止，"
-                f"以登记时间为入池时点证明（{time_evidence.get('basis', '')}）",
+                VERDICT_FAIL,
+                f"登记时间缺失或非法：{time_evidence.get('date')!r}",
             )
-        else:
+        elif proof_err:
+            time_judgment = Judgment(
+                VERDICT_FAIL,
+                f"登记证明不可核验：{proof_err}（不接受无记录的登记声明）",
+            )
+        elif record_dt != claimed_dt:
+            time_judgment = Judgment(
+                VERDICT_FAIL,
+                f"登记声明与封存记录不符：声明 {time_evidence.get('date')}，"
+                f"记录 {record_dt.isoformat()}",
+            )
+        elif claimed_dt > cutoff_dt:
             time_judgment = Judgment(
                 VERDICT_FAIL,
                 f"登记时间 {time_evidence.get('date')} 晚于截止"
                 f"{case_basis['evidence_cutoff']}，不能证明截止前存在",
+            )
+        else:
+            time_judgment = Judgment(
+                VERDICT_OK,
+                f"登记时间 {time_evidence.get('date')} 与封存记录一致且 ≤ 截止，"
+                f"以登记记录为入池时点证明（{time_evidence.get('basis', '')}）",
             )
         cannot_prove.append("文档发布/成文时间本身")
     elif retrieved_at is not None:

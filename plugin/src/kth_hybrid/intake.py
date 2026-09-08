@@ -181,6 +181,26 @@ _CAPTURE_DEPENDENCIES = (
 )
 
 
+def _family_from_url(url: str | None) -> str:
+    """按内容来源域分类来源族（采集器provider名不是内容来源族）。
+
+    R1.2-R1-06/R1.2-A：政府域名 → gov-agency（第三方权威）；其余网页捕获按
+    news-media（第三方媒体/页面）。无法解析时返回 unknown（资格层将转
+    needs_review，不默认放行）。
+    """
+    if not url or "://" not in url:
+        return "unknown"
+    try:
+        host = url.split("://", 1)[1].split("/", 1)[0].lower()
+    except (ValueError, IndexError):
+        return "unknown"
+    if ".gov.cn" in host or host.endswith(".gov"):
+        return "gov-agency"
+    if any(host.endswith(tld) for tld in (".edu.cn", ".edu")):
+        return "academic"
+    return "news-media"
+
+
 @dataclass
 class CaptureImport:
     dir_name: str
@@ -277,6 +297,12 @@ def import_capture(capture_dir: Path | str, blobs: BlobStore | None,
     )
 
     if blobs is not None and case is not None:
+        # 导入幂等（R1.2-D）：同来源路径的重跑复用已有导入记录，不重复登记
+        existing_import = case.find_import("historical_capture", str(capture_dir))
+        if existing_import is not None:
+            result.import_id = existing_import["import_id"]
+            result.source_id = f"CAP::{capture_dir.name}"
+            return result
         raw_ref = blobs.put_bytes(raw_bytes)
         receipt_ref = blobs.put_bytes(receipt_bytes)
         # 逐份封存采集依赖（R1-06）：request/transport-attempt/live-provider-result/
@@ -296,7 +322,8 @@ def import_capture(capture_dir: Path | str, blobs: BlobStore | None,
                 case.add_capture_dependency(import_id, dep_name, dep_ref.sha256,
                                             dep_ref.byte_length)
         # 采集实例身份（R1-06）：按真实采集目录（=采集身份）独立登记 Source，
-        # 同正文的不同采集共享同一 blob，不再被正文去重合并
+        # 同正文的不同采集共享同一 blob，不再被正文去重合并；
+        # 来源族按内容来源域分类（gov.cn → gov-agency），provider 记录于依赖封存
         source_id = f"CAP::{capture_dir.name}"
         if case.fetch_one("sources", "source_id", source_id) is None:
             case.add_source(
@@ -308,7 +335,7 @@ def import_capture(capture_dir: Path | str, blobs: BlobStore | None,
                 published_at_provenance=(
                     "历史捕获无发布时间证明（receipt 仅含抓取时钟）"
                 ),
-                source_family=(result.provider_id or "unknown"),
+                source_family=_family_from_url(result.final_url),
                 capture_status=(
                     result.capture_status or "unknown"
                 ) + ("/empty_body" if not result.nonempty else ""),

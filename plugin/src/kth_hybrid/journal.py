@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS task_attempts (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE IF NOT EXISTS token_sequence (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS takeover_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_key TEXT NOT NULL,
+    attempt_no INTEGER NOT NULL,
+    worker_id TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 """
 
 _CLAIMABLE_STATES = ("planned", "failed")
@@ -233,8 +241,9 @@ class Journal:
 
         已派发（dispatch_recorded）或未知结果（outcome_unknown）任务不允许
         静默接管——必须先按保守流程处理（mark_recovered_unknown / 人工新任务）。
-        接管产生新 attempt（outcome='takeover'）与更大 token；旧 worker 复活后
-        因 token 失配不能再派发或提交。
+        R1.2-D：接管作为**事件**写入 ``takeover_events`` 留痕；新 attempt 状态
+        置 ``claimed``（detail 记录接管证据），后续派发/提交/失败正常推进到
+        终态。旧 worker 复活后因 token 失配不能再派发或提交。
         """
         if not evidence or not evidence.strip():
             raise CommitRejected("接管必须携带失效证据（evidence）")
@@ -267,11 +276,23 @@ class Journal:
                 raise CommitRejected(f"任务 {task_key} 接管条件更新失败")
             attempt = self._conn.execute(
                 "INSERT INTO task_attempts(task_key, token, worker_id, input_id, "
-                "outcome, detail) VALUES (?,?,?,?,'takeover',?)",
-                (task_key, token, new_worker, input_id, evidence),
+                "outcome, detail) VALUES (?,?,?,?,'claimed',?)",
+                (task_key, token, new_worker, input_id, f"takeover: {evidence}"),
+            )
+            self._conn.execute(
+                "INSERT INTO takeover_events(task_key, attempt_no, worker_id, "
+                "evidence) VALUES (?,?,?,?)",
+                (task_key, int(attempt.lastrowid), new_worker, evidence),
             )
             return Claim(task_key, new_worker, token, input_id,
                          int(attempt.lastrowid))
+
+    def takeover_events(self, task_key: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM takeover_events WHERE task_key=? ORDER BY id",
+            (task_key,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def mark_recovered_unknown(self, task_key: str) -> None:
         """恢复期保守解释：dispatch 已落账但无持久结果 → outcome_unknown。"""

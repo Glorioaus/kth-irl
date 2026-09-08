@@ -33,6 +33,22 @@ CREATE TABLE IF NOT EXISTS case_basis (
     note TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE TABLE IF NOT EXISTS case_basis_versions (
+    version INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS claim_criterion_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    criterion_id TEXT NOT NULL,
+    quote_start INTEGER NOT NULL,
+    quote_end INTEGER NOT NULL,
+    quote_sha256 TEXT NOT NULL,
+    filter_hits TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 CREATE TABLE IF NOT EXISTS source_time_evidence (
     revision INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id TEXT NOT NULL,
@@ -98,6 +114,7 @@ CREATE TABLE IF NOT EXISTS claims (
     subject_scope TEXT NOT NULL,
     interpretation_attempt TEXT,
     input_digest TEXT,
+    content_digest TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE IF NOT EXISTS qualifications (
@@ -136,6 +153,10 @@ CREATE TABLE IF NOT EXISTS criterion_results (
     rationale TEXT NOT NULL,
     scope TEXT NOT NULL,
     rule_version TEXT NOT NULL,
+    input_digest TEXT,
+    case_basis_version INTEGER,
+    frozen_inputs TEXT,
+    na_basis TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_claims_source ON claims(source_id);
@@ -248,7 +269,7 @@ class CaseStore:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        """已建库的增量列迁移（v1→v2：R1.1 修复所需列与表）。"""
+        """已建库的增量列迁移（v1→v2→v3：R1/R1.1/R1.2 修复所需列与表）。"""
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS case_basis (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -257,6 +278,11 @@ class CaseStore:
                 evidence_cutoff TEXT NOT NULL,
                 subject_source_basis TEXT NOT NULL,
                 note TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS case_basis_versions (
+                version INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
             CREATE TABLE IF NOT EXISTS source_time_evidence (
@@ -272,6 +298,17 @@ class CaseStore:
                 blob_sha256 TEXT NOT NULL,
                 byte_length INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS claim_criterion_mappings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL,
+                criterion_id TEXT NOT NULL,
+                quote_start INTEGER NOT NULL,
+                quote_end INTEGER NOT NULL,
+                quote_sha256 TEXT NOT NULL,
+                filter_hits TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
         """)
         columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(sources)").fetchall()}
@@ -281,8 +318,16 @@ class CaseStore:
                 self._conn.execute(f"ALTER TABLE sources ADD COLUMN {column} TEXT")
         claim_columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(claims)").fetchall()}
-        if "input_digest" not in claim_columns:
-            self._conn.execute("ALTER TABLE claims ADD COLUMN input_digest TEXT")
+        for column in ("input_digest", "content_digest"):
+            if column not in claim_columns:
+                self._conn.execute(f"ALTER TABLE claims ADD COLUMN {column} TEXT")
+        result_columns = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(criterion_results)").fetchall()}
+        for column in ("input_digest", "case_basis_version", "frozen_inputs",
+                       "na_basis"):
+            if column not in result_columns:
+                self._conn.execute(
+                    f"ALTER TABLE criterion_results ADD COLUMN {column} TEXT")
         self._conn.commit()
 
     # ---- 阶段与运行 ----
@@ -323,19 +368,40 @@ class CaseStore:
 
     def set_case_basis(self, *, subject_legal_name: str,
                        subject_aliases: list[str], evidence_cutoff: str,
-                       subject_source_basis: str, note: str | None = None) -> None:
-        """登记本Case唯一评估依据；主体来源依据必填（防无源硬编码主体）。"""
-        if not subject_source_basis or not subject_source_basis.strip():
+                       subject_source_basis: str, note: str | None = None) -> int:
+        """登记本Case评估依据（**版本化追加**，旧版本不可变、不被抹去）。
+
+        返回版本号。当前视图（id=1）指向最新版本；旧结果绑定的版本快照
+        保持可读（R1.2-C）。
+        """
+        if not subject_source_basis or not str(subject_source_basis).strip():
             raise ValueError("case_basis 必须携带主体来源依据（subject_source_basis）")
+        snapshot = {
+            "subject_legal_name": subject_legal_name,
+            "subject_aliases": subject_aliases,
+            "evidence_cutoff": evidence_cutoff,
+            "subject_source_basis": subject_source_basis,
+            "note": note,
+        }
         with self._conn:
+            cur = self._conn.execute(
+                "INSERT INTO case_basis_versions(snapshot_json) VALUES (?)",
+                (json.dumps(snapshot, ensure_ascii=False),))
+            version = int(cur.lastrowid)
             self._conn.execute(
-                "INSERT OR REPLACE INTO case_basis(id, subject_legal_name, "
-                "subject_aliases, evidence_cutoff, subject_source_basis, note) "
-                "VALUES (1,?,?,?,?,?)",
+                "INSERT INTO case_basis(id, subject_legal_name, subject_aliases, "
+                "evidence_cutoff, subject_source_basis, note) "
+                "VALUES (1,?,?,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET subject_legal_name=excluded.subject_legal_name, "
+                "subject_aliases=excluded.subject_aliases, "
+                "evidence_cutoff=excluded.evidence_cutoff, "
+                "subject_source_basis=excluded.subject_source_basis, "
+                "note=excluded.note",
                 (subject_legal_name,
                  json.dumps(subject_aliases, ensure_ascii=False),
                  evidence_cutoff, subject_source_basis, note),
             )
+        return version
 
     def get_case_basis(self) -> dict | None:
         row = self._conn.execute("SELECT * FROM case_basis WHERE id=1").fetchone()
@@ -343,7 +409,32 @@ class CaseStore:
             return None
         basis = dict(row)
         basis["subject_aliases"] = json.loads(basis["subject_aliases"])
+        versions = self._conn.execute(
+            "SELECT MAX(version) FROM case_basis_versions").fetchone()
+        basis["version"] = versions[0] if versions and versions[0] else None
         return basis
+
+    def get_case_basis_version(self, version: int) -> dict | None:
+        """读取指定版本快照（旧结果绑定版本的不可变输入）。"""
+        row = self._conn.execute(
+            "SELECT version, snapshot_json FROM case_basis_versions WHERE version=?",
+            (version,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {"version": row["version"],
+                **json.loads(row["snapshot_json"])}
+
+    def get_case_basis_versions(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT version, snapshot_json, created_at FROM case_basis_versions "
+            "ORDER BY version").fetchall()
+        out = []
+        for row in rows:
+            out.append({"version": row["version"],
+                        "created_at": row["created_at"],
+                        "snapshot": json.loads(row["snapshot_json"])})
+        return out
 
     # ---- 时间证据（追加版本，不改写历史）----
 
@@ -390,6 +481,39 @@ class CaseStore:
             "WHERE import_id=? ORDER BY dep_name", (import_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def find_import(self, kind: str, origin_path: str) -> dict | None:
+        """按种类+来源路径查已有导入记录（导入幂等：重跑不重复登记）。"""
+        row = self._conn.execute(
+            "SELECT * FROM import_records WHERE kind=? AND origin_path=? "
+            "ORDER BY import_id LIMIT 1", (kind, origin_path),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def dependency_stats(self) -> dict:
+        """依赖三口径分列：行数 / 逻辑依赖项（导入记录×文件名）/ 不同内容blob。"""
+        rows = self._conn.execute(
+            "SELECT i.origin_path, d.dep_name, d.blob_sha256 "
+            "FROM capture_dependencies d JOIN import_records i "
+            "ON d.import_id = i.import_id").fetchall()
+        return {
+            "dependency_rows": len(rows),
+            "logical_dependencies": len({(r["origin_path"], r["dep_name"])
+                                         for r in rows}),
+            "distinct_dependency_blobs": len({r["blob_sha256"] for r in rows}),
+        }
+
+    def add_claim_mapping(self, claim_id: str, criterion_id: str, *,
+                          quote_start: int, quote_end: int, quote_sha256: str,
+                          filter_hits: list[str], status: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO claim_criterion_mappings(claim_id, criterion_id, "
+                "quote_start, quote_end, quote_sha256, filter_hits, status) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (claim_id, criterion_id, quote_start, quote_end, quote_sha256,
+                 json.dumps(filter_hits, ensure_ascii=False), status),
+            )
 
     # ---- 记录写入（事务）----
 
@@ -440,16 +564,18 @@ class CaseStore:
                   excerpt_text: str, interpretation: str, subject_scope: str,
                   interpretation_attempt: str | None = None,
                   locator_ref: str | None = None,
-                  input_digest: str | None = None) -> None:
+                  input_digest: str | None = None,
+                  content_digest: str | None = None) -> None:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO claims(claim_id, source_id, locator_kind, locator_start, "
                 "locator_end, locator_ref, excerpt_sha256, excerpt_text, interpretation, "
-                "subject_scope, interpretation_attempt, input_digest) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "subject_scope, interpretation_attempt, input_digest, content_digest) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (claim_id, source_id, locator_kind, excerpt_start, excerpt_end,
                  locator_ref, excerpt_sha256, excerpt_text, interpretation,
-                 subject_scope, interpretation_attempt, input_digest),
+                 subject_scope, interpretation_attempt, input_digest,
+                 content_digest),
             )
 
     def add_qualification(self, qual_id: str, claim_id: str, *, source_judgment: str,
@@ -483,18 +609,26 @@ class CaseStore:
                              native_disposition: str | None, native_note: str | None,
                              product_status: str, evidence_refs: list[str],
                              gap_refs: list[str], qual_refs: list[str], rationale: str,
-                             scope: str, rule_version: str) -> None:
+                             scope: str, rule_version: str,
+                             input_digest: str | None = None,
+                             case_basis_version: int | None = None,
+                             frozen_inputs: dict | None = None,
+                             na_basis: dict | None = None) -> None:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO criterion_results(result_id, criterion_id, dimension, "
                 "native_disposition, native_note, product_status, evidence_refs, "
-                "gap_refs, qual_refs, rationale, scope, rule_version) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "gap_refs, qual_refs, rationale, scope, rule_version, input_digest, "
+                "case_basis_version, frozen_inputs, na_basis) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (result_id, criterion_id, dimension, native_disposition, native_note,
                  product_status, json.dumps(evidence_refs, ensure_ascii=False),
                  json.dumps(gap_refs, ensure_ascii=False),
                  json.dumps(qual_refs, ensure_ascii=False), rationale, scope,
-                 rule_version),
+                 rule_version, input_digest, case_basis_version,
+                 json.dumps(frozen_inputs, ensure_ascii=False,
+                            sort_keys=True) if frozen_inputs else None,
+                 json.dumps(na_basis, ensure_ascii=False) if na_basis else None),
             )
 
     # ---- 读取 ----

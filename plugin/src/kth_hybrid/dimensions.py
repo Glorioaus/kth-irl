@@ -46,12 +46,14 @@ class CriterionEvaluation:
 
 def evaluate_criterion(criterion: dict, judgment_candidate: dict,
                        evidence_view: dict) -> CriterionEvaluation:
-    """评估单条判据（v2）。
+    """评估单条判据（v3）。
 
     ``judgment_candidate``：{"qualifications": [...], "claims": {id: row},
-    "na_proposal": str|None, "native_proposal": str|None, "gap_refs": [...]}。
+    "na_proposal": {"proposal","basis","case_flag_source"}|None,
+    "native_proposal": str|None, "gap_refs": [...],
+    "criterion_mapping": {quote,start,end,...}|None}。
     ``evidence_view``：{"case_flags", "dimension_levels_supported", "scope",
-    "approved_criterion_ids"}。
+    "approved_criterion_ids", "catalog_criterion"（可信catalog中的规范判据）}。
     """
     dimension = criterion.get("dimension") or ""
     level = criterion.get("level") or 0
@@ -69,7 +71,7 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
             "求值，不写入最终原生处置）"
         )
 
-    # 判据身份：未在批准 Registry 登记的判据一律拒绝
+    # 判据身份：未在批准 Registry 登记集合 → 拒绝
     approved = evidence_view.get("approved_criterion_ids")
     if approved is not None and criterion_id not in approved:
         evaluation.product_status = "method_unsupported"
@@ -78,6 +80,22 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
             "拒绝评估（不产生业务值）"
         )
         return evaluation
+
+    # 判据身份完整性（R1.2-B）：与可信 catalog 规范判据逐字段比对；
+    # 同ID被改 dimension/level/text/na_policy → 拒绝（防调用方篡改）
+    catalog_criterion = evidence_view.get("catalog_criterion")
+    if catalog_criterion is not None:
+        for field in ("dimension", "level", "text", "na_policy"):
+            if criterion.get(field) != catalog_criterion.get(field) \
+                    and not (criterion.get(field) is None
+                             and catalog_criterion.get(field) is None):
+                evaluation.product_status = "method_unsupported"
+                evaluation.rationale = (
+                    f"判据身份不符：{criterion_id} 的 {field} 与可信 catalog 不一致"
+                    f"（输入 {criterion.get(field)!r} vs catalog "
+                    f"{catalog_criterion.get(field)!r}），拒绝评估"
+                )
+                return evaluation
 
     # 方法范围：级别超出 registry 支持范围（CRL 5–9 等）
     levels_supported = evidence_view.get("dimension_levels_supported") or []
@@ -90,19 +108,24 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
         )
         return evaluation
 
-    # N/A 提案合法性（na_policy 是 registry 机械字段，先于"未实现规则"门槛；
-    # 受限 N/A 的合法成立不依赖完整判据规则实现）
+    # N/A 提案合法性（结构化+有源；na_policy 是 registry 机械字段）
     na_legal, na_basis = check_na_legality(
         criterion, judgment_candidate.get("na_proposal"),
         evidence_view.get("case_flags") or {},
     )
     if not na_legal:
         evaluation.notes.append(f"N/A 提案被拒：{na_basis}")
-    elif judgment_candidate.get("na_proposal") == "not_applicable":
+    elif isinstance(judgment_candidate.get("na_proposal"), dict) \
+            and judgment_candidate["na_proposal"].get("proposal") == "not_applicable":
         evaluation.product_status = "succeeded"
         evaluation.rationale = (
             f"受限 N/A 合法成立：{na_basis}。产品状态为执行成功，原生处置仍为"
             " null（未调用原版）。"
+        )
+        proposal = judgment_candidate["na_proposal"]
+        evaluation.notes.append(
+            f"N/A 适用性依据：{proposal.get('basis')}（flag来源："
+            f"{proposal.get('case_flag_source')}）"
         )
         return evaluation
 
@@ -119,7 +142,10 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
     qualifications = judgment_candidate.get("qualifications") or []
     claims = judgment_candidate.get("claims") or {}
 
-    # 正向通道：合格窄主张 × 已实现规则的用途交集
+    # 正向通道（R1.2-B）：合格主张 × 用途交集 × **引文映射成立**（三层都要过；
+    # 映射=引文逐字位于封存摘录+语义过滤命中，由 runner 预核后传入）
+    mapping = judgment_candidate.get("criterion_mapping") or {}
+    mapping_ok = mapping.get("status") == "mapped"
     supporting = []
     rejected_reasons = []
     for qual in qualifications:
@@ -149,13 +175,19 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
                 f"{claim.get('claim_id', claim_id)}:TMRL 身份约束不满足（{tmrl_basis}）"
             )
             continue
-        if set(allowed_uses) & set(rule["acceptable_uses"]):
-            supporting.append((claim_id, claim, allowed_uses))
-        else:
+        if not set(allowed_uses) & set(rule["acceptable_uses"]):
             rejected_reasons.append(
                 f"{claim_id}:用途 {allowed_uses} 不在已实现规则 {criterion_id} 的"
                 f"可接受用途 {list(rule['acceptable_uses'])} 内"
             )
+            continue
+        if not mapping_ok:
+            rejected_reasons.append(
+                f"{claim_id}:判据映射不成立——{mapping.get('basis', '未提供映射')}；"
+                f"{criterion_id} 需要'市场需求/问题/机会假设'类陈述的封存引文"
+            )
+            continue
+        supporting.append((claim_id, claim, allowed_uses))
 
     if supporting:
         evaluation.product_status = "succeeded"
@@ -163,9 +195,10 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
         evaluation.evidence_refs = [c.get("source_id", "?") for _, c, _ in supporting]
         evaluation.rationale = (
             f"{len(supporting)} 条合格窄主张按已实现规则 {criterion_id}（出处："
-            f"{rule['provenance']}）支持该判据的证据可得性。**本结果不是原生 met "
-            "判定**：原生处置为 null（未调用原版 vertical），完整判据规则对照属 "
-            "R2；不足与 met 的原生语义不得由本状态冒充。"
+            f"{rule['provenance']}）＋封存引文映射（{mapping.get('basis', '')}）"
+            "支持该判据的证据可得性。**本结果不是原生 met 判定**：原生处置为 "
+            "null（未调用原版 vertical），语义确认待人工/方法审查（R2）；不足与 "
+            "met 的原生语义不得由本状态冒充。"
         )
         evaluation.notes.extend(rejected_reasons)
         return evaluation
