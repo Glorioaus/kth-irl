@@ -1,0 +1,64 @@
+{
+  "schema_version": "kth-hybrid.r1_2-handoff.v1",
+  "generated_at": "2026-09-08T11:30:00+08:00",
+  "authorization": {
+    "instruction": "D:/t/kth-r11-review-20260908/发给GLM的R1.2残留修复指令.md",
+    "review_report": "D:/t/kth-r11-review-20260908/R1.1独立复验结论.md",
+    "scope": "仅R1.2残留修复（P1-A/B/C+P2+有限存量核查）；不授权R2/真实Provider/正式D1/正式报告",
+    "reviewer_approval_claimed": false
+  },
+  "branch": "codex/runtime-rebuild",
+  "reviewed_baseline": "84cb1fc848c9e2e83c730b4d9d0b77a87ad0126b（与修复起点一致，工作区干净，无其他提交）",
+  "code_commit": "75846c4（14文件，+1616/-332）",
+  "head_note": "本交接文件随下一个检查点提交入库；含交接文件后的HEAD以其提交输出为准",
+  "environment": {
+    "python": "3.12.10 (miniforge)",
+    "venv": "D:/UGit/kth-irl-hybrid/plugin/.venv（离线，未新增依赖）",
+    "network": "零网络；未读凭证；未调用真实Provider/模型API；未改ACL/注册表；未push/merge/tag",
+    "case_policy": "weijiu-r1 与 weijiu-r1_1 只读保留（本轮仅读取，未写入）；新运行全部写 D:/t/kth-rebuild-cases/weijiu-r1_2"
+  },
+  "two_verdicts": {
+    "software_residuals_closed": {
+      "verdict": "已关闭（自评，待独立复验）",
+      "evidence": "23项R1.2反例（旧代码20项失败清单存档）→修复后23/23通过；全套170项通过（0失败/0跳过，含3项真实门控+10项真实只读）",
+      "coverage_breakdown": {"r1_2_adversarial_new": 23, "r1_1_adversarial_retained": 37, "qualification": 15, "vertical_slice": 14, "method_boundaries": 12, "intake": 11, "store": 10, "real_capture_readonly": 10, "execution_boundary": 9, "catalog": 9, "audit_trace": 8, "recovery": 7, "evidence_census": 5}
+    },
+    "real_positive_gate_passed": {
+      "verdict": "通过（首次）",
+      "claim": "政府页窄主张（苏州工业园区政府网站封存捕获）：正文自载发布时间2026-01-31 17:17:00（真实byte定位、内容含该日期、早于截止）+第三方载明主体全名（与identity-plan claimed苏州法人一致）+市场需求陈述引文（逐字位于封存摘录）",
+      "result": "qualified → CRL1-C1 引文映射成立 → succeeded（非原生met）→ trace全链通过",
+      "result_id": "RESR::CLM-R12-GOV-CRL1::CRL1-C1",
+      "input_digest": "f9e9b946457f4aaf2bd7f4f77b030f26ca3cb4b7fb5ac02501f6b6072975d039",
+      "content_digest": "77fb84eba6348fd6b55f4c563ec43253e909f537d357743cf766df753dd859ba",
+      "no_new_business_input": "未修改主体/截止凑正例；主体修正是撤回无源表述并采用identity-plan真实字段（claimed）；正例来自既有封存素材"
+    }
+  },
+  "fix_items": [
+    {"id": "P1-A", "title": "依据可核验（主体/日期/登记）", "fix_locations": ["qualification.py v3: _resolve_locator_text/_resolve_registration_proof/_parse_subject_source_basis/_date_text_variants", "store.py: case_basis版本化", "intake.py: _family_from_url域名分类"], "adversarial_tests": ["test_empty_document_subject_basis_not_first_party", "test_nonexistent_date_locator_rejected", "test_locator_content_not_containing_date_rejected", "test_real_locator_containing_date_accepted", "test_registered_at_without_real_record_rejected", "test_registered_at_with_sealed_record_accepted", "test_registered_at_record_mismatch_rejected", "test_case_basis_source_must_be_field_reference"], "old_result": "20/23反例在84cb1fc失败（residual-observations Q1-Q3同型：空依据ok/第999页qualified/无记录登记qualified）", "new_result": "全部通过；正常真实定位正例同时通过（不只堵不漏）"},
+    {"id": "P1-A-subject", "title": "主体字段级来源修正", "fix_locations": ["store.set_case_basis（字段引用必填）", "weijiu-r1_2建库脚本（identity-plan封存+claimed主体）"], "old_result": "“武汉微玖…”描述为Owner钉定，实际无字段级来源（复验指出）", "new_result": "主体=identity-plan canonical_name_claimed（苏州法人，claimed未工商核验）；identity-plan.json封存入blobs；“武汉”表述撤回；不换截止不凑门"},
+    {"id": "P1-B", "title": "判据身份与业务关系", "fix_locations": ["runner.resolve_criterion（可信catalog解析）", "dimensions（catalog逐字段比对+映射必要条件）", "kernels.interpret_claim_for_criterion（引文映射）", "kernels.check_na_legality v3（结构化N/A）", "store.claim_criterion_mappings表"], "adversarial_tests": ["test_tampered_criterion_identity_rejected", "test_unrelated_claim_cannot_map_to_crl1c1", "test_market_mapping_with_grounded_quote_accepted", "test_mapping_quote_not_in_sealed_bytes_rejected", "test_runner_rejects_self_approved_unknown_criterion", "test_na_requires_sourced_flag"], "old_result": "蓝色墙壁主张succeeded；同ID改FRL/level9仍succeeded；自报批准集合+虚构N/A succeeded（residual-observations复现）", "new_result": "全部通过：未登记判据ValueError；篡改字段method_unsupported拒绝；无关主张映射unmapped→insufficient；编造引文unmapped留痕；N/A须结构化有源提案"},
+    {"id": "P1-C", "title": "冻结完整输入与trace", "fix_locations": ["contracts.claim_content_digest/run_input_digest_v3", "store: claims.content_digest/criterion_results.frozen_inputs+input_digest+case_basis_version+na_basis", "runner: 同ID异输入拒绝/追溯门", "audit: content_digest与frozen_inputs重算比对/na_basis链"], "adversarial_tests": ["test_digest_changes_when_criterion_tampered", "test_case_basis_versioned_not_replaced", "test_interpretation_tamper_detected_by_trace", "test_case_basis_replacement_keeps_old_result_trace", "test_trace_failed_result_not_published_as_succeeded"], "old_result": "同ID换判据摘要不变可重放；改解释trace通过；INSERT OR REPLACE抹CaseBasis版本；trace_ok=false仍发布succeeded（复现）", "new_result": "全部通过：摘要含完整合同（判据全文/catalog哈希/批准集/CaseBasis快照/flags/策略/映射）；版本快照不可变且旧结果按绑定版本校验；解释篡改TraceBroken；trace失败→execution_failed失败候选"},
+    {"id": "P2-takeover", "title": "接管attempt状态", "fix_locations": ["journal.py: takeover_events表+attempt outcome='claimed'推进"], "adversarial_tests": ["test_takeover_attempt_advances_to_terminal"], "old_result": "接管→派发→提交后最新attempt停留takeover（复验复现）", "new_result": "attempt推进到succeeded；takeover_events保留接管事件（事件与状态分离）"},
+    {"id": "P2-tests-stats", "title": "恒真断言与统计口径", "fix_locations": ["test_r1_1_adversarial.py（删or True）", "store.dependency_stats（三口径）", "intake导入幂等", "snapshot-stats-r1_2.json自动生成"], "adversarial_tests": ["test_import_idempotent_no_duplicate_rows", "test_dependency_counting_units_separated", "test_gov_domain_maps_to_gov_family"], "old_result": "恒真断言存在；依赖1520行/380项混报760；重跑膨胀导入（复验收数字）", "new_result": "恒真删除；三口径分列380/380/380；幂等重跑导入/来源/主张/结果/依赖零增长（实测两轮96/81/3/3/380不变）"}
+  ],
+  "test_runs": [
+    {"name": "R1.2全套（含真实门控3+真实只读10）", "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_2'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_2='D:/t/kth-rebuild-cases/weijiu-r1_2'; .\\.venv\\Scripts\\python -m pytest tests\\ -q", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0, "passed": 170, "failed": 0, "skipped": 0, "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/full-suite-r1_2.log", "log_sha256": "284915d55d910c9e7fb8fb3af6cca16a067a2eeb4aa8cb1f3987c97dd010433e"},
+    {"name": "R1.2反例在旧代码(84cb1fc)上的失败确认", "command": ".\\.venv\\Scripts\\python -m pytest tests\\test_r1_2_adversarial.py -q", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 1, "passed": 3, "failed": 20, "log_ref": "D:/t/kth-rebuild-cases/r12-adversarial-old-20260908.log", "log_sha256": "d163ddda957467eac18cddc1806d3666a9d6ac0a1d160ef8c8b9d227f833453c"},
+    {"name": "新Case构建+真实切片+幂等复跑（两轮退出码均0，计数零增长）", "command": ".\\.venv\\Scripts\\python D:\\t\\kth-rebuild-cases\\weijiu-r1_2\\audit\\build-case-r1_2.py", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0, "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/build-case-r1_2.log", "log_sha256": "26bc5f1aae842faefa9d533fd8533080e2c3781e298ed7d1110db47c8747a599"},
+    {"name": "CLI演示（inspect×1、trace×2，退出码0）", "command": ".\\.venv\\Scripts\\python -m kth_hybrid.cli inspect|trace --case-dir D:\\t\\kth-rebuild-cases\\weijiu-r1_2 [--result-id <id>]", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0, "outputs": [{"path": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/cli-inspect-r1_2.txt", "sha256": "7038027d6a729d4800d5ee07a71c2a0ed9287a133028044df8a0dd3a79f59991"}, {"path": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/cli-trace-gov-r1_2.txt", "sha256": "60c45a8712c564ae234b3697e33ec0aea3fdc0675adeb88a485c7c0210fe599b"}, {"path": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/cli-trace-bp-r1_2.txt", "sha256": "9607bdb104d186f7a7a3183db6196ea78fdea11bb8036d0bc10718358b47d0f7"}]}
+  ],
+  "evidence_census_ref": {"path": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/evidence-census.json", "sha256": "47eb145effea1faf67e026c495c0e0e9dbfc29e77f57d1c8ef1c8c0e9d5db6fe", "chinese_summary": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/证据存量.md", "counts": {"L0": {"清单捕获": 80, "实读": 76, "不可读": 4, "采集实例": 76, "附件": 2, "放弃传输": 2, "依赖三口径": "380/380/380"}, "L1": {"非空正文": 36, "零字节": 40, "hash一致": 76, "evidence_eligible=false": 76}, "L2": {"不同blob": 18, "最大组": "40(空502)/12(公司报道)", "独立性": "未知"}, "L3": {"Claim": 3, "已审": 3, "按状态": {"qualified": 1, "needs_review": 1, "rejected": 1}, "distinct_qualified": 1, "待提取来源": 78}, "L4": {"criterion结果": {"succeeded": 1, "insufficient": 2}, "可用关系": 1, "原生处置": "均null"}}},
+  "trace_refs": [
+    {"result_id": "RESR::CLM-R12-GOV-CRL1::CRL1-C1", "qualification": "qualified（政府页第三方载明＋自载发布时间2026-01-31真实定位＋单源）", "mapping": "mapped（引文“设计产能将响应300万-400万副AR眼镜市场显示需求”逐字位于封存摘录；filter_hits=市场/需求）", "product_status": "succeeded（非原生met）", "trace_ok": true, "input_digest": "f9e9b946457f4aaf2bd7f4f77b030f26ca3cb4b7fb5ac02501f6b6072975d039", "output": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/cli-trace-gov-r1_2.txt", "output_sha256": "60c45a8712c564ae234b3697e33ec0aea3fdc0675adeb88a485c7c0210fe599b"},
+    {"result_id": "RESR::CLM-R12-BP-CRL1::CRL1-C1", "qualification": "needs_review（第一方主体一致；时间=文件名候选级）", "product_status": "insufficient", "trace_ok": true, "input_digest": "3c04e9c5bd9c122a55723a57b1a9b43a94a5b98fbc5ac7c124a142a068579fd14", "output": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/cli-trace-bp-r1_2.txt", "output_sha256": "9607bdb104d186f7a7a3183db6196ea78fdea11bb8036d0bc10718358b47d0f7"},
+    {"result_id": "RESR::CLM-R12-CAP-CRL1::CRL1-C1", "qualification": "rejected（自载发布2026-08-27T10:08:25Z晚于截止7h06m）", "mapping": "unmapped（引文词族未命中，与资格拒绝独立留痕）", "product_status": "insufficient", "trace_ok": true, "input_digest": "e36c05bd329fabe2a89001514cddbea4413d645e9ebebeeab8bd7fdd0504997f3"},
+    {"real_slices": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/real-slices-r1_2.json", "sha256": "c369b87744957672d86307a1ad7554250c687aa3716d91e0a97aa608f86e75ab", "authoritative_specs": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/real-slice-specs-r1_2.json", "specs_sha256": "bb879d31181599ed49f2f56ab4632e50bd95c4862f1606d17ac45718b77d4703"}
+  ],
+  "finite_candidate_check": {"scope": "18种去重非空正文＋2附件/访谈＋封存元数据（排除空502；不为重复捕获重做内容审查）", "scan_record": "D:/t/kth-rebuild-cases/candidate-scan-r1_2.txt", "scan_sha256": "d5967d3792f2faf532f8404da2b23ab70734806b74ce542d252430687d58ffd5", "findings": ["仅2种正文提及主体：公司报道（自载发布晚截止7h→不合格）与政府页（自载发布2026-01-31→合格，即正例）", "BP/访谈正文无成文日期（文件名仅候选）", "其余16种（专利/综述）不提及主体", "公司报道锚点区间实测为苏州主体表述（R1/R1.1的武汉载体描述不准确，已随主体修正纠正）"], "withdrawn": "撤回R1.1“现有素材无一条可qualified”外推（当时仅审2条）"},
+  "snapshot_stats": {"path": "D:/t/kth-rebuild-cases/weijiu-r1_2/audit/snapshot-stats-r1_2.json", "sha256": "a613cb281f2122468ecececfe4fd2f4e062fd83e4de87b8c4e8bb079123e87f2", "counts": {"imports": 96, "sources": 81, "claims": 3, "qualifications": 3, "criterion_results": 3, "runs_execution_records": 6, "dependency_stats": {"rows": 380, "logical": 380, "distinct_blobs": 380}, "case_basis_versions": 2, "time_evidence_revisions": 3}},
+  "method_deltas": ["判据身份由可信catalog解析（runner拒自报批准/同ID篡改）", "引文映射为CRL1-C1必要条件（逐字位于封存摘录＋保守语义过滤留痕；非自报supports）", "N/A结构化有源提案；na_basis入trace链", "完整输入摘要v3（判据全文/catalog哈希/批准集/CaseBasis快照/flags/策略/映射）", "主体依据=identity-plan字段引用（claimed）；撤回武汉表述", "语义过滤为保守词族（留痕可复审），语义确认待方法审查；succeeded不冒充原生met"],
+  "unresolved_items": ["主体法人身份claimed未工商核验（零网络）", "语义确认待人工/方法审查（过滤只是最低实质检查）", "78个来源实例未完成主张提取（含同hash重复，不等于78份独立待审）", "4条PermissionError不可读捕获处置待Owner；来源族独立性未审", "180条仅CRL1-C1有实现规则（R2/T07范围）；真实Provider/模型链路未测"],
+  "input_version_changes": ["评估主体改为identity-plan claimed苏州法人（撤回无源武汉表述）——唯一业务输入变化；截止/证据池不变", "合同v3：结构化date_locator/registration_proof/na_proposal/criterion_mapping；摘要含完整冻结输入"],
+  "actual_time": {"segments": 1, "wall_clock": "约57分钟（2026-09-08 10:31–11:28 +0800，读指令起，连续无中断；含有限核查与两轮Case构建）", "note": "不据此重估总工期", "code_commit_time": "75846c4 2026-09-08 11:26:54 +0800"},
+  "self_assessment": {"verdict": "软件残留已关闭＋真实正向资格门通过（自评，待独立复验）", "software": "P1-A/B/C与P2全部反例级实证；170项通过", "real_gate": "既有素材内1条可核验主体/时点的合格窄主张被CRL1-C1实际消费（引文映射+trace通过）", "limits": "语义确认待方法审查；主体claimed未工商核验；其余78来源未提取——均如实列示"}
+}
