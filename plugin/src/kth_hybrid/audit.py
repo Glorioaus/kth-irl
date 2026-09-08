@@ -66,6 +66,19 @@ def _load_json(value: str) -> list:
         return []
 
 
+def _load_json_strict(value: str) -> tuple[list, str | None]:
+    """严格加载 JSON 列表：解析失败/非列表返回错误（失败关闭，不静默空数组）。"""
+    if value is None:
+        return [], "引用字段为空"
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError) as exc:
+        return [], f"引用字段非法 JSON：{exc}"
+    if not isinstance(parsed, list):
+        return [], f"引用字段不是列表：{type(parsed).__name__}"
+    return parsed, None
+
+
 def _verify_projection(claim: dict, blob_data: bytes) -> str | None:
     """按抽取投影核验 pdf_page / zip_member 定位的主张。
 
@@ -131,16 +144,30 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
             raise TraceBroken(report)
         return report
 
+    qual_refs, qual_err = _load_json_strict(result["qual_refs"])
+    evidence_refs, ev_err = _load_json_strict(result["evidence_refs"])
+    gap_refs, gap_err = _load_json_strict(result["gap_refs"])
     report = TraceReport(
         result_id=result_id,
         criterion_id=result["criterion_id"],
         dimension=result["dimension"],
         native_disposition=result["native_disposition"],
         product_status=result["product_status"],
-        evidence_refs=_load_json(result["evidence_refs"]),
-        gap_refs=_load_json(result["gap_refs"]),
+        evidence_refs=evidence_refs,
+        gap_refs=gap_refs,
     )
-    qual_refs = _load_json(result["qual_refs"])
+    for field_name, err in (("qual_refs", qual_err), ("evidence_refs", ev_err),
+                            ("gap_refs", gap_err)):
+        if err:
+            report.broken.append(f"结果 {result_id} 的 {field_name} {err}")
+    # 正向结果必须有非空资格链（失败关闭：空链/畸形链不得显示通过）
+    if result["product_status"] == "succeeded" and not qual_err and not qual_refs:
+        report.broken.append(
+            f"结果 {result_id} 为 succeeded 但资格引用为空（正向结果必须有"
+            "非空、完整、一致的来源闭包）"
+        )
+
+    closure_sources: set[str] = set()
 
     for qual_id in qual_refs:
         qual = case.fetch_one("qualifications", "qual_id", qual_id)
@@ -199,8 +226,9 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
             report.edges.append(edge_b)
             continue
         report.edges.append(edge_b)
+        closure_sources.add(source["source_id"])
 
-        # 摘录核验：按定位类型分别重核
+        # 摘录核验：按定位类型分别重核 + 保存的摘录文本必须绑定同一 hash
         if claim["locator_kind"] == "byte_range":
             start, end = claim["locator_start"], claim["locator_end"]
             if not (isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(data)):
@@ -217,14 +245,23 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
                     f"登记 {claim['excerpt_sha256'][:12]}…，实际 {actual[:12]}…"
                 )
                 continue
-            report.verified_excerpt_hashes.append(actual)
         else:
             # pdf_page / zip_member：按抽取投影重核（不假装文本偏移是原字节偏移）
             problem = _verify_projection(claim, data)
             if problem:
                 report.broken.append(f"主张 {claim['claim_id']} {problem}")
                 continue
-            report.verified_excerpt_hashes.append(claim["excerpt_sha256"])
+        # 摘录文本绑定：保存/展示的 excerpt_text 必须与登记 hash 对应，
+        # 改写摘录文本后同一引用不得继续通过
+        text_hash = sha256_hex((claim["excerpt_text"] or "").encode("utf-8"))
+        if text_hash != claim["excerpt_sha256"]:
+            report.broken.append(
+                f"主张 {claim['claim_id']} 摘录文本与登记 hash 不符"
+                f"（文本hash {text_hash[:12]}… ≠ 登记 "
+                f"{claim['excerpt_sha256'][:12]}…）：摘录文本被改写或与封存内容不一致"
+            )
+            continue
+        report.verified_excerpt_hashes.append(claim["excerpt_sha256"])
 
     for gap_id in report.gap_refs:
         gap = case.fetch_one("gaps", "gap_id", gap_id)
@@ -234,6 +271,14 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
             edge.problem = "缺口引用断裂：gaps 中不存在"
             report.broken.append(f"缺口 {gap_id} 引用断裂")
         report.edges.append(edge)
+
+    # 正向闭包一致性：结果列出的 evidence_refs 必须与资格→主张→来源闭包一致
+    if result["product_status"] == "succeeded" and not ev_err:
+        if set(evidence_refs) != closure_sources:
+            report.broken.append(
+                f"结果 {result_id} 的 Evidence 集合与资格→主张→来源闭包不符："
+                f"列出 {sorted(set(evidence_refs))}，闭包 {sorted(closure_sources)}"
+            )
 
     if strict and report.broken:
         raise TraceBroken(report)

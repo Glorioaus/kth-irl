@@ -20,10 +20,33 @@ from threading import RLock
 
 from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
-_SCHEMA_VERSION = "kth-hybrid.store.v1"
+_SCHEMA_VERSION = "kth-hybrid.store.v2"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS case_basis (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    subject_legal_name TEXT NOT NULL,
+    subject_aliases TEXT NOT NULL,
+    evidence_cutoff TEXT NOT NULL,
+    subject_source_basis TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS source_time_evidence (
+    revision INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS capture_dependencies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    import_id INTEGER NOT NULL REFERENCES import_records(import_id),
+    dep_name TEXT NOT NULL,
+    blob_sha256 TEXT NOT NULL,
+    byte_length INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_capdep_import ON capture_dependencies(import_id);
 CREATE TABLE IF NOT EXISTS runs (
     run_id INTEGER PRIMARY KEY AUTOINCREMENT,
     input_digest TEXT NOT NULL,
@@ -55,6 +78,8 @@ CREATE TABLE IF NOT EXISTS sources (
     published_at TEXT,
     published_at_provenance TEXT,
     time_evidence TEXT,
+    document_subject TEXT,
+    document_subject_basis TEXT,
     source_family TEXT,
     capture_status TEXT NOT NULL,
     import_id INTEGER REFERENCES import_records(import_id),
@@ -72,6 +97,7 @@ CREATE TABLE IF NOT EXISTS claims (
     interpretation TEXT NOT NULL,
     subject_scope TEXT NOT NULL,
     interpretation_attempt TEXT,
+    input_digest TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE IF NOT EXISTS qualifications (
@@ -222,12 +248,42 @@ class CaseStore:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        """已建库的增量列迁移（R1 开发期：sources.time_evidence）。"""
+        """已建库的增量列迁移（v1→v2：R1.1 修复所需列与表）。"""
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS case_basis (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                subject_legal_name TEXT NOT NULL,
+                subject_aliases TEXT NOT NULL,
+                evidence_cutoff TEXT NOT NULL,
+                subject_source_basis TEXT NOT NULL,
+                note TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS source_time_evidence (
+                revision INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id TEXT NOT NULL,
+                evidence_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS capture_dependencies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                import_id INTEGER NOT NULL REFERENCES import_records(import_id),
+                dep_name TEXT NOT NULL,
+                blob_sha256 TEXT NOT NULL,
+                byte_length INTEGER NOT NULL
+            );
+        """)
         columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(sources)").fetchall()}
-        if "time_evidence" not in columns:
-            self._conn.execute("ALTER TABLE sources ADD COLUMN time_evidence TEXT")
-            self._conn.commit()
+        for column in ("time_evidence", "document_subject",
+                       "document_subject_basis"):
+            if column not in columns:
+                self._conn.execute(f"ALTER TABLE sources ADD COLUMN {column} TEXT")
+        claim_columns = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(claims)").fetchall()}
+        if "input_digest" not in claim_columns:
+            self._conn.execute("ALTER TABLE claims ADD COLUMN input_digest TEXT")
+        self._conn.commit()
 
     # ---- 阶段与运行 ----
 
@@ -263,6 +319,78 @@ class CaseStore:
                 (state, run_id, detail, stage),
             )
 
+    # ---- CaseBasis（有源主体与截止）----
+
+    def set_case_basis(self, *, subject_legal_name: str,
+                       subject_aliases: list[str], evidence_cutoff: str,
+                       subject_source_basis: str, note: str | None = None) -> None:
+        """登记本Case唯一评估依据；主体来源依据必填（防无源硬编码主体）。"""
+        if not subject_source_basis or not subject_source_basis.strip():
+            raise ValueError("case_basis 必须携带主体来源依据（subject_source_basis）")
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO case_basis(id, subject_legal_name, "
+                "subject_aliases, evidence_cutoff, subject_source_basis, note) "
+                "VALUES (1,?,?,?,?,?)",
+                (subject_legal_name,
+                 json.dumps(subject_aliases, ensure_ascii=False),
+                 evidence_cutoff, subject_source_basis, note),
+            )
+
+    def get_case_basis(self) -> dict | None:
+        row = self._conn.execute("SELECT * FROM case_basis WHERE id=1").fetchone()
+        if row is None:
+            return None
+        basis = dict(row)
+        basis["subject_aliases"] = json.loads(basis["subject_aliases"])
+        return basis
+
+    # ---- 时间证据（追加版本，不改写历史）----
+
+    def append_time_evidence(self, source_id: str, evidence: dict) -> int:
+        with self._conn:
+            cur = self._conn.execute(
+                "INSERT INTO source_time_evidence(source_id, evidence_json) "
+                "VALUES (?,?)",
+                (source_id, json.dumps(evidence, ensure_ascii=False)),
+            )
+        return int(cur.lastrowid)
+
+    def get_time_evidence_history(self, source_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT revision, evidence_json, created_at FROM source_time_evidence "
+            "WHERE source_id=? ORDER BY revision", (source_id,),
+        ).fetchall()
+        history = []
+        for row in rows:
+            entry = {"revision": row["revision"],
+                     "created_at": row["created_at"]}
+            entry.update(json.loads(row["evidence_json"]))
+            history.append(entry)
+        return history
+
+    def latest_time_evidence(self, source_id: str) -> dict | None:
+        history = self.get_time_evidence_history(source_id)
+        return history[-1] if history else None
+
+    # ---- 采集依赖封存（真实blob引用，非文件名清单）----
+
+    def add_capture_dependency(self, import_id: int, dep_name: str,
+                               blob_sha256: str, byte_length: int) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO capture_dependencies(import_id, dep_name, "
+                "blob_sha256, byte_length) VALUES (?,?,?,?)",
+                (import_id, dep_name, blob_sha256, byte_length),
+            )
+
+    def get_capture_dependencies(self, import_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT dep_name, blob_sha256, byte_length FROM capture_dependencies "
+            "WHERE import_id=? ORDER BY dep_name", (import_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     # ---- 记录写入（事务）----
 
     def add_import_record(self, kind: str, origin_path: str, origin_sha256: str | None,
@@ -280,6 +408,8 @@ class CaseStore:
                    retrieved_at: str | None = None, published_at: str | None = None,
                    published_at_provenance: str | None = None,
                    time_evidence: dict | None = None,
+                   document_subject: str | None = None,
+                   document_subject_basis: str | None = None,
                    source_family: str | None = None, capture_status: str = "imported",
                    import_id: int | None = None) -> None:
         if not is_sha256_hex(blob_sha256):
@@ -288,37 +418,38 @@ class CaseStore:
             self._conn.execute(
                 "INSERT INTO sources(source_id, blob_sha256, byte_length, media_type, "
                 "locator, retrieved_at, published_at, published_at_provenance, "
-                "time_evidence, source_family, capture_status, import_id) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "time_evidence, document_subject, document_subject_basis, "
+                "source_family, capture_status, import_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (source_id, blob_sha256, byte_length, media_type, locator, retrieved_at,
                  published_at, published_at_provenance,
                  json.dumps(time_evidence, ensure_ascii=False) if time_evidence else None,
+                 document_subject, document_subject_basis,
                  source_family, capture_status, import_id),
             )
 
     def set_source_time_evidence(self, source_id: str, time_evidence: dict) -> None:
-        """为已导入来源登记时间证据（文档自述日期等），不改动封存字节。"""
-        with self._conn:
-            cur = self._conn.execute(
-                "UPDATE sources SET time_evidence=? WHERE source_id=?",
-                (json.dumps(time_evidence, ensure_ascii=False), source_id),
-            )
-            if cur.rowcount == 0:
-                raise KeyError(f"来源 {source_id} 不存在")
+        """[已废弃于v2] 原地改写会被静默UPDATE；新代码用 append_time_evidence。
+
+        保留仅为读取兼容：现实现改为追加一个新修订版本，不再覆盖旧值。
+        """
+        self.append_time_evidence(source_id, time_evidence)
 
     def add_claim(self, claim_id: str, source_id: str, *, locator_kind: str,
                   excerpt_start: int, excerpt_end: int, excerpt_sha256: str,
                   excerpt_text: str, interpretation: str, subject_scope: str,
                   interpretation_attempt: str | None = None,
-                  locator_ref: str | None = None) -> None:
+                  locator_ref: str | None = None,
+                  input_digest: str | None = None) -> None:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO claims(claim_id, source_id, locator_kind, locator_start, "
                 "locator_end, locator_ref, excerpt_sha256, excerpt_text, interpretation, "
-                "subject_scope, interpretation_attempt) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "subject_scope, interpretation_attempt, input_digest) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (claim_id, source_id, locator_kind, excerpt_start, excerpt_end,
                  locator_ref, excerpt_sha256, excerpt_text, interpretation,
-                 subject_scope, interpretation_attempt),
+                 subject_scope, interpretation_attempt, input_digest),
             )
 
     def add_qualification(self, qual_id: str, claim_id: str, *, source_judgment: str,

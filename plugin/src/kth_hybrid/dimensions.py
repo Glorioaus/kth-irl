@@ -1,24 +1,27 @@
-"""判据与维度评估入口（R1 垂直切片）。
+"""判据与维度评估入口 v2（R1 垂直切片，R1.1 修复验收 R1-02）。
 
-``evaluate_criterion`` 消费资格判断结果，产出 CriterionResult（产品状态与
-原生处置分列）；``evaluate_dimension`` 聚合为 DimensionResult 或执行错误。
-角色候选没有写 Source / 最终成熟度的权限：本模块只读取冻结视图。
+- 角色的 ``native_proposal`` 只作为**候选**记录在 notes，永不写入最终
+  ``native_disposition``；没有真正调用原版求值时保持 null。
+- 判据身份必须经 ``evidence_view['approved_criterion_ids']`` 校验；未登记
+  判据 → ``method_unsupported``（未知判据），不得 succeeded。
+- 仅 ``kernels.IMPLEMENTED_RULES`` 中的判据（带出处）可正向消费；已登记但
+  R1.1 未实现规则的判据 → ``method_unsupported``（不是"证据不足"）。
+- 产品状态与原生处置分列；不产生总分；角色候选没有写 Source/最终成熟度的
+  权限。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from .kernels import (
+    IMPLEMENTED_RULES,
     RULE_VERSION,
     check_na_legality,
     check_native_disposition_legal,
     check_tmrl_identity_binding,
-    use_class_supports_criterion,
+    implemented_criterion,
 )
-
-_PRODUCT_STATUSES = ("succeeded", "insufficient", "method_unsupported", "execution_failed")
 
 
 class EvaluationError(RuntimeError):
@@ -43,31 +46,38 @@ class CriterionEvaluation:
 
 def evaluate_criterion(criterion: dict, judgment_candidate: dict,
                        evidence_view: dict) -> CriterionEvaluation:
-    """评估单条判据。
+    """评估单条判据（v2）。
 
-    ``criterion``：catalog 判据行（含 dimension/level/na_policy）。
-    ``judgment_candidate``：{"qualifications": [QualificationOutcome 或已存行],
-    "claims": {claim_id: claim 行}, "na_proposal": str|None,
-    "native_proposal": str|None}。
-    ``evidence_view``：{"case_flags": {...}, "dimension_levels_supported": [..],
-    "scope": str}。
+    ``judgment_candidate``：{"qualifications": [...], "claims": {id: row},
+    "na_proposal": str|None, "native_proposal": str|None, "gap_refs": [...]}。
+    ``evidence_view``：{"case_flags", "dimension_levels_supported", "scope",
+    "approved_criterion_ids"}。
     """
     dimension = criterion.get("dimension") or ""
     level = criterion.get("level") or 0
-    evaluation = CriterionEvaluation(
-        criterion_id=criterion.get("criterion_id", "?"), dimension=dimension
-    )
+    criterion_id = criterion.get("criterion_id", "?")
+    evaluation = CriterionEvaluation(criterion_id=criterion_id, dimension=dimension)
     evaluation.scope = evidence_view.get("scope", "")
 
-    # 原生处置提案合法性（如给 CRL 提 insufficient → 拒绝该提案并登记）
+    # 原生处置提案：只作候选记录，永不写入最终 native_disposition
     native_proposal = judgment_candidate.get("native_proposal")
     if native_proposal is not None:
         legal, basis = check_native_disposition_legal(dimension, native_proposal)
-        if legal:
-            evaluation.native_disposition = native_proposal
-            evaluation.native_note = "R1 记录提案值；未调用原版 vertical 复算"
-        else:
-            evaluation.notes.append(f"原生处置提案被拒：{basis}")
+        evaluation.notes.append(
+            f"角色原生提案 {native_proposal!r} 仅作候选记录"
+            f"（{'与原生合同相容，但' if legal else basis + '，且'}R1 未调用原版"
+            "求值，不写入最终原生处置）"
+        )
+
+    # 判据身份：未在批准 Registry 登记的判据一律拒绝
+    approved = evidence_view.get("approved_criterion_ids")
+    if approved is not None and criterion_id not in approved:
+        evaluation.product_status = "method_unsupported"
+        evaluation.rationale = (
+            f"判据 {criterion_id} 不在批准 wheel Registry 登记集合中，"
+            "拒绝评估（不产生业务值）"
+        )
+        return evaluation
 
     # 方法范围：级别超出 registry 支持范围（CRL 5–9 等）
     levels_supported = evidence_view.get("dimension_levels_supported") or []
@@ -80,10 +90,8 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
         )
         return evaluation
 
-    qualifications = judgment_candidate.get("qualifications") or []
-    claims = judgment_candidate.get("claims") or {}
-
-    # N/A 提案合法性
+    # N/A 提案合法性（na_policy 是 registry 机械字段，先于"未实现规则"门槛；
+    # 受限 N/A 的合法成立不依赖完整判据规则实现）
     na_legal, na_basis = check_na_legality(
         criterion, judgment_candidate.get("na_proposal"),
         evidence_view.get("case_flags") or {},
@@ -92,66 +100,74 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
         evaluation.notes.append(f"N/A 提案被拒：{na_basis}")
     elif judgment_candidate.get("na_proposal") == "not_applicable":
         evaluation.product_status = "succeeded"
-        evaluation.rationale = f"受限 N/A 合法成立：{na_basis}。产品状态为执行成功，" \
-                               "原生处置仍为 null（未调用原版）。"
+        evaluation.rationale = (
+            f"受限 N/A 合法成立：{na_basis}。产品状态为执行成功，原生处置仍为"
+            " null（未调用原版）。"
+        )
         return evaluation
 
-    # 正向通道：合格窄主张 × R1 用途类规则
-    supporting: list[Any] = []
-    rejected_reasons: list[str] = []
+    rule = implemented_criterion(criterion_id)
+    if rule is None:
+        evaluation.product_status = "method_unsupported"
+        evaluation.rationale = (
+            f"判据 {criterion_id} 已登记但 R1.1 未实现其规则"
+            f"（已实现：{sorted(IMPLEMENTED_RULES)}）；"
+            "规则未实现是方法范围事实，不是证据不足；逐判据规则对照属 R2/T07。"
+        )
+        return evaluation
+
+    qualifications = judgment_candidate.get("qualifications") or []
+    claims = judgment_candidate.get("claims") or {}
+
+    # 正向通道：合格窄主张 × 已实现规则的用途交集
+    supporting = []
+    rejected_reasons = []
     for qual in qualifications:
         if isinstance(qual, dict):
             status = qual.get("status")
             allowed_uses = qual.get("allowed_uses") or []
+            identity = qual.get("identity_judgment") or {}
+            if not isinstance(identity, dict):
+                identity = {"verdict": None}
             claim = claims.get(qual.get("claim_id"), {})
-            identity = qual.get("identity_judgment", {})
+            claim_id = qual.get("claim_id")
         else:
             status = qual.status
             allowed_uses = qual.allowed_uses
-            claim = claims.get(qual.claim_id, {})
             identity = {"verdict": qual.identity_judgment.verdict}
+            claim = claims.get(qual.claim_id, {})
+            claim_id = qual.claim_id
         if status != "qualified":
-            rejected_reasons.append(
-                f"{qual.get('claim_id') if isinstance(qual, dict) else qual.claim_id}:"
-                f"资格状态 {status}"
-            )
+            rejected_reasons.append(f"{claim_id}:资格状态 {status}")
             continue
-        # TMRL 身份叠加约束
         tmrl_ok, tmrl_basis = check_tmrl_identity_binding(
-            {**criterion, "dimension": dimension}, identity, claim
+            {"criterion_id": criterion_id, "dimension": dimension},
+            identity, claim,
         )
         if not tmrl_ok:
             rejected_reasons.append(
-                f"{claim.get('claim_id', '?')}:TMRL 身份约束不满足（{tmrl_basis}）"
+                f"{claim.get('claim_id', claim_id)}:TMRL 身份约束不满足（{tmrl_basis}）"
             )
             continue
-        if any(use_class_supports_criterion(u, dimension, level)
-               for u in allowed_uses):
-            supporting.append(qual)
+        if set(allowed_uses) & set(rule["acceptable_uses"]):
+            supporting.append((claim_id, claim, allowed_uses))
         else:
             rejected_reasons.append(
-                f"{claim.get('claim_id', '?')}:用途类 {allowed_uses} 不覆盖级别 "
-                f"{level}（R1 窄规则上限：级别 1 信息性判据）"
+                f"{claim_id}:用途 {allowed_uses} 不在已实现规则 {criterion_id} 的"
+                f"可接受用途 {list(rule['acceptable_uses'])} 内"
             )
 
     if supporting:
         evaluation.product_status = "succeeded"
-        evaluation.qual_refs = [
-            q.get("claim_id") if isinstance(q, dict) else q.claim_id for q in supporting
-        ]
-        evaluation.evidence_refs = [
-            claims.get(
-                q.get("claim_id") if isinstance(q, dict) else q.claim_id, {}
-            ).get("source_id", "?") for q in supporting
-        ]
+        evaluation.qual_refs = [cid for cid, _, _ in supporting]
+        evaluation.evidence_refs = [c.get("source_id", "?") for _, c, _ in supporting]
         evaluation.rationale = (
-            f"{len(supporting)} 条合格窄主张按 R1 窄规则支持该级别 {level} 信息性"
-            "判据的证据可得性。**本结果不是原生 met 判定**：原生处置为 null"
-            "（未调用原版 vertical），完整判据规则对照属 R2；不足与 met 的原生"
-            "语义不得由本状态冒充。"
+            f"{len(supporting)} 条合格窄主张按已实现规则 {criterion_id}（出处："
+            f"{rule['provenance']}）支持该判据的证据可得性。**本结果不是原生 met "
+            "判定**：原生处置为 null（未调用原版 vertical），完整判据规则对照属 "
+            "R2；不足与 met 的原生语义不得由本状态冒充。"
         )
-        if rejected_reasons:
-            evaluation.notes.extend(rejected_reasons)
+        evaluation.notes.extend(rejected_reasons)
         return evaluation
 
     evaluation.product_status = "insufficient"
@@ -185,7 +201,6 @@ def evaluate_dimension(dimension: str, scope: str, evidence_view: dict,
         for criterion in criteria:
             candidate = judgment_candidates_by_criterion.get(criterion["criterion_id"])
             if candidate is None:
-                # 无候选也必须先过方法范围边界，再落"证据不足"
                 candidate = {"qualifications": [], "claims": {}, "gap_refs": []}
             result.criterion_results.append(
                 evaluate_criterion(criterion, candidate, evidence_view)

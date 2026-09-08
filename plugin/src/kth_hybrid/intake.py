@@ -279,15 +279,25 @@ def import_capture(capture_dir: Path | str, blobs: BlobStore | None,
     if blobs is not None and case is not None:
         raw_ref = blobs.put_bytes(raw_bytes)
         receipt_ref = blobs.put_bytes(receipt_bytes)
+        # 逐份封存采集依赖（R1-06）：request/transport-attempt/live-provider-result/
+        # receipt + frozen-capture/transport.json——真实 blob 引用，不是文件名清单
         import_id = case.add_import_record(
             "historical_capture", str(capture_dir), result.raw_body_sha256,
             note=json.dumps({
-                "receipt_sha256": receipt_ref.sha256,
-                "dependencies": list(_CAPTURE_DEPENDENCIES),
+                "receipt_blob": receipt_ref.sha256,
                 "session_root": str(session_root) if session_root else None,
             }, ensure_ascii=False),
         )
-        source_id = f"CAP::{raw_ref.sha256[:16]}"
+        for dep_name in (*_CAPTURE_DEPENDENCIES, "frozen-capture/transport.json"):
+            dep_path = capture_dir / dep_name
+            if dep_path.exists():
+                dep_bytes = dep_path.read_bytes()
+                dep_ref = blobs.put_bytes(dep_bytes)
+                case.add_capture_dependency(import_id, dep_name, dep_ref.sha256,
+                                            dep_ref.byte_length)
+        # 采集实例身份（R1-06）：按真实采集目录（=采集身份）独立登记 Source，
+        # 同正文的不同采集共享同一 blob，不再被正文去重合并
+        source_id = f"CAP::{capture_dir.name}"
         if case.fetch_one("sources", "source_id", source_id) is None:
             case.add_source(
                 source_id, raw_ref.sha256, raw_ref.byte_length,

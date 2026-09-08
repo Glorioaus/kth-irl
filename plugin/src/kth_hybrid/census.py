@@ -112,33 +112,59 @@ class CensusResult:
         }
 
     def layer3_claims(self, case: CaseStore | None = None) -> dict:
-        claims = quals = qualified = 0
+        """P2 计量单位分离：Claim 数、已审 Claim 数、各资格状态、待提取来源
+        分别计数；不以 claims 行数冒充已审数。"""
+        claims_total = 0
+        audited = 0
+        by_status: dict[str, int] = {}
+        qualified_distinct_claims = 0
+        pending_sources = 0
         if case is not None:
-            claims = len(case.fetch_all("claims"))
-            quals = len(case.fetch_all("qualifications"))
-            qualified = sum(
-                1 for q in case.fetch_all("qualifications") if q["status"] == "qualified"
+            claims_total = len(case.fetch_all("claims"))
+            quals = case.fetch_all("qualifications")
+            audited_claims = set()
+            qualified_claims = set()
+            for q in quals:
+                audited_claims.add(q["claim_id"])
+                by_status[q["status"]] = by_status.get(q["status"], 0) + 1
+                if q["status"] == "qualified":
+                    qualified_claims.add(q["claim_id"])
+            audited = len(audited_claims)
+            qualified_distinct_claims = len(qualified_claims)
+            claimed_sources = {c["source_id"] for c in case.fetch_all("claims")}
+            pending_sources = sum(
+                1 for s in case.fetch_all("sources")
+                if s["source_id"] not in claimed_sources
             )
         return {
             "已登记资格候选引用(旧session, 仅候选)": sum(
                 c.qualification_candidate_count for c in self.captures if c.readable
             ),
-            "新系统已审Claim": claims,
-            "新系统资格通过": qualified,
-            "新系统已审未通过": quals - qualified,
-            "说明": "R1 样本阶段：未审原文不假定存在固定数量Claim，按源记录待主张提取",
+            "Claim总数": claims_total,
+            "已完成资格审查的Claim": audited,
+            "资格按状态": by_status,
+            "已资格主张(distinct qualified claims)": qualified_distinct_claims,
+            "未完成主张提取的来源(采集实例)": pending_sources,
+            "说明": "资格通过不自动等于 criterion met；N/A 或重复消费不增加已资格"
+                    "主张计数（distinct claim 口径）",
         }
 
     def layer4_criteria(self, case: CaseStore | None = None) -> dict:
-        supporting = 0
+        """P2 计量单位分离：criterion 结果与可用关系分别计数。"""
+        results_by_status: dict[str, int] = {}
+        usable_relations = 0
         if case is not None:
-            supporting = sum(
-                1 for r in case.fetch_all("criterion_results")
-                if r["product_status"] == "succeeded"
-            )
+            for r in case.fetch_all("criterion_results"):
+                results_by_status[r["product_status"]] = \
+                    results_by_status.get(r["product_status"], 0) + 1
+                if r["product_status"] == "succeeded":
+                    # 可用关系 = succeeded 结果实际引用的 distinct 合格主张数
+                    usable_relations += len(_load_list(r["qual_refs"]))
         return {
-            "可支持正向判据的已资格主张": supporting,
-            "说明": "R1 样本阶段由真实判据消费结果回填；资格通过不自动等于 criterion met",
+            "criterion结果按产品状态": results_by_status,
+            "可用关系(合格主张→判据消费)": usable_relations,
+            "说明": "一条 Claim 可被多个 criterion 消费、N/A 可能没有 Claim；"
+                    "两者均不增加'已资格主张'计数",
         }
 
     def summary(self, case: CaseStore | None = None) -> dict:
@@ -156,6 +182,14 @@ class CensusResult:
 
     def rows(self) -> list[dict]:
         return [asdict(c) for c in self.captures]
+
+
+def _load_list(value: str | None) -> list:
+    try:
+        parsed = json.loads(value) if value else []
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, ValueError):
+        return []
 
 
 def load_manifest_entries(manifest_path: Path = MANIFEST_DEFAULT) -> list[dict]:
@@ -305,14 +339,20 @@ def render_chinese(summary: dict, rows: list[dict]) -> str:
         f"- 非空正文 {l2['非空正文数']} 条对应 {l2['不同正文hash数']} 种正文 hash；"
         f"同 hash 组 {l2['同hash组数(组内>1)']} 组（最大组 {l2['最大同hash组']} 条）",
         f"- 来源独立性：{l2['来源独立性']}",
-        "## L3 主张资格（R1 样本阶段）",
+        "## L3 主张资格（R1.1 计量分离）",
         f"- 旧 session 登记的资格候选引用 {l3['已登记资格候选引用(旧session, 仅候选)']} 条"
         "（仅候选，不继承权威）",
-        f"- 新系统已审 Claim {l3['新系统已审Claim']}；通过 {l3['新系统资格通过']}；"
-        f"已审未通过 {l3['新系统已审未通过']}",
+        f"- Claim 总数 {l3['Claim总数']}；已完成资格审查 {l3['已完成资格审查的Claim']}；"
+        f"资格按状态 {json.dumps(l3['资格按状态'], ensure_ascii=False)}",
+        f"- 已资格主张（distinct qualified claims）"
+        f"{l3['已资格主张(distinct qualified claims)']}；"
+        f"未完成主张提取的来源（采集实例）"
+        f"{l3['未完成主张提取的来源(采集实例)']}",
         f"- {l3['说明']}",
-        "## L4 判据可用性（R1 样本阶段）",
-        f"- 可支持正向判据的已资格主张 {l4['可支持正向判据的已资格主张']}",
+        "## L4 判据可用性（R1.1 计量分离）",
+        f"- criterion 结果按产品状态 "
+        f"{json.dumps(l4['criterion结果按产品状态'], ensure_ascii=False)}",
+        f"- 可用关系（合格主张→判据消费）{l4['可用关系(合格主张→判据消费)']}",
         f"- {l4['说明']}",
         "",
         "## 逐条明细",

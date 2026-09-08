@@ -127,8 +127,11 @@ def test_census_import_writes_sources_and_artifacts(tmp_path):
                             blobs=blobs, case=case, do_import=True)
         sources = case.fetch_all("sources")
         capture_sources = [s for s in sources if s["source_id"].startswith("CAP::")]
-        # 5 条清单：CAP-BROKEN 不可读不导入；CAP-A/B 同正文按内容身份去重为 1 个 Source
-        assert len(capture_sources) == 3
+        # 5 条清单：CAP-BROKEN 不可读不导入；v2 按采集实例登记——CAP-A/B 同正文
+        # 也是两个独立 Source（共享同一 blob），共 4 个
+        assert len(capture_sources) == 4
+        assert len({s["source_id"] for s in capture_sources}) == 4
+        assert len({s["blob_sha256"] for s in capture_sources}) == 3  # blob去重
         empty = [s for s in capture_sources if s["byte_length"] == 0]
         assert len(empty) == 1 and empty[0]["capture_status"].endswith("/empty_body")
         att_sources = [s for s in sources if s["source_id"].startswith("ATT::")]

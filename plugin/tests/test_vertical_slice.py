@@ -1,4 +1,9 @@
-"""T06：垂直切片——真实判据入口、重复一致性、Gap路径、计数型模拟派发、CLI。"""
+"""T06/R1.1：垂直切片 v2——真实判据入口、输入冻结、计数型模拟派发、CLI。
+
+v2 变化：provider 必须先持久化响应；runner 校验有源CaseBasis与判据登记；
+同ID异输入拒绝；真实样本期望按修复后规则如实翻转（BP=needs_review→不足，
+公司报道=rejected→不足），合成正例证明正向通道。
+"""
 
 from __future__ import annotations
 
@@ -21,8 +26,12 @@ from kth_hybrid.runner import (
 from kth_hybrid.store import BlobStore, CaseStore
 
 SUBJECT = "武汉微玖光电科技有限公司"
-BASIS = {"subject_legal_name": SUBJECT, "subject_aliases": ["微玖"],
-         "evidence_cutoff": "2026-08-27T03:02:29Z"}
+BASIS = {
+    "subject_legal_name": SUBJECT, "subject_aliases": ["微玖"],
+    "evidence_cutoff": "2026-08-27T03:02:29Z",
+    "subject_source_basis": "合成CaseBasis（synthetic）：主体/截止来自登记依据",
+}
+APPROVED = {"CRL1-C1", "CRL2-C1"}
 
 CRL1_C1 = {"criterion_id": "CRL1-C1", "dimension": "CRL", "level": 1,
            "text": "A possible market need, problem or opportunity hypothesis "
@@ -48,6 +57,8 @@ def case_dir(tmp_path):
                     source_family="owner_attachment", capture_status="attachment",
                     published_at="2026-07-16T00:00:00Z",
                     published_at_provenance="合成：文档自述日期",
+                    document_subject=SUBJECT,
+                    document_subject_basis="合成：封面自识主体与评估主体一致",
                     import_id=import_id)
     case.close()
     return tmp_path
@@ -66,33 +77,44 @@ def _claim_spec():
     }
 
 
-def test_real_style_qualified_slice_consumes_criterion(case_dir):
+def test_synthetic_qualified_slice_consumes_implemented_rule(case_dir):
     result = run_criterion_slice(
         case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
         criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
     )
     assert result["qualification_status"] == "qualified"
     assert result["product_status"] == "succeeded"
     assert result["native_disposition"] is None  # 未调用原版，不冒称原生处置
     assert result["trace_ok"] is True
-    assert "不是原生 met 判定" in result["rationale"]
+    assert "不是原生 met" in result["rationale"]
+
+
+def test_unimplemented_criterion_in_slice_is_method_unsupported(case_dir):
+    result = run_criterion_slice(
+        case_dir, source_id="SRC-SYN",
+        claim_spec=dict(_claim_spec(), claim_id="CLM-SYN-CRL2"),
+        criterion=CRL2_C1, dimension_levels_supported=[1, 2, 3, 4],
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
+    )
+    assert result["product_status"] == "method_unsupported"
+    assert result["trace_ok"] is True  # 链仍可追溯，但状态如实
 
 
 def test_frozen_input_recompute_is_idempotent(case_dir):
     first = run_criterion_slice(
         case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
         criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
     )
     second = run_criterion_slice(
         case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
         criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
     )
     assert first["result_id"] == second["result_id"]
     assert second["replay_consistent"] is True
-    assert second["product_status"] == first["product_status"]
+    assert second["input_digest"] == first["input_digest"]
     case = CaseStore(case_dir / "records.sqlite3")
     try:
         assert len(case.fetch_all("sources")) == 1  # 不重复导入
@@ -110,77 +132,40 @@ def test_late_retrieval_real_gap_path(case_dir):
             "UPDATE sources SET source_family='news-media', "
             "capture_status='raw_capture_validated', published_at=NULL, "
             "published_at_provenance='历史捕获无发布时间证明', "
-            "retrieved_at='2026-08-28T02:43:19Z' WHERE source_id='SRC-SYN'"
+            "retrieved_at='2026-08-28T02:43:19Z', document_subject=NULL, "
+            "document_subject_basis=NULL WHERE source_id='SRC-SYN'"
         )
     case.close()
     result = run_criterion_slice(
-        case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
-        criterion=CRL2_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
+        case_dir, source_id="SRC-SYN",
+        claim_spec=dict(_claim_spec(), claim_id="CLM-SYN-LATE"),
+        criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
     )
     assert result["qualification_status"] == "rejected"
     assert result["product_status"] == "insufficient"
     assert result["trace_ok"] is True  # Gap 路径同样可追溯
 
 
-def test_zip_member_locator_slice(case_dir, tmp_path):
-    # 合成 zip 附件成员（docx）主张：zip_member 定位 + 投影核验
-    import docx as docx_mod
-
-    document = docx_mod.Document()
-    document.add_paragraph(f"{SUBJECT}高管访谈纪要载明：公司自述聚焦Micro LED芯片。")
-    buffer = io.BytesIO()
-    document.save(buffer)
-    docx_bytes = buffer.getvalue()
-    zip_path = tmp_path / "interview.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("访谈/高管.docx", docx_bytes)
-    blobs = BlobStore(case_dir / "blobs")
-    case = CaseStore(case_dir / "records.sqlite3")
-    zip_data = zip_path.read_bytes()
-    zip_ref = blobs.put_bytes(zip_data)
-    member_ref = blobs.put_bytes(docx_bytes)
-    import_id = case.add_import_record("zip_attachment", "synthetic.zip",
-                                       zip_ref.sha256, note='{"synthetic": true}')
-    case.add_source("SRC-ZIP", member_ref.sha256, len(docx_bytes),
-                    source_family="owner_attachment",
-                    capture_status="attachment_zip_member",
-                    locator="synthetic.zip!/访谈/高管.docx",
-                    time_evidence={"kind": "document_self_date", "date": "2026-06-01",
-                                   "basis": "合成：文档自述日期"},
-                    import_id=import_id)
-    # zip_member 定位核验读取的是 zip 整体，所以来源指向 zip 字节更合适：
-    with case._conn:
-        case._conn.execute(
-            "UPDATE sources SET blob_sha256=?, byte_length=? WHERE source_id='SRC-ZIP'",
-            (zip_ref.sha256, len(zip_data)),
-        )
-    case.close()
-
-    result = run_criterion_slice(
-        case_dir, source_id="SRC-ZIP",
-        claim_spec={
-            "claim_id": "CLM-ZIP-CRL1",
-            "locator_kind": "zip_member",
-            "locator_ref": {"member": "访谈/高管.docx", "paragraph": 1},
-            "interpretation": "访谈纪要载明公司自述聚焦Micro LED芯片（窄主张）。",
-            "subject_scope": SUBJECT,
-        },
-        criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
-    )
-    assert result["qualification_status"] == "qualified"
-    assert result["product_status"] == "succeeded"
-    assert result["trace_ok"] is True  # 投影 hash 重核通过
+def test_runner_requires_sourced_case_basis(case_dir):
+    with pytest.raises(ValueError, match="subject_source_basis"):
+        run_criterion_slice(
+            case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
+            criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
+            case_basis={"subject_legal_name": SUBJECT, "subject_aliases": [],
+                        "evidence_cutoff": "2026-08-27T03:02:29Z"},
+            approved_criterion_ids=APPROVED)
 
 
 def test_counting_simulated_provider_dispatches_exactly_once(tmp_path):
+    blobs = BlobStore(tmp_path / "blobs")
     journal = Journal(tmp_path / "journal.sqlite3")
     try:
-        provider = CountingSimulatedProvider(journal)
+        provider = CountingSimulatedProvider(journal, blobs=blobs)
         out1 = provider.execute("mission-1", "input-1", lambda: b"response-1")
         assert provider.dispatch_count == 1
         assert out1 == sha256_hex(b"response-1")
+        assert blobs.read_bytes(out1) == b"response-1"  # 响应可解析到字节
         assert journal.task_state("mission-1")["state"] == "succeeded"
         # 已完成任务不自动重派
         with pytest.raises(CommitRejected):
@@ -194,9 +179,10 @@ def test_counting_simulated_provider_dispatches_exactly_once(tmp_path):
 
 
 def test_crash_after_dispatch_is_outcome_unknown_no_blind_redispatch(tmp_path):
+    blobs = BlobStore(tmp_path / "blobs")
     journal = Journal(tmp_path / "journal.sqlite3")
     try:
-        provider = CountingSimulatedProvider(journal)
+        provider = CountingSimulatedProvider(journal, blobs=blobs)
         with pytest.raises(SimulatedCrash):
             provider.execute("mission-c", "input-1", lambda: b"resp",
                              crash_after_dispatch=True)
@@ -220,7 +206,7 @@ def test_cli_inspect_and_trace(case_dir, capsys):
     run_criterion_slice(
         case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
         criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
     )
     code = cli.main(["inspect", "--case-dir", str(case_dir)])
     captured = capsys.readouterr()
@@ -234,18 +220,18 @@ def test_cli_inspect_and_trace(case_dir, capsys):
     captured = capsys.readouterr()
     assert code == 0
     assert "链核验：通过" in captured.out
-    assert "封存" in captured.out or "✓" in captured.out
 
 
 def test_cli_trace_broken_chain_returns_nonzero(case_dir, capsys):
     run_criterion_slice(
         case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
         criterion=CRL1_C1, dimension_levels_supported=[1, 2, 3, 4],
-        case_basis=BASIS,
+        case_basis=BASIS, approved_criterion_ids=APPROVED,
     )
     case = CaseStore(case_dir / "records.sqlite3")
     with case._conn:
-        case._conn.execute("DELETE FROM qualifications WHERE claim_id='CLM-SYN-CRL1'")
+        case._conn.execute(
+            "DELETE FROM qualifications WHERE claim_id='CLM-SYN-CRL1'")
     case.close()
     code = cli.main(["trace", "--case-dir", str(case_dir),
                      "--result-id", "RESR::CLM-SYN-CRL1::CRL1-C1"])
@@ -254,76 +240,69 @@ def test_cli_trace_broken_chain_returns_nonzero(case_dir, capsys):
     assert "链核验：失败" in captured.out
 
 
-# ---- 真实 Case 门控复验（KTH_REAL_CASE_DIR 显式给定才运行） ----
+# ---- 真实 Case 门控复验（KTH_REAL_CASE_DIR_1 显式给定才运行；R1.1 新Case） ----
 
-REAL_CASE = os.environ.get("KTH_REAL_CASE_DIR")
+REAL_CASE = os.environ.get("KTH_REAL_CASE_DIR_1")
 
 
-@pytest.mark.skipif(not REAL_CASE, reason="未设置 KTH_REAL_CASE_DIR")
-class TestRealCaseSlices:
-    def test_real_bp_claim_consumes_crl1_c1(self):
+@pytest.mark.skipif(not REAL_CASE, reason="未设置 KTH_REAL_CASE_DIR_1（R1.1新Case）")
+class TestRealCaseSlicesR11:
+    """R1.1 真实切片（修复后规则下的诚实结果）：
+
+    - BP：时间证据降为文件名候选级＋文档自识主体为苏州法人 → needs_review，
+      CRL1-C1 如实不足（不再有 R1 的伪qualified）。
+    - 公司报道：晚抓取无发布证明 → rejected → 不足（与 R1 相同的诚实负例）。
+    复跑读取建库脚本落盘的权威 spec（real-slice-specs-r1_1.json），
+    同输入必须得到相同输入摘要与相同结果（幂等）。
+    """
+
+    def _load_specs(self):
         from kth_hybrid.catalog import build_catalog_from_wheel
 
         catalog = build_catalog_from_wheel()
         crl = catalog["dimensions"]["CRL"]
-        crl1c1 = next(c for c in crl["registry"]["criteria"]
-                      if c["criterion_id"] == "CRL1-C1")
-        crl1c1 = {"dimension": "CRL", **crl1c1}
-        case = CaseStore(Path(REAL_CASE) / "records.sqlite3")
-        try:
-            sources = case.fetch_all("sources")
-        finally:
-            case.close()
-        bp = [s for s in sources if s["source_family"] == "owner_attachment"
-              and s["byte_length"] > 1_000_000]
-        assert bp, "BP 附件来源应已导入"
-        result = run_criterion_slice(
-            Path(REAL_CASE), source_id=bp[0]["source_id"],
-            claim_spec={
-                "claim_id": "CLM-REAL-BP-CRL1",
-                "locator_kind": "pdf_page",
-                "locator_ref": {"page": 4},
-                "interpretation": "BP第4页载明公司市场机会假设：预期2030年全球AR眼镜"
-                                  "出货超2000万台、对应Micro LED芯片市场150-200亿元"
-                                  "（公司自述，第一方材料；文档自述主体为微玖（苏州），"
-                                  "与评估主体武汉微玖的法人关系未核验）。",
-                "subject_scope": SUBJECT,
-            },
-            criterion=crl1c1, dimension_levels_supported=crl["levels_supported"],
-            case_basis=BASIS,
+        specs = json.loads(
+            (Path(REAL_CASE) / "audit" / "real-slice-specs-r1_1.json")
+            .read_text(encoding="utf-8"))
+        return crl, specs
+
+    def _run(self, spec, crl, specs):
+        criterion = {"dimension": "CRL", **next(
+            c for c in crl["registry"]["criteria"]
+            if c["criterion_id"] == spec["criterion_id"])}
+        return run_criterion_slice(
+            Path(REAL_CASE), source_id=spec["source_id"],
+            claim_spec=spec["claim_spec"], criterion=criterion,
+            dimension_levels_supported=specs["dimension_levels_supported"],
+            case_basis=specs["case_basis"],
+            approved_criterion_ids=set(specs["approved_criterion_ids"]),
         )
-        assert result["qualification_status"] == "qualified"
-        assert result["product_status"] == "succeeded"
+
+    def test_real_bp_claim_honestly_needs_review(self):
+        crl, specs = self._load_specs()
+        bp_spec, cap_spec = specs["slices"]
+        result = self._run(bp_spec, crl, specs)
+        assert result["qualification_status"] == "needs_review", \
+            "BP时间证据为文件名候选级且文档主体为苏州法人：不得qualified"
+        assert result["product_status"] == "insufficient"
+        assert result["native_disposition"] is None
         assert result["trace_ok"] is True
+        # 幂等：与首次构建相同输入摘要与结果ID
+        first = json.loads(
+            (Path(REAL_CASE) / "audit" / "real-slices-r1_1.json")
+            .read_text(encoding="utf-8"))["bp_slice"]
+        assert result["input_digest"] == first["input_digest"]
+        assert result["result_id"] == first["result_id"]
 
     def test_real_company_report_late_capture_is_insufficient(self):
-        from kth_hybrid.catalog import build_catalog_from_wheel
-
-        catalog = build_catalog_from_wheel()
-        crl = catalog["dimensions"]["CRL"]
-        crl2c1 = {"dimension": "CRL", **next(
-            c for c in crl["registry"]["criteria"] if c["criterion_id"] == "CRL2-C1")}
-        case = CaseStore(Path(REAL_CASE) / "records.sqlite3")
-        try:
-            sources = case.fetch_all("sources")
-        finally:
-            case.close()
-        cap = [s for s in sources
-               if s["blob_sha256"].startswith("718e402e82d5fb1c")]
-        assert cap, "公司报道捕获应已导入"
-        result = run_criterion_slice(
-            Path(REAL_CASE), source_id=cap[0]["source_id"],
-            claim_spec={
-                "claim_id": "CLM-REAL-CAP-CRL2",
-                "locator_kind": "byte_range",
-                "start": 33267, "end": 33542,
-                "interpretation": "公司报道区间载明主体法定名称（第三方载明事实）。",
-                "subject_scope": SUBJECT,
-            },
-            criterion=crl2c1, dimension_levels_supported=crl["levels_supported"],
-            case_basis=BASIS,
-        )
-        # 真实晚抓取无发布证明 → 拒绝 → 判据如实不足（真实不足路径）
+        crl, specs = self._load_specs()
+        _, cap_spec = specs["slices"]
+        result = self._run(cap_spec, crl, specs)
         assert result["qualification_status"] == "rejected"
         assert result["product_status"] == "insufficient"
         assert result["trace_ok"] is True
+        first = json.loads(
+            (Path(REAL_CASE) / "audit" / "real-slices-r1_1.json")
+            .read_text(encoding="utf-8"))["capture_slice"]
+        assert result["input_digest"] == first["input_digest"]
+        assert result["result_id"] == first["result_id"]

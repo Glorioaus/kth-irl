@@ -1,5 +1,8 @@
-"""T05：资格判断——合格窄主张、错主体、未知时间、错来源、同源重复、空正文、
-引用越界、伪造资格标签、搜索摘要类来源、候选eligible不决定返回值。"""
+"""T05/R1.1：资格判断 v2——有源CaseBasis、三含义身份、严格时间、反例集。
+
+v2 变化：BASIS 必须带 subject_source_basis；第一方需 document_subject 与评估
+主体一致；document_self_date 需合法日期＋定位；文件名日期仅候选。
+"""
 
 from __future__ import annotations
 
@@ -9,17 +12,22 @@ from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.qualification import (
     GapOutcome,
     QualificationOutcome,
+    parse_iso_datetime,
     qualify_claim,
 )
 from kth_hybrid.store import BlobStore
 
 SUBJECT = "武汉微玖光电科技有限公司"
 CUTOFF = "2026-08-27T03:02:29Z"
-BASIS = {"subject_legal_name": SUBJECT, "subject_aliases": ["微玖"],
-         "evidence_cutoff": CUTOFF}
+BASIS = {
+    "subject_legal_name": SUBJECT,
+    "subject_aliases": ["微玖"],
+    "evidence_cutoff": CUTOFF,
+    "subject_source_basis": "合成CaseBasis（synthetic）：主体/截止来自登记依据",
+}
 
 REPORT = (
-    f"{SUBJECT}于2026年7月对外宣布其MicroLED中试线完成工艺验证。"
+    f"{SUBJECT}预期2030年全球AR眼镜出货超过2000万台，对应芯片市场150-200亿元。"
     "本段为受控测试原文。"
 ).encode("utf-8")
 INDUSTRY = "MicroLED行业整体处于中试阶段，多家厂商推进量产。本段为受控测试原文。".encode(
@@ -38,6 +46,7 @@ def _source(sha256: str, size: int, **overrides):
         "capture_status": "raw_capture_validated", "source_family": "news-media",
         "retrieved_at": "2026-08-28T02:43:19Z", "published_at": None,
         "published_at_provenance": "历史捕获无发布时间证明",
+        "document_subject": None, "document_subject_basis": None,
     }
     base.update(overrides)
     return base
@@ -59,19 +68,77 @@ def _range(data: bytes, start: int, end: int):
     return _claim("CLM-X", sha256_hex(excerpt), excerpt.decode("utf-8"), start, end)
 
 
+def test_iso_datetime_parsing():
+    assert parse_iso_datetime("2026-08-27T03:02:29Z") is not None
+    assert parse_iso_datetime("2026-08-27") is not None
+    assert parse_iso_datetime("2026/08/27") is None      # 非法格式
+    assert parse_iso_datetime("") is None
+    assert parse_iso_datetime(None) is None
+    left = parse_iso_datetime("2026-08-27T03:02:29Z")
+    right = parse_iso_datetime("2026-08-27T11:02:29+08:00")  # 同一时刻
+    assert left == right  # 时区规范化，不做字符串比较
+
+
+def test_case_basis_without_source_is_rejected(blobs):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT))
+    with pytest.raises(ValueError, match="subject_source_basis"):
+        qualify_claim(claim, source, blobs,
+                      {"subject_legal_name": SUBJECT, "subject_aliases": [],
+                       "evidence_cutoff": CUTOFF})
+
+
 def test_qualified_narrow_claim_with_publication_time(blobs):
     ref = blobs.put_bytes(REPORT)
     start, end = 0, len(SUBJECT.encode("utf-8"))
     excerpt = REPORT[start:end]
     claim = _claim("CLM-Q", sha256_hex(excerpt), excerpt.decode("utf-8"), start, end)
     source = _source(ref.sha256, len(REPORT), published_at="2026-07-20T00:00:00Z",
-                    published_at_provenance="页面发布时间字段")
-    outcome = qualify_claim(claim, source, blobs, BASIS, review_attempt="t05")
+                     published_at_provenance="页面发布时间字段")
+    outcome = qualify_claim(claim, source, blobs, BASIS, review_attempt="t")
     assert isinstance(outcome, QualificationOutcome)
     assert outcome.status == "qualified"
     assert all(j.verdict == "ok" for j in outcome.verdicts)
     assert all(j.basis for j in outcome.verdicts)  # 依据非空
     assert outcome.allowed_uses == ["third_party_reported_fact"]
+
+
+def test_first_party_requires_matching_document_subject(blobs):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    common = dict(
+        source_family="owner_attachment", capture_status="attachment",
+        retrieved_at=None, published_at=None,
+        published_at_provenance="附件无发布时间",
+        time_evidence={"kind": "document_self_date", "date": "2026-07-16",
+                       "basis": "封面自述", "date_locator": "封面页"},
+    )
+    same = _source(ref.sha256, len(REPORT), document_subject=SUBJECT,
+                   document_subject_basis="封面载明主体", **common)
+    outcome = qualify_claim(claim, same, blobs, BASIS)
+    assert outcome.status == "qualified"
+    assert "company_self_statement" in outcome.allowed_uses
+    assert "document_dated_statement" in outcome.allowed_uses
+
+    other = _source(ref.sha256, len(REPORT), document_subject="微玖（苏州）光电科技有限公司",
+                    document_subject_basis="封面自识主体", **common)
+    outcome2 = qualify_claim(claim, other, blobs, BASIS)
+    assert outcome2.status == "needs_review", "文档自识主体≠评估主体：不得第一方通过"
+    assert any("实体关系" in c for c in outcome2.cannot_prove)
+
+
+def test_document_self_date_requires_locator(blobs):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT), source_family="owner_attachment",
+                    capture_status="attachment", retrieved_at=None, published_at=None,
+                    document_subject=SUBJECT,
+                    time_evidence={"kind": "document_self_date",
+                                   "date": "2026-07-16", "basis": "无定位"})
+    outcome = qualify_claim(claim, source, blobs, BASIS)
+    assert outcome.time_judgment.verdict == "fail"
+    assert outcome.status == "rejected"
 
 
 def test_wrong_time_late_retrieval_rejects(blobs):
@@ -82,23 +149,6 @@ def test_wrong_time_late_retrieval_rejects(blobs):
     assert outcome.status == "rejected"
     assert outcome.time_judgment.verdict == "fail"
     assert "内容在证据截止前已存在" in outcome.cannot_prove
-
-
-def test_first_party_self_dated_document_qualifies_with_limits(blobs):
-    ref = blobs.put_bytes(REPORT)
-    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
-    source = _source(
-        ref.sha256, len(REPORT), source_family="owner_attachment",
-        capture_status="attachment", retrieved_at=None,
-        published_at_provenance="附件无抓取/发布时间（Owner 提供）",
-        time_evidence={"kind": "document_self_date", "date": "2026-07-16",
-                       "basis": "文档自述日期", "registered_at": "2026-08-27T04:13:11Z"},
-    )
-    outcome = qualify_claim(claim, source, blobs, BASIS)
-    assert outcome.status == "qualified"
-    assert "company_self_statement" in outcome.allowed_uses
-    assert "document_dated_statement" in outcome.allowed_uses
-    assert any("独立核实" in c for c in outcome.cannot_prove)
 
 
 def test_industry_review_cannot_prove_subject_claim(blobs):

@@ -62,14 +62,39 @@ def test_manifest_declared_shape_reproduced(census):
 
 
 def test_receipt_state_facts(census):
+    """P2 修正：不写死单一访问条件下的数量；验证分类闭合与清单声明一致性。
+
+    历史观测记录（不覆盖）：
+    - 2026-09-08 R1 交付时本机实读 76（4 条 PermissionError），36 非空/40 空；
+    - 2026-09-08 审核复测环境实读 80（40 非空/40 空）。
+    两次观测都满足：非空+空=实读；实读+不可读=80；
+    实读非空+不可读中按清单声明为非空的条数=清单声明非空总数(40)。
+    """
     l1 = census.layer1_bytes()
-    assert l1["receipt标记blocked(502)"] == 40  # 40 条空502
-    assert l1["receipt标记raw_capture_validated"] == 36  # 上轮实读 36 条 200
-    # 可读 receipt 全部 evidence_eligible=false（资格从未被旧系统赋予）
-    assert l1["receipt标记evidence_eligible=false"] == l1["实读捕获"]
-    # 实读捕获的哈希全部与自身 receipt 声明一致
-    assert l1["哈希与receipt声明一致"] == l1["实读捕获"]
+    l0 = census.layer0_assets()
+    readable = l1["实读捕获"]
+    # 分类闭合：非空+零字节=实读；实读+不可读=80
+    assert l1["非空正文"] + l1["零字节正文"] == readable
+    assert readable + l0["不可读数"] == 80
+    # 状态划分与实读一致
+    assert l1["receipt标记blocked(502)"] == l1["零字节正文"]
+    assert l1["receipt标记raw_capture_validated"] == l1["非空正文"]
+    # 可读 receipt 全部 evidence_eligible=false；哈希与自身声明一致
+    assert l1["receipt标记evidence_eligible=false"] == readable
+    assert l1["哈希与receipt声明一致"] == readable
     assert census.layer1_bytes()["声明不一致明细"] == []
+    # 与 M0 清单声明一致性：实读非空 + 不可读中清单声明非空 = 清单声明非空总数
+    from kth_hybrid.census import load_manifest_entries
+
+    entries = load_manifest_entries(MANIFEST)
+    declared_nonempty = sum(1 for e in entries if e["raw_body_bytes"] > 0)
+    readable_dirs = {c.dir_name for c in census.captures if c.readable}
+    unreadable_declared_nonempty = sum(
+        1 for e in entries
+        if e["dir"] not in readable_dirs and e["raw_body_bytes"] > 0
+    )
+    assert l1["非空正文"] + unreadable_declared_nonempty == declared_nonempty, \
+        "分母闭合：实读非空＋不可读但清单声明非空＝清单声明非空总数"
 
 
 def test_as_of_cut_is_frozen(census):

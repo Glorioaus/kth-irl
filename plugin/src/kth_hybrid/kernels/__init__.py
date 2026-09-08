@@ -1,28 +1,42 @@
-"""R1 窄规则内核（kth-hybrid.kernels.r1-narrow.v1）。
+"""R1.1 窄规则内核（kth-hybrid.kernels.r1-narrow.v2）。
 
-**范围声明：**这里只包含 R1 垂直切片实际需要的最小业务规则，均以保守口径
-写成显式表；完整六维逐判据规则对照属 T07/R2，不得把本文件当作完整 KTH 规则
-实现。不重新发明 criterion、不篡改成熟度含义。
+**范围声明：**R1.1 只实现**一条**有明确原版/获批规则出处的真实判据
+（CRL1-C1）；其余已登记判据一律 ``method_unsupported``，不冒充"证据不足"，
+也不凭"用途类＋级别"通用路由替代具体规则（验收 R1-02）。完整 180 条逐判据
+规则对照属 T07/R2。不重新发明 criterion、不篡改成熟度含义。
 
-规则来源：
-- 判据/级别/dispositions/na_policy：批准 wheel 六个 registry（catalog 机械提取）；
-- CRL 1–4 级范围、CRL 无原生 insufficient：method-scope-v1 §2；
-- FRL 受限 N/A（explicit_no_external_financing_only / never）：
-  wheel FRL registry na_policy 字段；
-- TMRL 身份叠加不得直接设定 readiness：wheel TMRL registry claim_boundary
-  （identity_overlay_may_set_readiness=false）。
+规则出处：
+- 判据文本/级别/dispositions/na_policy：批准 wheel 六个 registry
+  （``kth_hybrid.catalog`` 机械提取）；
+- CRL1-C1 语义出处：registry 文本 "A possible market need, problem or
+  opportunity hypothesis has been identified."——最低级信息性判据：存在
+  已被识别/陈述的市场需求或机会假设；接受"主体自述/文档载明/第三方载明"
+  的合格窄主张作为该假设已被识别的证据。
 """
 
 from __future__ import annotations
 
-RULE_VERSION = "kth-hybrid.kernels.r1-narrow.v1"
+RULE_VERSION = "kth-hybrid.kernels.r1-narrow.v2"
 
-# R1 允许的资格用途类 → 可支持的最高判据级别（保守：仅级别1的
-# "假设/自述/第三方载明存在"类信息性判据；更高级别留给 T07 逐条规则对照）。
-R1_MAX_LEVEL_BY_USE = {
-    "company_self_statement": 1,
-    "document_dated_statement": 1,
-    "third_party_reported_fact": 1,
+# R1.1 已实现的判据规则（显式、逐条、带出处；未列入者 → method_unsupported）
+IMPLEMENTED_RULES: dict[str, dict] = {
+    "CRL1-C1": {
+        "registry_id": "KTH-CRL-G-2022-in-Compiled-F-2025",
+        "registry_version": "crl-g-2022.internal-shadow.v2",
+        "criterion_text": "A possible market need, problem or opportunity "
+                          "hypothesis has been identified.",
+        "rule_kind": "specific",
+        "provenance": (
+            "批准 wheel kth_irl.v1.crl_vertical.get_crl_registry() CRL1-C1；"
+            "语义=最低级信息性判据（存在已识别/陈述的市场需求/问题/机会假设），"
+            "合格窄主张的'假设已被陈述'证据可支持；不判定更高成熟度"
+        ),
+        "acceptable_uses": (
+            "company_self_statement",
+            "document_dated_statement",
+            "third_party_reported_fact",
+        ),
+    },
 }
 
 # 原生处置兼容表（用于拦截非法 native_disposition 提案）
@@ -30,19 +44,14 @@ CRL_NATIVE_DISPOSITIONS = ("met", "not_met", "partial", "not_applicable")
 OTHER_NATIVE_DISPOSITIONS = ("met", "not_met", "partial", "not_applicable", "insufficient")
 
 
-def use_class_supports_criterion(allowed_use: str, dimension: str,
-                                 level: int) -> bool:
-    """R1 窄规则：某资格用途类是否可支持该判据。"""
-    return R1_MAX_LEVEL_BY_USE.get(allowed_use, 0) >= level
+def implemented_criterion(criterion_id: str) -> dict | None:
+    """返回该判据的已实现规则；未实现返回 None（调用方按 method_unsupported 处理）。"""
+    return IMPLEMENTED_RULES.get(criterion_id)
 
 
 def check_na_legality(criterion: dict, proposal: str | None,
                       case_flags: dict) -> tuple[bool, str]:
-    """N/A 合法性：na_policy=never 一律拒绝；受限行需显式无外部融资策略。
-
-    返回 (是否合法, 依据)。criterion 取自 wheel registry 的判据行；
-    proposal 为 'not_applicable' 或 None。
-    """
+    """N/A 合法性：na_policy=never 一律拒绝；受限行需显式无外部融资策略。"""
     if proposal != "not_applicable":
         return True, "无 N/A 提案"
     policy = criterion.get("na_policy")
@@ -76,21 +85,30 @@ def check_native_disposition_legal(dimension: str, disposition: str) -> tuple[bo
     )
 
 
-def check_tmrl_identity_binding(criterion: dict, qualification_like: dict,
+def check_tmrl_identity_binding(criterion: dict, identity: dict,
                                 claim: dict) -> tuple[bool, str]:
-    """TMRL 身份约束：身份不明/失败或主体范围含糊的共享证据不能证明
-    team-specific 判据（identity overlay 不得直接设定 readiness）。"""
-    dimension = (criterion.get("dimension") or "")
+    """TMRL 身份约束（v2 修复结构：``identity`` 为调用方已取出的判断 dict，
+    形如 ``{"verdict": "ok", "basis": "…"}``；不再二次嵌套取
+    ``identity_judgment``）。
+
+    身份不明/失败或主体范围含糊的共享证据不能证明 team-specific 判据
+    （identity overlay 不得直接设定 readiness）。
+    """
+    dimension = criterion.get("dimension") or ""
     if dimension != "TMRL":
         return True, "非 TMRL 判据，不受身份叠加约束"
-    identity = qualification_like.get("identity_judgment", {})
-    verdict = identity.get("verdict") if isinstance(identity, dict) else identity
+    if not isinstance(identity, dict):
+        return False, f"身份判断结构非法：{type(identity).__name__}（期望 dict）"
+    verdict = identity.get("verdict")
+    if verdict is None and isinstance(identity.get("identity_judgment"), dict):
+        # 兼容旧结构（ QualificationOutcome 整体传入）
+        verdict = identity["identity_judgment"].get("verdict")
     if verdict != "ok":
         return False, (
             f"TMRL 判据 {criterion.get('criterion_id')} 需要明确的主体身份判断；"
             f"当前身份判定为 {verdict or '缺失'}，共享证据不能设定团队判据"
         )
-    scope = claim.get("subject_scope") or ""
+    scope = (claim.get("subject_scope") or "").strip()
     if not scope or scope in ("全部", "all", "公司整体"):
         return False, "主体范围含糊（subject_scope 未限定具体团队/角色）"
     return True, f"身份判定 ok 且范围限定（{scope}）"
