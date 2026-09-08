@@ -120,7 +120,8 @@ def test_frl_restricted_na_requires_explicit_no_external_financing():
                                "path": "case:p.json#/f"},
              "subject_resolved": {"_resolved": True,
                                   "value": "微玖（融资主体）",
-                                  "path": "case:p.json#/subject"}}
+                                  "path": "case:p.json#/subject"},
+             "relation_valid": True}
     candidate = _qualified_candidate()
     # flag 解析为假 → 非法
     candidate["na_proposal"] = {**na_ok, "flag_resolved": {

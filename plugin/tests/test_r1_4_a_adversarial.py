@@ -117,7 +117,25 @@ def test_a1_sourced_timezone_rule_converts_unzoned_clock_to_utc(tmp_path):
     evidence = _dated_evidence(text, timestamp)
     evidence["date"] = "2026-01-31T17:17:00+08:00"
     evidence["timezone_rule"] = "+08:00"
-    evidence["timezone_basis"] = "发布页所属中国标准时间来源规则"
+    blobs = BlobStore(tmp_path / "blobs")
+    rule = blobs.put_bytes(json.dumps({
+        "timezone": "+08:00",
+        "source_family": "news-media",
+    }).encode("utf-8"))
+    case = CaseStore(tmp_path / "records.sqlite3")
+    try:
+        case.add_import_record("case_provenance", "session:timezone-rules.json",
+                               rule.sha256)
+    finally:
+        case.close()
+    evidence["timezone_basis"] = {
+        "kind": "field_reference",
+        "path": "case:timezone-rules.json#/timezone",
+    }
+    evidence["timezone_scope_ref"] = {
+        "kind": "field_reference",
+        "path": "case:timezone-rules.json#/source_family",
+    }
 
     outcome = _qualify(tmp_path, text, time_evidence=evidence)
 

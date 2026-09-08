@@ -274,44 +274,182 @@ def _parse_subject_source_basis(raw) -> dict:
     return parsed
 
 
+def _binding_scope(binding: dict) -> tuple[str, str, str] | None:
+    """返回证明字段所属的封存记录与逻辑对象作用域。"""
+    if not isinstance(binding, dict):
+        return None
+    origin_path = binding.get("origin_path")
+    origin_sha256 = binding.get("origin_sha256")
+    field_path = binding.get("field_path")
+    if not all(isinstance(value, str) and value for value in
+               (origin_path, origin_sha256, field_path)):
+        return None
+    tokens = [token.strip("/") for token in field_path.split("/") if token.strip("/")]
+    return origin_path, origin_sha256, "/" + "/".join(tokens[:-1])
+
+
+def _same_record_relation(*bindings: dict) -> tuple[bool, str]:
+    """字段必须来自同一封存逻辑记录，不能跨主体/对象拼接。"""
+    scopes = [_binding_scope(binding) for binding in bindings]
+    if any(scope is None for scope in scopes):
+        return False, "证明字段缺少可核验的原件或作用域绑定"
+    if len(set(scopes)) != 1:
+        return False, "证明字段不属于同一封存逻辑记录/作用域，不能拼接关系"
+    return True, "同一封存逻辑记录/作用域"
+
+
+def decode_document_subject_basis(value) -> tuple[dict | None, str | None]:
+    """将 SQLite TEXT 或直接调用的 dict 统一为严格结构化第一方证明。"""
+    if isinstance(value, dict):
+        return value, None
+    if not isinstance(value, str) or not value.strip():
+        return None, "第一方归属证明为空或非结构化"
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError) as exc:
+        return None, f"第一方归属证明 JSON 非法：{exc}"
+    if not isinstance(parsed, dict):
+        return None, "第一方归属证明 JSON 必须是对象"
+    return parsed, None
+
+
 def _verified_subject_aliases(subject_basis_ref: dict, case, blobs: BlobStore,
-                              declared_aliases: set[str]) -> tuple[set[str], str | None]:
+                              declared_aliases: set[str], subject: str) -> tuple[set[str],
+                                                                                  str | None,
+                                                                                  dict | None]:
     """只接受封存身份文件中实际解析出的别名，调用方新增值不进入主体匹配。"""
     aliases_path = subject_basis_ref.get("aliases_path")
     if not aliases_path:
-        return set(), ("CaseBasis 未提供 aliases_path；调用方别名不作为已核验"
-                       "主体别名使用") if declared_aliases else None
-    value, error = _resolve_case_field_reference(
+        return (set(), ("CaseBasis 未提供 aliases_path；调用方别名不作为已核验"
+                        "主体别名使用") if declared_aliases else None, None)
+    aliases_subject_path = subject_basis_ref.get("aliases_subject_path")
+    if not aliases_subject_path:
+        return set(), "CaseBasis 未提供 aliases_subject_path；别名记录未绑定主体", None
+    value, error, aliases_binding = resolve_case_field_reference_binding(
         {"kind": "field_reference", "path": aliases_path}, case, blobs)
     if error:
-        return set(), f"主体别名来源不可核验：{error}"
+        return set(), f"主体别名来源不可核验：{error}", None
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        return set(), "主体别名来源字段必须为字符串列表"
-    return declared_aliases & set(value), None
+        return set(), "主体别名来源字段必须为字符串列表", None
+    _subject, subject_error, aliases_subject_binding = resolve_case_field_reference_binding(
+        {"kind": "field_reference", "path": aliases_subject_path}, case, blobs,
+        expect_value=subject)
+    if subject_error:
+        return set(), f"主体别名记录主体不可核验：{subject_error}", None
+    relation_ok, relation_error = _same_record_relation(
+        aliases_binding, aliases_subject_binding)
+    if not relation_ok:
+        return set(), relation_error, None
+    return declared_aliases & set(value), None, {
+        "aliases": aliases_binding,
+        "subject": aliases_subject_binding,
+        "relation": list(_binding_scope(aliases_binding)),
+    }
 
 
 def _verify_document_subject_binding(proof, document_subject: str, source: dict,
-                                     case, blobs: BlobStore) -> tuple[bool, str]:
+                                     case, blobs: BlobStore) -> tuple[bool, str, dict | None]:
     """第一方归属需有封存记录同时绑定主体字段与当前原件 hash。"""
     if not isinstance(proof, dict) or proof.get("kind") != "case_field_reference":
-        return False, "第一方归属必须引用封存字段记录，不接受正文名称定位或调用方断言"
+        return False, "第一方归属必须引用封存字段记录，不接受正文名称定位或调用方断言", None
     subject_path = proof.get("path")
     hash_path = proof.get("document_sha256_path")
     if not isinstance(subject_path, str) or not isinstance(hash_path, str):
-        return False, "第一方归属记录缺少 path/document_sha256_path"
-    subject_value, subject_error = _resolve_case_field_reference(
+        return False, "第一方归属记录缺少 path/document_sha256_path", None
+    subject_value, subject_error, subject_binding = resolve_case_field_reference_binding(
         {"kind": "field_reference", "path": subject_path}, case, blobs,
         expect_value=document_subject)
     if subject_error:
-        return False, f"第一方归属主体字段不可核验：{subject_error}"
-    hash_value, hash_error = _resolve_case_field_reference(
+        return False, f"第一方归属主体字段不可核验：{subject_error}", None
+    hash_value, hash_error, hash_binding = resolve_case_field_reference_binding(
         {"kind": "field_reference", "path": hash_path}, case, blobs)
     if hash_error:
-        return False, f"第一方归属原件字段不可核验：{hash_error}"
+        return False, f"第一方归属原件字段不可核验：{hash_error}", None
+    relation_ok, relation_error = _same_record_relation(subject_binding, hash_binding)
+    if not relation_ok:
+        return False, relation_error, None
     if hash_value != source["blob_sha256"]:
         return False, (f"第一方归属记录绑定原件 {str(hash_value)[:12]}… ≠ 当前"
-                       f"来源 {source['blob_sha256'][:12]}…")
-    return True, (f"封存归属记录主体 {subject_value!r} 与当前原件 hash 均已核验")
+                       f"来源 {source['blob_sha256'][:12]}…"), None
+    return True, (f"封存归属记录主体 {subject_value!r} 与当前原件 hash 均已核验"), {
+        "subject": subject_binding,
+        "document_sha256": hash_binding,
+        "relation": list(_binding_scope(subject_binding)),
+    }
+
+
+def resolve_case_basis_proof_bindings(case_basis: dict, case, blobs: BlobStore) -> tuple[
+        dict | None, str | None]:
+    """重建本次 CaseBasis 实际可用的主体/别名证明绑定。"""
+    subject = case_basis.get("subject_legal_name")
+    try:
+        subject_ref = _parse_subject_source_basis(case_basis.get("subject_source_basis"))
+    except ValueError as exc:
+        return None, str(exc)
+    _value, error, subject_binding = resolve_case_field_reference_binding(
+        subject_ref, case, blobs, expect_value=subject)
+    if error or subject_binding is None:
+        return None, f"主体来源依据不可核验：{error or '无绑定'}"
+    declared_aliases = set(case_basis.get("subject_aliases", []))
+    _aliases, aliases_error, aliases_binding = _verified_subject_aliases(
+        subject_ref, case, blobs, declared_aliases, subject)
+    bindings = {"subject": subject_binding}
+    if aliases_binding is not None:
+        bindings["aliases"] = aliases_binding
+    elif aliases_error and declared_aliases:
+        bindings["aliases_error"] = aliases_error
+    return bindings, None
+
+
+def resolve_document_subject_proof_bindings(
+        source: dict, subject: str, case, blobs: BlobStore
+) -> tuple[dict | None, str | None]:
+    """重建第一方归属的关系证明；存储字符串与直接 dict 走同一合同。"""
+    document_subject = (source.get("document_subject") or "").strip()
+    if not document_subject or document_subject != subject:
+        return None, "来源未登记与当前评估主体一致的 document_subject"
+    proof, error = decode_document_subject_basis(source.get("document_subject_basis"))
+    if error:
+        return None, error
+    ok, basis, bindings = _verify_document_subject_binding(
+        proof, document_subject, source, case, blobs)
+    return (bindings, None) if ok and bindings is not None else (None, basis)
+
+
+def resolve_timezone_rule_binding(time_evidence: dict, source: dict, case,
+                                  blobs: BlobStore) -> tuple[timezone | None,
+                                                               dict | None, str | None]:
+    """核验时区规则、来源适用域与当前 Source 的同一关系记录。"""
+    rule = time_evidence.get("timezone_rule") if isinstance(time_evidence, dict) else None
+    if not isinstance(rule, str) or not rule.strip():
+        return None, None, "未登记时区规则"
+    basis_ref = time_evidence.get("timezone_basis")
+    scope_ref = time_evidence.get("timezone_scope_ref")
+    if not isinstance(basis_ref, dict) or not isinstance(scope_ref, dict):
+        return None, None, "时区规则必须有结构化 timezone_basis 与 timezone_scope_ref"
+    rule_value, rule_error, rule_binding = resolve_case_field_reference_binding(
+        basis_ref, case, blobs)
+    if rule_error or rule_value != rule:
+        return None, None, "时区规则来源不可核验或与声明值不一致"
+    scope_value, scope_error, scope_binding = resolve_case_field_reference_binding(
+        scope_ref, case, blobs)
+    if scope_error or scope_value != source.get("source_family"):
+        return None, None, "时区规则适用域不可核验或不适用于当前来源"
+    relation_ok, relation_error = _same_record_relation(rule_binding, scope_binding)
+    if not relation_ok:
+        return None, None, relation_error
+    try:
+        offset_text = "+00:00" if rule == "Z" else rule
+        parsed = datetime.fromisoformat(f"2000-01-01T00:00:00{offset_text}")
+    except ValueError:
+        return None, None, f"时区规则值非法：{rule!r}"
+    if parsed.tzinfo is None:
+        return None, None, f"时区规则值无偏移：{rule!r}"
+    return parsed.tzinfo, {
+        "rule": rule_binding,
+        "scope": scope_binding,
+        "relation": list(_binding_scope(rule_binding)),
+    }, None
 
 
 RULE_VERSION = "kth-hybrid.qualification.v4"
@@ -422,8 +560,8 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         policy.update(source_policy)
     subject = case_basis["subject_legal_name"]
     declared_aliases = set(case_basis.get("subject_aliases", []))
-    aliases, aliases_error = _verified_subject_aliases(
-        subject_basis_ref, case, blobs, declared_aliases)
+    aliases, aliases_error, _aliases_proof = _verified_subject_aliases(
+        subject_basis_ref, case, blobs, declared_aliases, subject)
     cutoff_dt = parse_iso_datetime(case_basis["evidence_cutoff"])
     if cutoff_dt is None:
         raise ValueError(
@@ -536,9 +674,14 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
     first_party_proof = None  # (ok, basis_text)
     if family in policy["first_party_families"] and document_subject \
             and document_subject in subject_names:
-        proof_ok, proof_basis = _verify_document_subject_binding(
-            document_subject_basis, document_subject, source, case, blobs)
-        first_party_proof = (proof_ok, proof_basis)
+        decoded_basis, decode_error = decode_document_subject_basis(
+            document_subject_basis)
+        if decode_error:
+            first_party_proof = (False, decode_error)
+        else:
+            proof_ok, proof_basis, _proof_bindings = _verify_document_subject_binding(
+                decoded_basis, document_subject, source, case, blobs)
+            first_party_proof = (proof_ok, proof_basis)
 
     if family in policy["first_party_families"]:
         if first_party_proof and first_party_proof[0]:
@@ -642,16 +785,12 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
             r"T\d{1,2}:\d{2}| \d{1,2}:\d{2}|\d{1,2}时\d{1,2}分",
             declared_raw))
         timezone_rule = time_evidence.get("timezone_rule")
-        timezone_basis = time_evidence.get("timezone_basis")
         sourced_timezone = None
-        if isinstance(timezone_rule, str) and timezone_rule.strip() \
-                and isinstance(timezone_basis, str) and timezone_basis.strip():
-            try:
-                offset_text = "+00:00" if timezone_rule == "Z" else timezone_rule
-                sourced_timezone = datetime.fromisoformat(
-                    f"2000-01-01T00:00:00{offset_text}").tzinfo
-            except ValueError:
-                sourced_timezone = None
+        timezone_binding = None
+        timezone_error = None
+        if isinstance(timezone_rule, str) and timezone_rule.strip():
+            sourced_timezone, timezone_binding, timezone_error = \
+                resolve_timezone_rule_binding(time_evidence, source, case, blobs)
         matched = None
         for value, has_time, has_timezone in extracted:
             if declared_has_time:
@@ -683,6 +822,12 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
                     matched = (value, has_time)
                     break
         if matched is None:
+            if isinstance(timezone_rule, str) and timezone_rule.strip() \
+                    and timezone_error:
+                return Judgment(
+                    VERDICT_UNKNOWN,
+                    f"{label}定位文本无显式时区，声明换算规则不可核验："
+                    f"{timezone_error}；保持不确定")
             return Judgment(
                 VERDICT_FAIL,
                 f"{label}声明 {declared!r} 与定位文本提取的实际时间不符"
@@ -723,8 +868,8 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
             VERDICT_OK,
             f"{label}实际时间 {actual.isoformat()}（自定位文本提取，声明一致）"
             f"{'≤' if actual_has_time else '（日期级）≤'} 截止"
-            + (f"（时区规则 {timezone_rule}：{timezone_basis}）"
-               if sourced_timezone is not None and actual_has_time else ""))
+            + (f"（时区规则 {timezone_rule} 已按封存来源与适用域核验）"
+               if timezone_binding is not None and actual_has_time else ""))
 
     if published_at is not None:
         published_locator = source.get("published_at_locator")

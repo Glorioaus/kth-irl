@@ -357,7 +357,8 @@ class TestR12B:
               "flag_resolved": {"_resolved": True, "value": True,
                                 "path": "case:p.json#/f"},
               "subject_resolved": {"_resolved": True, "value": SUBJECT,
-                                   "path": "case:p.json#/subject"}}
+                                   "path": "case:p.json#/subject"},
+              "relation_valid": True}
         legal, _ = check_na_legality(frl4, ok, SUBJECT)
         assert legal
         for bad in (

@@ -38,8 +38,11 @@ from .qualification import (
     QualificationOutcome,
     qualify_claim,
     RULE_VERSION as QUALIFICATION_VERSION,
-    _resolve_case_field_reference,
+    _same_record_relation,
     resolve_case_field_reference_binding,
+    resolve_case_basis_proof_bindings,
+    resolve_document_subject_proof_bindings,
+    resolve_timezone_rule_binding,
 )
 from .store import BlobStore, CaseStore
 
@@ -111,6 +114,22 @@ def _resolve_na_proposal(na_proposal, case, blobs):
         else:
             out[res_key] = {"_resolved": True, "value": value,
                             "path": ref.get("path"), "binding": binding}
+    resolved = [out.get(key) for key in ("applicability_resolved", "flag_resolved",
+                                         "subject_resolved")]
+    if all(isinstance(item, dict) and item.get("_resolved") for item in resolved):
+        relation_ok, relation_error = _same_record_relation(
+            *(item.get("binding") for item in resolved))
+        out["relation_valid"] = relation_ok
+        out["relation_error"] = None if relation_ok else relation_error
+        if relation_ok:
+            out["relation"] = {
+                "applicability": resolved[0]["binding"],
+                "flag": resolved[1]["binding"],
+                "subject": resolved[2]["binding"],
+            }
+    else:
+        out["relation_valid"] = False
+        out["relation_error"] = "N/A 三个字段未全部解析到封存对象"
     return out
 
 
@@ -320,7 +339,12 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
         # 资格、冻结、摘要和 trace 共同消费这一份存储版本快照。调用方仅能
         # 在Case尚无依据时建立首个版本；后续同ID重放不得偷换截止或别名。
         basis, basis_version = _effective_case_basis(case, case_basis)
-        subject_proof = _subject_provenance_binding(basis, case, blobs)
+        basis_proofs, basis_proof_error = resolve_case_basis_proof_bindings(
+            basis, case, blobs)
+        if basis_proof_error or basis_proofs is None:
+            raise ValueError(
+                f"CaseBasis 证明不可核验：{basis_proof_error or '无证明绑定'}")
+        subject_proof = basis_proofs["subject"]
         source = case.fetch_one("sources", "source_id", source_id)
         if source is None:
             raise KeyError(f"来源 {source_id} 不存在（先运行 census 导入）")
@@ -338,6 +362,22 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
                 source["time_evidence"] = json.loads(source["time_evidence"])
             except (TypeError, ValueError):
                 source["time_evidence"] = {}
+
+        proof_bindings = {"case_basis": basis_proofs}
+        document_proof, document_proof_error = resolve_document_subject_proof_bindings(
+            source, basis["subject_legal_name"], case, blobs)
+        if document_proof is not None:
+            proof_bindings["document_subject"] = document_proof
+        elif source.get("document_subject") and document_proof_error:
+            proof_bindings["document_subject_error"] = document_proof_error
+        if isinstance(source.get("time_evidence"), dict) \
+                and source["time_evidence"].get("timezone_rule"):
+            _tz, timezone_proof, timezone_error = resolve_timezone_rule_binding(
+                source["time_evidence"], source, case, blobs)
+            if timezone_proof is not None:
+                proof_bindings["timezone"] = timezone_proof
+            else:
+                proof_bindings["timezone_error"] = timezone_error
 
         excerpt, excerpt_sha256, excerpt_text, start, end, locator_ref = \
             _sealed_excerpt_bytes(blobs, source, claim_spec)
@@ -457,7 +497,8 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
             "qualification_version": QUALIFICATION_VERSION,
             "case_basis": basis,
             "case_basis_version": basis_version,
-            "case_provenance_bindings": {"subject": subject_proof},
+            "case_provenance_bindings": basis_proofs,
+            "proof_bindings": proof_bindings,
             "case_flags": case_flags or {},
             "case_subject": basis["subject_legal_name"],
             "mapping": {

@@ -98,6 +98,11 @@ def check_na_legality(criterion: dict, proposal, case_subject: str) -> tuple[boo
         return False, "N/A case flag 来源未解析到封存对象字段（flag_ref）"
     if not isinstance(policy_subject, dict) or not policy_subject.get("_resolved"):
         return False, "N/A 政策主体未解析到封存对象字段（subject_ref）"
+    if proposal.get("relation_valid") is not True:
+        return False, (
+            "N/A applicability/flag/subject 未构成同一封存政策关系："
+            f"{proposal.get('relation_error') or '关系证明缺失'}"
+        )
     if policy == "explicit_no_external_financing_only":
         applicability_value = applicability.get("value")
         flag_value = flag.get("value")

@@ -391,12 +391,61 @@ def verify_result_bindings(case, blobs, result_row):
             if error or current_binding != subject_binding:
                 report.broken.append(
                     f"主体封存证明闭包不一致：{error or '原件/字段/值绑定已变更'}")
+        aliases_binding = bindings.get("aliases") if isinstance(bindings, dict) else None
+        if aliases_binding is not None:
+            try:
+                from .qualification import resolve_case_basis_proof_bindings
 
-    # 9) 合法 N/A 的政策字段必须仍能从封存对象重建，不能只相信冻结 JSON。
+                current_bindings, aliases_error = resolve_case_basis_proof_bindings(
+                    frozen.get("case_basis") or {}, case, blobs)
+            except (TypeError, ValueError) as exc:
+                current_bindings, aliases_error = None, str(exc)
+            if aliases_error or not isinstance(current_bindings, dict) \
+                    or current_bindings.get("aliases") != aliases_binding:
+                report.broken.append(
+                    "主体别名封存证明闭包不一致："
+                    f"{aliases_error or '原件/关系/字段/值绑定已变更'}")
+
+    # 9) runner 实际消费的第一方归属、时区规则等关系证明也必须能重建。
+    proof_bindings = frozen.get("proof_bindings")
+    if isinstance(proof_bindings, dict):
+        frozen_basis = frozen.get("case_basis") or {}
+        document_binding = proof_bindings.get("document_subject")
+        if document_binding is not None and source is not None:
+            try:
+                from .qualification import resolve_document_subject_proof_bindings
+
+                current, document_error = resolve_document_subject_proof_bindings(
+                    source, frozen_basis.get("subject_legal_name"), case, blobs)
+            except (TypeError, ValueError) as exc:
+                current, document_error = None, str(exc)
+            if document_error or current != document_binding:
+                report.broken.append(
+                    "第一方归属证明闭包不一致："
+                    f"{document_error or '关系/原件/字段/值绑定已变更'}")
+        timezone_binding = proof_bindings.get("timezone")
+        if timezone_binding is not None and source is not None:
+            try:
+                from .qualification import resolve_timezone_rule_binding
+
+                frozen_time = (frozen.get("source_inputs") or {}).get(
+                    "time_evidence_snapshot")
+                current_source = {**source, "time_evidence": frozen_time}
+                _tz, current, timezone_error = resolve_timezone_rule_binding(
+                    frozen_time or {}, current_source, case, blobs)
+            except (TypeError, ValueError) as exc:
+                current, timezone_error = None, str(exc)
+            if timezone_error or current != timezone_binding:
+                report.broken.append(
+                    "时区规则证明闭包不一致："
+                    f"{timezone_error or '规则/适用域/关系绑定已变更'}")
+
+    # 10) 合法 N/A 的政策字段必须仍能从封存对象重建，不能只相信冻结 JSON。
     na_proposal = frozen.get("na_proposal")
     if isinstance(na_proposal, dict) and na_proposal.get("proposal") == "not_applicable":
         from .qualification import resolve_case_field_reference_binding
 
+        current_bindings = []
         for ref_key, resolved_key in (("applicability_ref", "applicability_resolved"),
                                       ("flag_ref", "flag_resolved"),
                                       ("subject_ref", "subject_resolved")):
@@ -411,8 +460,18 @@ def verify_result_bindings(case, blobs, result_row):
             if error or actual != expected:
                 report.broken.append(
                     f"N/A 封存字段 {ref_key} 与冻结解析结果不一致")
+            else:
+                current_bindings.append(current)
+        if len(current_bindings) == 3:
+            from .qualification import _same_record_relation
 
-    # 10) 正向结果链（空链/非法N/A）
+            relation_ok, relation_error = _same_record_relation(*current_bindings)
+            if na_proposal.get("relation_valid") is not True or not relation_ok:
+                report.broken.append(
+                    "N/A 政策关系证明闭包不一致："
+                    f"{relation_error or na_proposal.get('relation_error') or '关系未冻结'}")
+
+    # 11) 正向结果链（空链/非法N/A）
     na_raw = result_row.get("na_basis")
     na_valid = False
     if na_raw:
