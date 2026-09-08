@@ -29,7 +29,7 @@ BASIS = {
     "evidence_cutoff": "2026-08-27T03:02:29Z",
     "subject_source_basis": json.dumps({
         "kind": "field_reference",
-        "path": "synthetic:identity-plan#/subjects/0/canonical_name_claimed",
+        "path": "case:identity-plan.json#/subjects/0/canonical_name_claimed",
         "status": "claimed"}, ensure_ascii=False),
 }
 
@@ -39,19 +39,39 @@ DOC = (
 QUOTE = "AR眼镜市场显示需求"
 
 
+DOC_V4 = (f"{SUBJECT}关注AR眼镜市场显示需求。发布于2026年7月16日。"
+          "本段为受控测试原文（synthetic=true）。").encode("utf-8")
+DATE_NEEDLE = "2026年7月16日"
+
+
+def _date_range(doc: bytes) -> tuple[int, int]:
+    text = doc.decode("utf-8")
+    pos = text.find(DATE_NEEDLE)
+    start = len(text[:pos].encode("utf-8"))
+    return start, start + len(DATE_NEEDLE.encode("utf-8"))
+
+
 @pytest.fixture()
 def case_dir(tmp_path):
     blobs = BlobStore(tmp_path / "blobs")
     case = CaseStore(tmp_path / "records.sqlite3")
-    ref = blobs.put_bytes(DOC)
+    ref = blobs.put_bytes(DOC_V4)
+    iref = blobs.put_bytes(json.dumps(
+        {"subjects": [{"canonical_name_claimed": SUBJECT}]},
+        ensure_ascii=False).encode("utf-8"))
+    case.add_import_record("case_provenance", "session:identity-plan.json",
+                           iref.sha256)
     import_id = case.add_import_record("attachment", "synthetic", ref.sha256,
                                        note='{"synthetic": true}')
-    case.add_source("SRC-SYN", ref.sha256, len(DOC),
+    case.add_source("SRC-SYN", ref.sha256, len(DOC_V4),
                     source_family="news-media",
                     capture_status="raw_capture_validated",
-                    published_at="2026-07-16T00:00:00Z",
-                    published_at_provenance="合成：文档自述日期",
                     import_id=import_id)
+    ds, de = _date_range(DOC_V4)
+    case.append_time_evidence("SRC-SYN", {
+        "kind": "document_self_date", "date": "2026-07-16",
+        "date_locator": {"kind": "byte_range", "start": ds, "end": de},
+        "basis": "合成正文日期"})
     case.close()
     return tmp_path
 
@@ -65,13 +85,18 @@ def _mapping_spec(doc: bytes, quote: str) -> dict:
             "end": start + len(quote.encode("utf-8"))}
 
 
-def _claim_spec(doc: bytes = DOC):
+_CONFIRM = {"confirmed": True, "confirmator": "executor-r1_3",
+            "review_basis": "来源陈述该市场需求假设（范围：来源陈述该假设）"}
+
+
+def _claim_spec(doc: bytes = DOC_V4, claim_id="CLM-SYN-CRL1"):
     return {
-        "claim_id": "CLM-SYN-CRL1",
-        "locator_kind": "byte_range", "start": 0, "end": len(DOC),
+        "claim_id": claim_id,
+        "locator_kind": "byte_range", "start": 0, "end": len(doc),
         "interpretation": "第三方载明主体的市场需求假设（AR眼镜显示需求）。",
         "subject_scope": SUBJECT,
         "criterion_mapping": _mapping_spec(doc, QUOTE),
+        "semantic_confirmation": _CONFIRM,
     }
 
 
@@ -86,7 +111,7 @@ def test_synthetic_qualified_slice_with_mapping(case_dir):
         case_dir, source_id="SRC-SYN", claim_spec=_claim_spec(),
         criterion_id="CRL1-C1", catalog=_catalog(), case_basis=BASIS)
     assert result["qualification_status"] == "qualified"
-    assert result["mapping_status"] == "mapped"
+    assert result["mapping_status"] == "confirmed"
     assert result["product_status"] == "succeeded"
     assert result["native_disposition"] is None
     assert result["trace_ok"] is True
@@ -103,7 +128,7 @@ def test_runner_resolves_criterion_from_catalog(case_dir):
 def test_unimplemented_criterion_in_slice_is_method_unsupported(case_dir):
     result = run_criterion_slice(
         case_dir, source_id="SRC-SYN",
-        claim_spec=dict(_claim_spec(), claim_id="CLM-SYN-CRL2"),
+        claim_spec=_claim_spec(claim_id="CLM-SYN-CRL2"),
         criterion_id="CRL2-C1", catalog=_catalog(), case_basis=BASIS)
     assert result["product_status"] == "method_unsupported"
     assert result["trace_ok"] is True
@@ -140,16 +165,17 @@ def test_same_claim_id_different_interpretation_rejected(case_dir):
 
 
 def test_late_retrieval_real_gap_path(case_dir):
+    # v4：清除时间证据修订并把抓取时间改为晚于截止 → 时间fail→rejected
     case = CaseStore(case_dir / "records.sqlite3")
     with case._conn:
+        case._conn.execute("DELETE FROM source_time_evidence")
         case._conn.execute(
-            "UPDATE sources SET published_at=NULL, "
-            "published_at_provenance='历史捕获无发布时间证明', "
-            "retrieved_at='2026-08-28T02:43:19Z' WHERE source_id='SRC-SYN'")
+            "UPDATE sources SET retrieved_at='2026-08-28T02:43:19Z' "
+            "WHERE source_id='SRC-SYN'")
     case.close()
     result = run_criterion_slice(
         case_dir, source_id="SRC-SYN",
-        claim_spec=dict(_claim_spec(), claim_id="CLM-SYN-LATE"),
+        claim_spec=_claim_spec(claim_id="CLM-SYN-LATE"),
         criterion_id="CRL1-C1", catalog=_catalog(), case_basis=BASIS)
     assert result["qualification_status"] == "rejected"
     assert result["product_status"] == "insufficient"
@@ -236,30 +262,33 @@ def test_cli_trace_broken_chain_returns_nonzero(case_dir, capsys):
 
 # ---- 真实 Case 门控复验（KTH_REAL_CASE_DIR_2；R1.2 新Case weijiu-r1_2） ----
 
-REAL_CASE = os.environ.get("KTH_REAL_CASE_DIR_2")
+REAL_CASE = os.environ.get("KTH_REAL_CASE_DIR_3")
 
 
-@pytest.mark.skipif(not REAL_CASE, reason="未设置 KTH_REAL_CASE_DIR_2（R1.2新Case）")
-class TestRealCaseSlicesR12:
+@pytest.mark.skipif(not REAL_CASE, reason="未设置 KTH_REAL_CASE_DIR_3（R1.3新Case）")
+class TestRealCaseSlicesR13:
     """R1.2 真实切片期望（诚实规则下的结果）：
 
     - 政府页（8bd0fcdb）：正文自载发布时间（真实定位）＋第三方提及主体全名
-      ＋市场需求陈述映射 → 期望 qualified 且 CRL1-C1 消费 succeeded（真实正向）。
+      ＋市场需求引文映射＋留痕语义确认 → 期望 qualified 且 CRL1-C1 消费
+      succeeded（真实正向；范围=来源陈述该假设）。
     - BP：第一方主体一致但时间证据为文件名候选级 → needs_review → 不足。
     - 公司报道：自载发布时间晚于截止7小时 → rejected → 不足。
     """
 
     def _load_specs(self):
         return json.loads(
-            (Path(REAL_CASE) / "audit" / "real-slice-specs-r1_2.json")
+            (Path(REAL_CASE) / "audit" / "real-slice-specs-r1_3.json")
             .read_text(encoding="utf-8"))
 
     def _run(self, spec, specs):
+        claim_spec = dict(spec["claim_spec"])
+        claim_spec.setdefault("semantic_confirmation",
+                              specs.get("semantic_confirmation"))
         return run_criterion_slice(
             Path(REAL_CASE), source_id=spec["source_id"],
-            claim_spec=spec["claim_spec"], criterion_id=spec["criterion_id"],
-            catalog=_catalog(), case_basis=specs["case_basis"],
-            case_flags=specs.get("case_flags") or None)
+            claim_spec=claim_spec, criterion_id=spec["criterion_id"],
+            catalog=_catalog(), case_basis=specs["case_basis"])
 
     def test_real_gov_claim_qualified_and_consumed(self):
         specs = self._load_specs()
@@ -267,7 +296,7 @@ class TestRealCaseSlicesR12:
                    if "GOV" in s["claim_spec"]["claim_id"])
         result = self._run(gov, specs)
         assert result["qualification_status"] == "qualified"
-        assert result["mapping_status"] == "mapped"
+        assert result["mapping_status"] == "confirmed"
         assert result["product_status"] == "succeeded"
         assert result["trace_ok"] is True
 

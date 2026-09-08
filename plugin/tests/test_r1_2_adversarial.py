@@ -22,7 +22,7 @@ BASIS = {
     "evidence_cutoff": CUTOFF,
     "subject_source_basis": json.dumps({
         "kind": "field_reference",
-        "path": "synthetic:identity-plan#/subjects/0/canonical_name_claimed",
+        "path": "case:identity-plan.json#/subjects/0/canonical_name_claimed",
         "status": "claimed"}, ensure_ascii=False),
 }
 
@@ -34,9 +34,18 @@ DOC = (
 
 # ---------- A. 依据必须可核验 ----------
 
-def _qualify(blobs, data: bytes, **source_over):
+def _qualify(blobs, data: bytes, tmp_path=None, **source_over):
     from kth_hybrid.qualification import qualify_claim
 
+    case = None
+    if tmp_path is not None:
+        iref = blobs.put_bytes(json.dumps(
+            {"subjects": [{"canonical_name_claimed":
+                           BASIS["subject_legal_name"]}]},
+            ensure_ascii=False).encode("utf-8"))
+        case = CaseStore(tmp_path / "records.sqlite3")
+        case.add_import_record("case_provenance",
+                               "session:identity-plan.json", iref.sha256)
     ref = blobs.put_bytes(data)
     start, end = 0, len(SUBJECT.encode("utf-8"))
     excerpt = data[start:end]
@@ -55,14 +64,19 @@ def _qualify(blobs, data: bytes, **source_over):
         "excerpt_text": excerpt.decode("utf-8", errors="replace"),
         "interpretation": "测试解释", "subject_scope": SUBJECT,
     }
-    return qualify_claim(claim, source, blobs, BASIS)
+    try:
+        return qualify_claim(claim, source, blobs, BASIS, case=case)
+    finally:
+        if case is not None:
+            case.close()
 
 
 class TestR12A:
     def test_empty_document_subject_basis_not_first_party(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
         outcome = _qualify(
-            blobs, DOC, document_subject=SUBJECT, document_subject_basis="",
+            blobs, DOC, tmp_path, document_subject=SUBJECT,
+            document_subject_basis="",
             published_at="2026-07-01T00:00:00Z")
         assert outcome.identity_judgment.verdict != "ok", \
             "第一方依据为空不能给身份ok"
@@ -70,7 +84,7 @@ class TestR12A:
     def test_nonexistent_date_locator_rejected(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
         outcome = _qualify(
-            blobs, DOC, document_subject=SUBJECT,
+            blobs, DOC, tmp_path, document_subject=SUBJECT,
             document_subject_basis="封面自识",
             time_evidence={"kind": "document_self_date", "date": "2026-07-01",
                            "date_locator": "page 999, which does not exist"})
@@ -81,7 +95,7 @@ class TestR12A:
         # 定位真实存在但内容不含该日期 → 不能作为日期证明
         blobs = BlobStore(tmp_path / "blobs")
         outcome = _qualify(
-            blobs, DOC, document_subject=SUBJECT,
+            blobs, DOC, tmp_path, document_subject=SUBJECT,
             document_subject_basis="封面自识",
             time_evidence={"kind": "document_self_date", "date": "2026-07-01",
                            "date_locator": {"kind": "byte_range", "start": 0,
@@ -98,7 +112,8 @@ class TestR12A:
         end = start + len("2026年7月1日".encode("utf-8"))
         blobs = BlobStore(tmp_path / "blobs")
         outcome = _qualify(
-            blobs, doc, document_subject=SUBJECT, document_subject_basis="封面自识",
+            blobs, doc, tmp_path, document_subject=SUBJECT,
+            document_subject_basis="封面自识",
             time_evidence={"kind": "document_self_date", "date": "2026-07-01",
                            "date_locator": {"kind": "byte_range", "start": start,
                                             "end": end}})
@@ -108,26 +123,31 @@ class TestR12A:
     def test_registered_at_without_real_record_rejected(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
         outcome = _qualify(
-            blobs, DOC, document_subject=SUBJECT, document_subject_basis="封面",
+            blobs, DOC, tmp_path, document_subject=SUBJECT,
+            document_subject_basis="封面",
             time_evidence={"kind": "registered_at", "date": "2026-07-01",
                            "basis": ""})
         assert outcome.time_judgment.verdict == "fail"
         assert outcome.status != "qualified"
 
     def test_registered_at_with_sealed_record_accepted(self, tmp_path):
-        # 登记记录真实封存（blob 内 JSON 的 copied_at 字段与声明一致）→ ok
+        # 登记记录真实封存且**绑定当前原件**（document_sha256一致）→ ok
         blobs = BlobStore(tmp_path / "blobs")
-        record = {"attachments": [{"stored_path": "inputs/attachments/0000.bin",
+        current_sha = sha256_hex(DOC)
+        record = {"document_sha256": current_sha,
+                  "attachments": [{"stored_path": "inputs/attachments/0000.bin",
                                    "copied_at": "2026-07-01T08:00:00Z"}]}
         rec_ref = blobs.put_bytes(
             json.dumps(record, ensure_ascii=False).encode("utf-8"))
         outcome = _qualify(
-            blobs, DOC, document_subject=SUBJECT, document_subject_basis="封面",
+            blobs, DOC, tmp_path, document_subject=SUBJECT,
+            document_subject_basis="封面",
             time_evidence={"kind": "registered_at",
                            "date": "2026-07-01T08:00:00Z",
                            "registration_proof": {
                                "blob_sha256": rec_ref.sha256,
-                               "field": "attachments[0].copied_at"}})
+                               "field": "attachments[0].copied_at",
+                               "document_sha256": current_sha}})
         assert outcome.time_judgment.verdict == "ok"
 
     def test_registered_at_record_mismatch_rejected(self, tmp_path):
@@ -136,7 +156,8 @@ class TestR12A:
         rec_ref = blobs.put_bytes(
             json.dumps(record).encode("utf-8"))
         outcome = _qualify(
-            blobs, DOC, document_subject=SUBJECT, document_subject_basis="封面",
+            blobs, DOC, tmp_path, document_subject=SUBJECT,
+            document_subject_basis="封面",
             time_evidence={"kind": "registered_at",
                            "date": "2026-07-01T00:00:00Z",  # 声明与记录不符
                            "registration_proof": {
@@ -241,7 +262,7 @@ class TestR12B:
         from kth_hybrid.runner import run_criterion_slice
 
         doc = (f"{SUBJECT}的产品设计产能将响应300万-400万副AR眼镜市场显示需求。"
-               "受控合成原文。").encode("utf-8")
+               "发布于2026年7月1日。受控合成原文。").encode("utf-8")
         text = doc.decode("utf-8")
         pos = text.find("300万-400万副AR眼镜市场显示需求")
         quote = "300万-400万副AR眼镜市场显示需求"
@@ -260,6 +281,9 @@ class TestR12B:
                 "subject_scope": SUBJECT,
                 "criterion_mapping": {"quote": quote, "start": quote_start,
                                       "end": quote_end},
+                "semantic_confirmation": {"confirmed": True,
+                                          "confirmator": "executor-r12",
+                                          "review_basis": "来源陈述该市场需求假设"},
             },
             case_basis=BASIS)
         assert result["qualification_status"] == "qualified"
@@ -271,7 +295,7 @@ class TestR12B:
         from kth_hybrid.runner import run_criterion_slice
 
         doc = (f"{SUBJECT}的产品设计产能将响应300万-400万副AR眼镜市场显示需求。"
-               "受控合成原文。").encode("utf-8")
+               "发布于2026年7月1日。受控合成原文。").encode("utf-8")
         text = doc.decode("utf-8")
         excerpt_end = len((text.split("。")[0] + "。").encode("utf-8"))
         case_dir = Path(self._make_case("forged-quote", doc=doc))
@@ -312,29 +336,31 @@ class TestR12B:
                     "value": True, "source": "合成融资策略声明"}})
 
     def test_na_requires_sourced_flag(self):
-        from kth_hybrid.dimensions import evaluate_criterion
+        # v4：N/A须结构化提案+预解析封存证据；本测试核验 kernels 层合同
         from kth_hybrid.kernels import check_na_legality
 
-        canonical = _catalog_criterion()
         frl4 = {"criterion_id": "FRL4-PITCH", "dimension": "FRL", "level": 4,
                 "na_policy": "explicit_no_external_financing_only"}
-        legal, _ = check_na_legality(
-            frl4, {"proposal": "not_applicable", "basis": "策略声明",
-                   "case_flag_source": "Case登记"},
-            {"explicit_no_external_financing": {"value": True,
-                                                "source": "登记"}})
+        ok = {"proposal": "not_applicable",
+              "applicability_ref": {"kind": "field_reference",
+                                    "path": "case:p.json#/s"},
+              "flag_ref": {"kind": "field_reference",
+                           "path": "case:p.json#/f"},
+              "applicability_resolved": {"_resolved": True, "value": "声明",
+                                         "path": "case:p.json#/s"},
+              "flag_resolved": {"_resolved": True, "value": True,
+                                "path": "case:p.json#/f"}}
+        legal, _ = check_na_legality(frl4, ok, {})
         assert legal
-        legal2, _ = check_na_legality(
-            frl4, {"proposal": "not_applicable", "basis": "策略声明",
-                   "case_flag_source": "登记"},
-            {"explicit_no_external_financing": {"value": True, "source": ""}})
-        assert not legal2, "flag无来源的N/A不得合法"
-        legal3, _ = check_na_legality(
-            frl4, {"proposal": "not_applicable", "basis": "",
-                   "case_flag_source": "登记"},
-            {"explicit_no_external_financing": {"value": True,
-                                                "source": "登记"}})
-        assert not legal3, "N/A无依据不得合法"
+        for bad in (
+            {**ok, "applicability_resolved": {"_resolved": False}},
+            {**ok, "flag_resolved": {"_resolved": False}},
+            {**ok, "flag_resolved": {"_resolved": True, "value": False}},
+            {"proposal": "not_applicable", "basis": "非空字符串",
+             "case_flag_source": "非空字符串"},
+        ):
+            illegal, why = check_na_legality(frl4, bad, {})
+            assert not illegal, why
 
     @staticmethod
     def _make_case(name: str, doc: bytes | None = None) -> Path:
@@ -344,14 +370,28 @@ class TestR12B:
         blobs = BlobStore(root / "blobs")
         case = CaseStore(root / "records.sqlite3")
         data = doc if doc is not None else (
-            f"{SUBJECT}关注AR眼镜市场显示需求。受控合成原文，无日期。").encode()
+            f"{SUBJECT}关注AR眼镜市场显示需求。发布于2026年7月1日。"
+            "受控合成原文。").encode()
         ref = blobs.put_bytes(data)
+        # 封存主体文档（v4：主体依据解析到封存字段值）
+        iref = blobs.put_bytes(json.dumps(
+            {"subjects": [{"canonical_name_claimed": SUBJECT}]},
+            ensure_ascii=False).encode("utf-8"))
+        case.add_import_record("case_provenance", "session:identity-plan.json",
+                               iref.sha256)
         import_id = case.add_import_record("attachment", "synthetic", ref.sha256)
         case.add_source("SRC-U", ref.sha256, len(data), import_id=import_id,
                         source_family="news-media",
-                        capture_status="raw_capture_validated",
-                        published_at="2026-07-01T00:00:00Z",
-                        published_at_provenance="合成字段")
+                        capture_status="raw_capture_validated")
+        text = data.decode("utf-8")
+        pos = text.find("2026年7月1日")
+        if pos >= 0:
+            ds = len(text[:pos].encode("utf-8"))
+            de = ds + len("2026年7月1日".encode("utf-8"))
+            case.append_time_evidence("SRC-U", {
+                "kind": "document_self_date", "date": "2026-07-01",
+                "date_locator": {"kind": "byte_range", "start": ds, "end": de},
+                "basis": "合成正文日期"})
         case.close()
         return root
 
@@ -365,27 +405,36 @@ def _wheel_catalog():
 # ---------- C. 冻结完整输入与trace ----------
 
 class TestR12C:
-    def _run_slice(self, case_dir, claim_id="CLM-FRZ", interpretation="解释一"):
+    def _run_slice(self, case_dir, claim_id="CLM-FRZ", interpretation="解释一",
+                   with_confirmation=True):
         from kth_hybrid.runner import run_criterion_slice
 
-        doc = (f"{SUBJECT}的产品将响应300万-400万副AR眼镜市场显示需求。合成原文。"
-               ).encode("utf-8")
+        blobs = BlobStore(case_dir / "blobs")
+        case = CaseStore(case_dir / "records.sqlite3")
+        source = case.fetch_one("sources", "source_id", "SRC-U")
+        doc = blobs.read_bytes(source["blob_sha256"])
+        case.close()
         text = doc.decode("utf-8")
         pos = text.find("300万-400万副AR眼镜市场显示需求")
-        start = len(text[:pos].encode("utf-8"))
         quote = "300万-400万副AR眼镜市场显示需求"
-        end = start + len(quote.encode("utf-8"))
+        q_start = len(text[:pos].encode("utf-8"))
+        q_end = q_start + len(quote.encode("utf-8"))
+        spec = {
+            "claim_id": claim_id,
+            "locator_kind": "byte_range", "start": 0,
+            "end": len(text.split("。")[0].encode("utf-8")) + 3,
+            "interpretation": interpretation,
+            "subject_scope": SUBJECT,
+            "criterion_mapping": {"quote": quote, "start": q_start,
+                                  "end": q_end},
+        }
+        if with_confirmation:
+            spec["semantic_confirmation"] = {
+                "confirmed": True, "confirmator": "executor-r12",
+                "review_basis": "来源陈述该市场需求假设"}
         return run_criterion_slice(
             case_dir, source_id="SRC-U", criterion_id="CRL1-C1",
-            catalog=_wheel_catalog(),
-            claim_spec={
-                "claim_id": claim_id,
-                "locator_kind": "byte_range", "start": start, "end": end,
-                "interpretation": interpretation,
-                "subject_scope": SUBJECT,
-                "criterion_mapping": {"quote": quote, "start": start, "end": end},
-            },
-            case_basis=BASIS)
+            catalog=_wheel_catalog(), claim_spec=spec, case_basis=BASIS)
 
     def test_digest_changes_when_criterion_tampered(self):
         # 完整判据身份进入摘要：同ID改维度/级别/文本 → 摘要必须不同
@@ -466,51 +515,104 @@ class TestR12C:
             case.close()
 
     def test_trace_failed_result_not_published_as_succeeded(self, tmp_path):
-        # 追溯失败的产物不得作为成功结果提交（保留失败候选，不转业务NO）
-        root = self._make_frozen_case(tmp_path)
-        first = self._run_slice(root)
-        case = CaseStore(root / "records.sqlite3")
-        with case._conn:  # 断开资格引用制造trace失败
-            case._conn.execute("DELETE FROM qualifications WHERE claim_id='CLM-FRZ'")
-        case.close()
-        # 重新执行同输入：trace失败 → 不得发布succeeded
+        # R1.3 确定性版本：同一CLM-FRZ，发布后破坏其资格记录并重跑同输入——
+        # 验证必须失败且不得把已发布成功翻转为失败发布之外的状态；
+        # 独立连接检查落库状态。
         from kth_hybrid.runner import run_criterion_slice
 
-        doc = (f"{SUBJECT}的产品将响应300万-400万副AR眼镜市场显示需求。合成原文。"
-               ).encode("utf-8")
+        root = self._make_frozen_case(tmp_path)
+        first = self._run_slice(root)  # 前置：正向候选实际发布成功
+        assert first["product_status"] == "succeeded"
+        assert first["trace_ok"] is True
+        # 确定性故障注入：删除资格记录（验证必然失败）
+        case = CaseStore(root / "records.sqlite3")
+        with case._conn:
+            case._conn.execute(
+                "DELETE FROM qualifications WHERE claim_id='CLM-FRZ'")
+        case.close()
+        # 重建资格（同输入重跑）后立刻再破坏并重跑：验证失败 → 不得发布成功
+        self._rerun_after_tamper(root)
+
+    def _rerun_after_tamper(self, root):
+        from kth_hybrid import runner as runner_mod
+        from kth_hybrid.runner import run_criterion_slice
+
+        # 先恢复资格（重跑同输入会重建），再在验证前删除 → 确定性验证失败
+        original = runner_mod._verify_candidate
+
+        def verify_then_break(case, blobs, candidate_row):
+            # 模拟"验证时刻"链路被外部破坏：资格记录在验证前被删除
+            with case._conn:
+                case._conn.execute("DELETE FROM qualifications")
+            return original(case, blobs, candidate_row)
+
+        # 使用新claim id避免与已发布结果冲突；验证在断链状态下必须失败
+        blobs = BlobStore(root / "blobs")
+        case = CaseStore(root / "records.sqlite3")
+        src_row = case.fetch_one("sources", "source_id", "SRC-U")
+        doc = blobs.read_bytes(src_row["blob_sha256"])
         text = doc.decode("utf-8")
         pos = text.find("300万-400万副AR眼镜市场显示需求")
-        start = len(text[:pos].encode("utf-8"))
         quote = "300万-400万副AR眼镜市场显示需求"
-        end = start + len(quote.encode("utf-8"))
-        result = run_criterion_slice(
-            root, source_id="SRC-U", criterion_id="CRL1-C1",
-            catalog=_wheel_catalog(),
-            claim_spec={
-                "claim_id": "CLM-FRZ2",
-                "locator_kind": "byte_range", "start": start, "end": end,
-                "interpretation": "第三方载明市场需求假设。",
-                "subject_scope": SUBJECT,
-                "criterion_mapping": {"quote": quote, "start": start, "end": end},
-            },
-            case_basis=BASIS)
-        if result["product_status"] == "succeeded":
-            assert result["trace_ok"] is True, "trace失败不得发布成功"
+        q_start = len(text[:pos].encode("utf-8"))
+        q_end = q_start + len(quote.encode("utf-8"))
+        case.close()
+        runner_mod._verify_candidate = verify_then_break
+        try:
+            result = run_criterion_slice(
+                root, source_id="SRC-U", criterion_id="CRL1-C1",
+                catalog=_wheel_catalog(),
+                claim_spec={
+                    "claim_id": "CLM-FRZ-FAILPATH",
+                    "locator_kind": "byte_range", "start": 0,
+                    "end": len(text.split("。")[0].encode("utf-8")) + 3,
+                    "interpretation": "第三方载明市场需求假设。",
+                    "subject_scope": SUBJECT,
+                    "criterion_mapping": {"quote": quote, "start": q_start,
+                                          "end": q_end},
+                    "semantic_confirmation": {
+                        "confirmed": True, "confirmator": "executor-r12",
+                        "review_basis": "来源陈述该市场需求假设"},
+                },
+                case_basis=BASIS)
+        finally:
+            runner_mod._verify_candidate = original
+        assert result["trace_ok"] is False
+        assert result["product_status"] != "succeeded",             "确定性验证失败后不得发布成功"
+        # 独立连接复查落库状态
+        case = CaseStore(root / "records.sqlite3")
+        try:
+            row = case.fetch_one("criterion_results", "result_id",
+                                 result["result_id"])
+            assert row is not None and row["product_status"] != "succeeded"
+        finally:
+            case.close()
 
     @staticmethod
     def _make_frozen_case(tmp_path):
         root = tmp_path / "frozen-case"
         blobs = BlobStore(root / "blobs")
         case = CaseStore(root / "records.sqlite3")
-        doc = (f"{SUBJECT}的产品将响应300万-400万副AR眼镜市场显示需求。合成原文。"
-               ).encode("utf-8")
+        doc = (f"{SUBJECT}的产品将响应300万-400万副AR眼镜市场显示需求。"
+               "发布于2026年7月1日。合成原文。").encode("utf-8")
         ref = blobs.put_bytes(doc)
+        iref = blobs.put_bytes(json.dumps(
+            {"subjects": [{"canonical_name_claimed": SUBJECT}]},
+            ensure_ascii=False).encode("utf-8"))
+        case.add_import_record("case_provenance", "session:identity-plan.json",
+                               iref.sha256)
         import_id = case.add_import_record("attachment", "synthetic", ref.sha256)
         case.add_source("SRC-U", ref.sha256, len(doc), import_id=import_id,
                         source_family="news-media",
-                        capture_status="raw_capture_validated",
-                        published_at="2026-07-01T00:00:00Z",
-                        published_at_provenance="合成字段")
+                        capture_status="raw_capture_validated")
+        text = doc.decode("utf-8")
+        pos = text.find("2026年7月1日")
+        ds = len(text[:pos].encode("utf-8"))
+        de = ds + len("2026年7月1日".encode("utf-8"))
+        case.append_time_evidence("SRC-U", {
+            "kind": "document_self_date", "date": "2026-07-01",
+            "date_locator": {"kind": "byte_range", "start": ds, "end": de},
+            "basis": "合成正文日期"})
         case.close()
         return root
 

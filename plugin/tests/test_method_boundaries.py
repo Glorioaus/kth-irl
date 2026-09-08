@@ -76,31 +76,68 @@ def test_frl_na_never_policy_rejects_na():
     frl1 = {"criterion_id": "FRL1-NEED", "dimension": "FRL", "level": 1,
             "na_policy": "never"}
     candidate = _qualified_candidate()
-    candidate["na_proposal"] = {"proposal": "not_applicable", "basis": "适用性依据（合成）",
-                          "case_flag_source": "Case登记的融资策略声明"}
+    candidate["na_proposal"] = {"proposal": "not_applicable",
+                          "applicability_ref": {"kind": "field_reference",
+                                                "path": "case:p.json#/s"},
+                          "flag_ref": {"kind": "field_reference",
+                                       "path": "case:p.json#/f"},
+                          "applicability_resolved": {"_resolved": True,
+                                                     "value": "声明",
+                                                     "path": "case:p.json#/s"},
+                          "flag_resolved": {"_resolved": True, "value": True,
+                                            "path": "case:p.json#/f"}}
     result = evaluate_criterion(frl1, candidate, FRL_VIEW)
     assert any("N/A 提案被拒" in n for n in result.notes)
     assert result.product_status != "succeeded"
-    legal, basis = check_na_legality(
-        frl1, {"proposal": "not_applicable", "basis": "b",
-               "case_flag_source": "s"}, {})
+    legal, basis = check_na_legality(frl1, {"proposal": "not_applicable",
+                          "applicability_ref": {"kind": "field_reference",
+                                                "path": "case:p.json#/s"},
+                          "flag_ref": {"kind": "field_reference",
+                                       "path": "case:p.json#/f"},
+                          "applicability_resolved": {"_resolved": True,
+                                                     "value": "声明",
+                                                     "path": "case:p.json#/s"},
+                          "flag_resolved": {"_resolved": True, "value": True,
+                                            "path": "case:p.json#/f"}}, {})
     assert not legal and "不允许 N/A" in basis
 
 
 def test_frl_restricted_na_requires_explicit_no_external_financing():
     frl4_pitch = {"criterion_id": "FRL4-PITCH", "dimension": "FRL", "level": 4,
                   "na_policy": "explicit_no_external_financing_only"}
+    na_ok = {"proposal": "not_applicable",
+             "applicability_ref": {"kind": "field_reference",
+                                   "path": "case:p.json#/s"},
+             "flag_ref": {"kind": "field_reference",
+                          "path": "case:p.json#/f"},
+             "applicability_resolved": {"_resolved": True, "value": "声明",
+                                        "path": "case:p.json#/s"},
+             "flag_resolved": {"_resolved": True, "value": True,
+                               "path": "case:p.json#/f"}}
     candidate = _qualified_candidate()
-    candidate["na_proposal"] = {"proposal": "not_applicable", "basis": "适用性依据（合成）",
-                          "case_flag_source": "Case登记的融资策略声明"}
-    # flag 缺失 → 非法
+    # flag 解析为假 → 非法
+    candidate["na_proposal"] = {**na_ok, "flag_resolved": {
+        "_resolved": True, "value": False, "path": "case:p.json#/f"}}
     result = evaluate_criterion(frl4_pitch, candidate, FRL_VIEW)
     assert any("N/A 提案被拒" in n for n in result.notes)
     assert result.product_status != "succeeded"
-    # 显式声明不计划外部融资（有源 flag）→ 合法 N/A
-    view = {**FRL_VIEW, "case_flags": {"explicit_no_external_financing": {
-        "value": True, "source": "Case登记的融资策略声明"}}}
-    result2 = evaluate_criterion(frl4_pitch, candidate, view)
+    # 引用未解析（无封存对象）→ 非法
+    candidate2 = _qualified_candidate()
+    candidate2["na_proposal"] = {
+        "proposal": "not_applicable",
+        "applicability_ref": {"kind": "field_reference",
+                              "path": "case:missing.json#/s"},
+        "flag_ref": {"kind": "field_reference",
+                     "path": "case:missing.json#/f"},
+        "applicability_resolved": {"_resolved": False},
+        "flag_resolved": {"_resolved": False}}
+    result_unresolved = evaluate_criterion(frl4_pitch, candidate2, FRL_VIEW)
+    assert any("N/A 提案被拒" in n for n in result_unresolved.notes)
+    assert result_unresolved.product_status != "succeeded"
+    # 引用解析且 flag 为真 → 合法 N/A（v4：由预解析证据决定）
+    candidate3 = _qualified_candidate()
+    candidate3["na_proposal"] = na_ok
+    result2 = evaluate_criterion(frl4_pitch, candidate3, FRL_VIEW)
     assert result2.product_status == "succeeded"
     assert "受限 N/A 合法成立" in result2.rationale
     assert result2.native_disposition is None
@@ -148,14 +185,23 @@ def test_only_implemented_rule_consumes_positive_channel():
     assert rule and rule["rule_kind"] == "specific" and rule["provenance"]
     candidate = _qualified_candidate()
     candidate["criterion_mapping"] = {
-        "status": "mapped", "quote_sha256": "0" * 64,
-        "basis": "引文逐字核验通过（合成）"}
+        "status": "confirmed", "quote_sha256": "0" * 64,
+        "confirmation": {"confirmed": True, "confirmator": "executor",
+                         "review_basis": "来源陈述该假设"},
+        "basis": "引文逐字核验通过＋留痕确认（合成）"}
     result = evaluate_criterion(crl1, candidate, CRL_VIEW)
     assert result.product_status == "succeeded"
     assert "不是原生 met" in result.rationale
     # 无映射 → 不成功（映射是必要条件）
     result2 = evaluate_criterion(crl1, _qualified_candidate(), CRL_VIEW)
     assert result2.product_status == "insufficient"
+    # 仅candidate（关键词命中无确认）→ 不成功
+    candidate3 = _qualified_candidate()
+    candidate3["criterion_mapping"] = {
+        "status": "candidate", "quote_sha256": "0" * 64,
+        "basis": "仅候选"}
+    result3 = evaluate_criterion(crl1, candidate3, CRL_VIEW)
+    assert result3.product_status == "insufficient"
 
 
 def test_registered_but_unimplemented_is_method_unsupported():

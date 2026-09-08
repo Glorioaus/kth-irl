@@ -425,6 +425,31 @@ class CaseStore:
         return {"version": row["version"],
                 **json.loads(row["snapshot_json"])}
 
+    def set_case_basis_if_changed(self, *, subject_legal_name: str,
+                                   subject_aliases: list[str],
+                                   evidence_cutoff: str,
+                                   subject_source_basis: str,
+                                   note: str | None = None) -> int:
+        """内容不变时复用最新版本（重跑不是新事件）；变化才追加新版本。"""
+        snapshot = {
+            "subject_legal_name": subject_legal_name,
+            "subject_aliases": subject_aliases,
+            "evidence_cutoff": evidence_cutoff,
+            "subject_source_basis": subject_source_basis,
+            "note": note,
+        }
+        versions = self._conn.execute(
+            "SELECT snapshot_json FROM case_basis_versions ORDER BY version "
+            "DESC LIMIT 1").fetchall()
+        if versions and json.loads(versions[0]["snapshot_json"]) == snapshot:
+            current = self.get_case_basis()
+            return current["version"]
+        return self.set_case_basis(
+            subject_legal_name=subject_legal_name,
+            subject_aliases=subject_aliases,
+            evidence_cutoff=evidence_cutoff,
+            subject_source_basis=subject_source_basis, note=note)
+
     def get_case_basis_versions(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT version, snapshot_json, created_at FROM case_basis_versions "
@@ -514,6 +539,14 @@ class CaseStore:
                 (claim_id, criterion_id, quote_start, quote_end, quote_sha256,
                  json.dumps(filter_hits, ensure_ascii=False), status),
             )
+
+    def fetch_mappings(self, claim_id: str, criterion_id: str) -> list[dict]:
+        """取该主张×判据的全部映射记录（按时间序；末行为最新）。"""
+        rows = self._conn.execute(
+            "SELECT * FROM claim_criterion_mappings WHERE claim_id=? AND "
+            "criterion_id=? ORDER BY id", (claim_id, criterion_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # ---- 记录写入（事务）----
 

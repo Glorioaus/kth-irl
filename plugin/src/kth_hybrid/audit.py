@@ -128,6 +128,217 @@ def _verify_projection(claim: dict, blob_data: bytes) -> str | None:
         return f"抽取投影重核失败：{type(exc).__name__}: {exc}"
 
 
+def _excerpt_bytes_for_claim(blobs, claim_row, source_row):
+    """取主张的封存摘录字节（byte_range 或投影文本），用于映射引文核验。"""
+    if claim_row["locator_kind"] == "byte_range":
+        data = blobs.read_bytes(source_row["blob_sha256"])
+        start, end = claim_row["locator_start"], claim_row["locator_end"]
+        if not (0 <= start < end <= len(data)):
+            return None
+        return data[start:end]
+    try:
+        locator_ref = json.loads(claim_row.get("locator_ref") or "{}")
+    except (TypeError, ValueError):
+        return None
+    data = blobs.read_bytes(source_row["blob_sha256"])
+    if claim_row["locator_kind"] == "pdf_page":
+        from .intake import extract_pdf_pages
+
+        for row in extract_pdf_pages(data).locators:
+            if row["page"] == locator_ref.get("page"):
+                return row["text"].encode("utf-8")
+    if claim_row["locator_kind"] == "zip_member":
+        import io
+        import zipfile
+
+        from .intake import extract_docx_paragraphs
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                member = archive.read(locator_ref["member"])
+            for row in extract_docx_paragraphs(member).locators:
+                if row["paragraph"] == locator_ref.get("paragraph"):
+                    return row["text"].encode("utf-8")
+        except Exception:
+            return None
+    return None
+
+
+def verify_result_bindings(case, blobs, result_row):
+    """R1.3-C 绑定核验（发布前与 trace 共用同一实现）。
+
+    对候选/已存结果行核验：冻结输入摘要自洽、来源判断字段未被改动、
+    所用时间证据修订快照未变、资格记录状态与内容一致、映射记录存在且
+    引文绑定封存原文、CaseBasis 版本快照完整一致、合法 N/A 链。
+    """
+    from .contracts import (
+        claim_content_digest,
+        qualification_content_digest,
+        run_input_digest_v3,
+        sha256_hex,
+    )
+
+    rid = result_row["result_id"]
+    report = TraceReport(
+        result_id=rid,
+        criterion_id=result_row.get("criterion_id", "?"),
+        dimension=result_row.get("dimension", "?"),
+        native_disposition=result_row.get("native_disposition"),
+        product_status=result_row.get("product_status", "execution_failed"),
+    )
+    frozen_raw = result_row.get("frozen_inputs")
+    stored_digest = result_row.get("input_digest")
+    qual_refs = _load_json(result_row.get("qual_refs"))
+    if not frozen_raw or not stored_digest:
+        report.broken.append(f"结果 {rid} 缺少冻结输入/输入摘要")
+        return report
+    try:
+        frozen = json.loads(frozen_raw)
+    except (TypeError, ValueError) as exc:
+        report.broken.append(f"结果 {rid} frozen_inputs 解析失败：{exc}")
+        return report
+
+    claim = None
+    source = None
+    for qual_id in qual_refs:
+        qual = case.fetch_one("qualifications", "qual_id", qual_id)
+        if qual:
+            claim = case.fetch_one("claims", "claim_id", qual["claim_id"])
+            if claim:
+                source = case.fetch_one("sources", "source_id",
+                                        claim["source_id"])
+            break
+    if claim is None:
+        report.broken.append(f"结果 {rid} 无法经资格链解析到主张/来源")
+        return report
+
+    # 1) 冻结输入摘要自洽（frozen + 当前主张行 → digest）
+    recomputed = run_input_digest_v3(frozen, claim)
+    if recomputed != stored_digest:
+        report.broken.append(
+            f"结果 {rid} 完整输入摘要不一致（存档 {stored_digest[:12]}… vs 重算 "
+            f"{recomputed[:12]}…）：冻结输入或主张内容在求值后被改动")
+    # 2) 主张内容摘要（解释/主体/定位/摘录文本篡改可检）
+    if claim.get("content_digest"):
+        if claim_content_digest(claim) != claim["content_digest"]:
+            report.broken.append(
+                f"主张 {claim['claim_id']} 内容摘要不一致（冻结后被改动）")
+
+    # 3) 来源判断字段未被改动（C3/C7）
+    frozen_source = frozen.get("source_inputs") or {}
+    if source is not None:
+        for field in ("published_at", "retrieved_at", "source_family",
+                      "capture_status", "document_subject"):
+            if source.get(field) != frozen_source.get(field):
+                report.broken.append(
+                    f"来源 {source['source_id']} 判断字段 {field} 与冻结值不符"
+                    f"（当前 {source.get(field)!r} vs 冻结 "
+                    f"{frozen_source.get(field)!r}）：发布后来源被改动")
+        # 4) 所用时间证据修订快照未变；新修订不破坏旧结果
+        rev = frozen_source.get("time_evidence_revision")
+        snapshot = frozen_source.get("time_evidence_snapshot")
+        if rev is not None:
+            history = {e["revision"]: {k: v for k, v in e.items()
+                                       if k not in ("revision", "created_at")}
+                       for e in case.get_time_evidence_history(
+                           source["source_id"])}
+            if rev not in history:
+                report.broken.append(
+                    f"来源 {source['source_id']} 的时间证据修订 {rev} 缺失"
+                    "（不可变版本被破坏）")
+            elif history[rev] != snapshot:
+                report.broken.append(
+                    f"来源 {source['source_id']} 的时间证据修订 {rev} 内容被改动")
+        if snapshot is None and source.get("time_evidence"):
+            report.broken.append(
+                f"来源 {source['source_id']} 存在列级时间证据但未冻结修订快照")
+
+    # 5) 资格记录状态与内容（C4）
+    if result_row.get("product_status") == "succeeded":
+        for qual_id in qual_refs:
+            qual = case.fetch_one("qualifications", "qual_id", qual_id)
+            if qual is None:
+                report.broken.append(f"资格 {qual_id} 引用断裂")
+                continue
+            if qual["status"] != "qualified":
+                report.broken.append(
+                    f"结果 {rid} 为 succeeded 但资格 {qual_id} 状态为 "
+                    f"{qual['status']}（不再支持成功发布）")
+            frozen_qd = frozen.get("qualification_digest")
+            if frozen_qd and qualification_content_digest(qual) != frozen_qd:
+                report.broken.append(
+                    f"资格 {qual_id} 内容与冻结摘要不一致（判断依据被改动）")
+
+    # 6) 映射记录存在且引文绑定封存原文（C5）
+    mapping_rows = case.fetch_mappings(claim["claim_id"],
+                                       result_row["criterion_id"])
+    frozen_mapping = frozen.get("mapping") or {}
+    if frozen_mapping.get("status") in ("confirmed", "candidate"):
+        if not mapping_rows:
+            report.broken.append(
+                f"主张 {claim['claim_id']} 的判据映射记录缺失（被删除）")
+        else:
+            latest = mapping_rows[-1]
+            if latest["quote_sha256"] != frozen_mapping.get("quote_sha256"):
+                report.broken.append(
+                    f"映射记录引文hash与冻结值不符（{latest['quote_sha256'][:12]}… "
+                    f"vs {str(frozen_mapping.get('quote_sha256'))[:12]}…）")
+            if result_row.get("product_status") == "succeeded" \
+                    and frozen_mapping.get("status") != "confirmed":
+                report.broken.append(
+                    f"结果 {rid} 为 succeeded 但冻结映射状态为 "
+                    f"{frozen_mapping.get('status')}（候选不构成支持关系）")
+        if source is not None and frozen_mapping.get("quote_sha256"):
+            excerpt = _excerpt_bytes_for_claim(blobs, claim, source)
+            if excerpt is None:
+                report.broken.append("无法取封存摘录以核验映射引文")
+            else:
+                qs = frozen_mapping.get("quote_start")
+                qe = frozen_mapping.get("quote_end")
+                if not (isinstance(qs, int) and isinstance(qe, int)
+                        and 0 <= qs < qe <= len(excerpt)) \
+                        or sha256_hex(excerpt[qs:qe]) \
+                        != frozen_mapping["quote_sha256"]:
+                    report.broken.append(
+                        "映射引文不再逐字位于封存摘录（引文/原文绑定破坏）")
+
+    # 7) CaseBasis 版本快照完整一致（C6：全字段，不只名称/截止）
+    bound_version = result_row.get("case_basis_version")
+    if bound_version is not None:
+        snapshot_row = case.get_case_basis_version(bound_version)
+        if snapshot_row is None:
+            report.broken.append(
+                f"结果 {rid} 绑定的 CaseBasis 版本 {bound_version} 快照缺失")
+        else:
+            stored_snapshot = {k: v for k, v in snapshot_row.items()
+                               if k != "version"}
+            frozen_basis = frozen.get("case_basis") or {}
+            if stored_snapshot != frozen_basis:
+                differing = sorted(
+                    k for k in set(stored_snapshot) | set(frozen_basis)
+                    if stored_snapshot.get(k) != frozen_basis.get(k))
+                report.broken.append(
+                    f"结果 {rid} 的 CaseBasis 版本 {bound_version} 快照与冻结输入"
+                    f"不一致（差异字段：{differing}）")
+
+    # 8) 正向结果链（空链/非法N/A）
+    na_raw = result_row.get("na_basis")
+    na_valid = False
+    if na_raw:
+        try:
+            na = json.loads(na_raw)
+            na_valid = (isinstance(na, dict)
+                        and str(na.get("basis") or "").strip()
+                        and str(na.get("case_flag_source") or "").strip())
+        except (TypeError, ValueError):
+            na_valid = False
+    if result_row.get("product_status") == "succeeded" and not qual_refs \
+            and not na_valid:
+        report.broken.append(
+            f"结果 {rid} 为 succeeded 但资格引用为空且无合法 N/A 依据")
+    return report
+
+
 def trace(case: CaseStore, blobs: BlobStore, result_id: str,
           *, strict: bool = True) -> TraceReport:
     """反向解析并核验一条判据结果的证据链。
@@ -353,6 +564,12 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
                         )
         except (TypeError, ValueError) as exc:
             report.broken.append(f"结果 {result_id} 的 frozen_inputs 解析失败：{exc}")
+
+    # R1.3-C: binding verification (shared with pre-publish verification)
+    binding = verify_result_bindings(case, blobs, result)
+    for item in binding.broken:
+        if item not in report.broken:
+            report.broken.append(item)
 
     if strict and report.broken:
         raise TraceBroken(report)

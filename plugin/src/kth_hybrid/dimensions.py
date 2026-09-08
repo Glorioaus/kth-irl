@@ -142,10 +142,10 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
     qualifications = judgment_candidate.get("qualifications") or []
     claims = judgment_candidate.get("claims") or {}
 
-    # 正向通道（R1.2-B）：合格主张 × 用途交集 × **引文映射成立**（三层都要过；
-    # 映射=引文逐字位于封存摘录+语义过滤命中，由 runner 预核后传入）
+    # 正向通道（R1.3-B）：合格主张 × 用途交集 × **映射已确认**（引文逐字位于
+    # 封存摘录+关键词候选+留痕语义确认经否定门控；candidate 不构成支持关系）
     mapping = judgment_candidate.get("criterion_mapping") or {}
-    mapping_ok = mapping.get("status") == "mapped"
+    mapping_ok = mapping.get("status") == "confirmed"
     supporting = []
     rejected_reasons = []
     for qual in qualifications:
@@ -183,8 +183,9 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
             continue
         if not mapping_ok:
             rejected_reasons.append(
-                f"{claim_id}:判据映射不成立——{mapping.get('basis', '未提供映射')}；"
-                f"{criterion_id} 需要'市场需求/问题/机会假设'类陈述的封存引文"
+                f"{claim_id}:判据映射未确认——{mapping.get('basis', '未提供映射')}；"
+                f"{criterion_id} 需要'来源陈述该假设'且经留痕语义确认（候选"
+                "不构成支持关系）"
             )
             continue
         supporting.append((claim_id, claim, allowed_uses))

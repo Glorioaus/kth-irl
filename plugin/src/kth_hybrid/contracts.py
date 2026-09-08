@@ -76,11 +76,11 @@ def claim_content_digest(claim_row: dict) -> str:
 
 
 def run_input_digest_v3(frozen_inputs: dict, claim_row: dict) -> str:
-    """完整输入摘要 v3（可仅凭存储数据重算：frozen_inputs + 主张内容摘要）。
+    """完整输入摘要 v4（R1.3-C：闭包补全；可仅凭存储数据重算）。
 
-    frozen_inputs 由 runner 写入 criterion_results.frozen_inputs，包含规范
-    判据全文、catalog/规则/资格策略版本、批准集合、CaseBasis 快照与版本、
-    适用性 flags、判据映射快照。
+    frozen_inputs 新增：source_inputs（实际参与判断的来源字段＋所用时间证据
+    修订快照）、qualification_digest、na_proposal 全文（含引用与解析值）、
+    mapping（含确认记录摘要）。
     """
     payload = json.dumps({
         "criterion": {k: frozen_inputs.get("criterion", {}).get(k) for k in
@@ -93,7 +93,26 @@ def run_input_digest_v3(frozen_inputs: dict, claim_row: dict) -> str:
         "case_flags": frozen_inputs.get("case_flags", {}),
         "claim_content_digest": claim_content_digest(claim_row),
         "mapping": {k: frozen_inputs.get("mapping", {}).get(k) for k in
-                    ("status", "quote_sha256", "quote_start", "quote_end")}
+                    ("status", "quote_sha256", "quote_start", "quote_end",
+                     "confirmation")}
         if isinstance(frozen_inputs.get("mapping"), dict) else None,
+        "source_inputs": frozen_inputs.get("source_inputs", {}),
+        "qualification_digest": frozen_inputs.get("qualification_digest", ""),
+        "na_proposal": frozen_inputs.get("na_proposal"),
+    }, ensure_ascii=False, sort_keys=True)
+    return sha256_hex(payload.encode("utf-8"))
+
+
+def qualification_content_digest(qualification_row: dict) -> str:
+    """资格记录内容摘要（四类判断依据＋用途＋状态；篡改可检）。"""
+    payload = json.dumps({
+        "claim_id": qualification_row.get("claim_id"),
+        "source_judgment": qualification_row.get("source_judgment"),
+        "identity_judgment": qualification_row.get("identity_judgment"),
+        "time_judgment": qualification_row.get("time_judgment"),
+        "independence_judgment": qualification_row.get("independence_judgment"),
+        "allowed_uses": qualification_row.get("allowed_uses"),
+        "cannot_prove": qualification_row.get("cannot_prove"),
+        "status": qualification_row.get("status"),
     }, ensure_ascii=False, sort_keys=True)
     return sha256_hex(payload.encode("utf-8"))

@@ -27,7 +27,7 @@ BASIS_A = {
     "evidence_cutoff": "2026-08-27T03:02:29Z",
     "subject_source_basis": json.dumps({
         "kind": "field_reference",
-        "path": "synthetic:identity-plan#/subjects/0/canonical_name_claimed",
+        "path": "case:identity-plan.json#/subjects/0/canonical_name_claimed",
         "status": "claimed"}, ensure_ascii=False),
 }
 CUTOFF = "2026-08-27T03:02:29Z"
@@ -38,9 +38,23 @@ DOC_A_MENTIONS = f"行业分析提及{SUBJECT_A}的MicroLED业务。受控测试
 
 # ---------- R1-01 资格 ----------
 
-def _qualify(blobs, data: bytes, *, family="owner_attachment", **source_over):
+
+def _sealed_subject_case(tmp_path, subject=SUBJECT_A):
+    blobs = BlobStore(tmp_path / "blobs")
+    case = CaseStore(tmp_path / "records.sqlite3")
+    ref = blobs.put_bytes(json.dumps(
+        {"subjects": [{"canonical_name_claimed": subject}]},
+        ensure_ascii=False).encode("utf-8"))
+    case.add_import_record("case_provenance", "session:identity-plan.json",
+                           ref.sha256)
+    case.close()
+
+def _qualify(blobs, data: bytes, tmp_path=None, *,
+             family="owner_attachment", **source_over):
     from kth_hybrid.qualification import qualify_claim
 
+    if tmp_path is not None:
+        _sealed_subject_case(tmp_path)
     ref = blobs.put_bytes(data)
     start, end = 0, min(20, len(data))
     excerpt = data[start:end]
@@ -58,21 +72,26 @@ def _qualify(blobs, data: bytes, *, family="owner_attachment", **source_over):
         "excerpt_text": excerpt.decode("utf-8", errors="replace"),
         "interpretation": "测试解释", "subject_scope": SUBJECT_A,
     }
-    return qualify_claim(claim, source, blobs, BASIS_A)
+    case = CaseStore(tmp_path / "records.sqlite3") if tmp_path else None
+    try:
+        return qualify_claim(claim, source, blobs, BASIS_A, case=case)
+    finally:
+        if case is not None:
+            case.close()
 
 
 class TestR101Qualification:
     def test_wrong_entity_attachment_is_not_first_party(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
         # 与审核Q1一致：时间合法，只考察身份——文档正文自识 Company-B
-        outcome = _qualify(blobs, DOC_B, published_at="2026-07-01T00:00:00Z",
+        outcome = _qualify(blobs, DOC_B, tmp_path, published_at="2026-07-01T00:00:00Z",
                            published_at_provenance="合成字段")
         assert outcome.status != "qualified", "错主体附件不得qualified"
         assert outcome.identity_judgment.verdict != "ok"
 
     def test_future_document_date_rejected(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_B, time_evidence={
+        outcome = _qualify(blobs, DOC_B, tmp_path, time_evidence={
             "kind": "document_self_date", "date": "2099-01-01",
             "basis": "合成", "date_locator": "page 1"})
         assert outcome.status != "qualified"
@@ -80,21 +99,21 @@ class TestR101Qualification:
 
     def test_missing_document_date_rejected(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_B, time_evidence={
+        outcome = _qualify(blobs, DOC_B, tmp_path, time_evidence={
             "kind": "document_self_date", "date": None, "basis": "缺日期"})
         assert outcome.status != "qualified"
         assert outcome.time_judgment.verdict == "fail"
 
     def test_invalid_document_date_rejected(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_B, time_evidence={
+        outcome = _qualify(blobs, DOC_B, tmp_path, time_evidence={
             "kind": "document_self_date", "date": "not-a-date", "basis": "非法日期"})
         assert outcome.status != "qualified"
         assert outcome.time_judgment.verdict == "fail"
 
     def test_filename_derived_date_is_candidate_only(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_B, time_evidence={
+        outcome = _qualify(blobs, DOC_B, tmp_path, time_evidence={
             "kind": "filename_derived_date", "date": "2026-07-16",
             "basis": "文件名BP260716推定"})
         assert outcome.status != "qualified", "文件名日期不能自动证明截止前存在"
@@ -103,7 +122,7 @@ class TestR101Qualification:
 
     def test_late_registration_without_time_proof_fails(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_B, time_evidence={
+        outcome = _qualify(blobs, DOC_B, tmp_path, time_evidence={
             "kind": "registered_at", "date": "2026-08-27T04:13:11Z",
             "basis": "附件登记时间晚于截止"})
         assert outcome.time_judgment.verdict == "fail"
@@ -114,7 +133,7 @@ class TestR101Qualification:
         blobs = BlobStore(tmp_path / "blobs")
         basis_no_source = {"subject_legal_name": SUBJECT_A,
                            "subject_aliases": [], "evidence_cutoff": CUTOFF}
-        outcome = _qualify(blobs, DOC_A_MENTIONS)
+        outcome = _qualify(blobs, DOC_A_MENTIONS, tmp_path)
         # 有来源CaseBasis可用；无来源CaseBasis必须拒绝执行（不是静默使用）
         with pytest.raises((KeyError, ValueError, RuntimeError)):
             qualify_claim(
@@ -137,7 +156,7 @@ class TestR101Qualification:
         dstart = len(text[:pos].encode("utf-8"))
         dend = dstart + len("2026年7月1日".encode("utf-8"))
         outcome = _qualify(
-            blobs, dated, byte_length=len(dated),
+            blobs, dated, tmp_path, byte_length=len(dated),
             time_evidence={"kind": "document_self_date", "date": "2026-07-01",
                            "basis": "正文日期",
                            "date_locator": {"kind": "byte_range", "start": dstart,
@@ -168,13 +187,18 @@ class TestR101Qualification:
             "excerpt_text": excerpt.decode("utf-8", errors="replace"),
             "interpretation": "测试", "subject_scope": "武钢集团",  # 前两字同为“武”
         }
-        outcome = qualify_claim(claim, source, blobs, BASIS_A)
+        _sealed_subject_case(tmp_path)
+        sealed = CaseStore(tmp_path / "records.sqlite3")
+        try:
+            outcome = qualify_claim(claim, source, blobs, BASIS_A, case=sealed)
+        finally:
+            sealed.close()
         assert outcome.identity_judgment.verdict != "ok", \
             "scope仅前缀相似不得当作主体范围主张"
 
     def test_unknown_source_family_needs_review_not_ok(self, tmp_path):
         blobs = BlobStore(tmp_path / "blobs")
-        outcome = _qualify(blobs, DOC_A_MENTIONS, family="totally-unknown-family",
+        outcome = _qualify(blobs, DOC_A_MENTIONS, tmp_path, family="totally-unknown-family",
                            time_evidence={"kind": "document_self_date",
                                           "date": "2026-07-01", "basis": "正文",
                                           "date_locator": "p1"})
@@ -271,7 +295,7 @@ class TestR102Criteria:
 
 def _seed_result(case: CaseStore, blobs: BlobStore, *, result_id="RES-T",
                  product_status="succeeded", qual_refs=None, evidence_refs=None,
-                 excerpt_text=None):
+                 excerpt_text=None, with_frozen=True):
     ref = blobs.put_bytes(b"sealed-original-bytes-for-trace-test")
     import_id = case.add_import_record("attachment", "synthetic", ref.sha256)
     case.add_source("SRC-T", ref.sha256, ref.byte_length, import_id=import_id,
@@ -287,12 +311,53 @@ def _seed_result(case: CaseStore, blobs: BlobStore, *, result_id="RES-T",
                            identity_judgment="b", time_judgment="b",
                            independence_judgment="b", allowed_uses=["u"],
                            cannot_prove=[], review_attempt="t", status="qualified")
+    from kth_hybrid.contracts import (
+        claim_content_digest, qualification_content_digest, run_input_digest_v3)
+
+    basis_version = case.set_case_basis_if_changed(
+        subject_legal_name=SUBJECT_A, subject_aliases=["A公司"],
+        evidence_cutoff=CUTOFF,
+        subject_source_basis=BASIS_A["subject_source_basis"])
+    claim_row = case.fetch_one("claims", "claim_id", "CLM-T")
+    source_row = case.fetch_one("sources", "source_id", "SRC-T")
+    qual_row = case.fetch_one("qualifications", "qual_id", "QUAL-T")
+    frozen = None
+    digest = None
+    if with_frozen:
+        frozen = {
+            "criterion": {"criterion_id": "CRL1-C1", "dimension": "CRL",
+                          "level": 1, "text": "t", "na_policy": None},
+            "catalog_sha256": "", "approved_ids": ["CRL1-C1"],
+            "rule_version": "kth-hybrid.kernels.r1-narrow.v4",
+            "qualification_version": "kth-hybrid.qualification.v4",
+            "case_basis": {k: BASIS_A.get(k) for k in
+                           ("subject_legal_name", "subject_aliases",
+                            "evidence_cutoff", "subject_source_basis", "note")},
+            "case_basis_version": basis_version,
+            "case_flags": {},
+            "mapping": {"status": None, "quote_sha256": None,
+                        "quote_start": 0, "quote_end": 0, "confirmation": None},
+            "source_inputs": {
+                "published_at": source_row.get("published_at"),
+                "retrieved_at": source_row.get("retrieved_at"),
+                "source_family": source_row.get("source_family"),
+                "capture_status": source_row.get("capture_status"),
+                "document_subject": source_row.get("document_subject"),
+                "time_evidence_revision": None,
+                "time_evidence_snapshot": None,
+            },
+            "qualification_digest": qualification_content_digest(qual_row),
+            "na_proposal": None,
+        }
+        digest = run_input_digest_v3(frozen, claim_row)
     case.add_criterion_result(
         result_id, "CRL1-C1", "CRL",
         native_disposition=None, native_note="", product_status=product_status,
         evidence_refs=evidence_refs if evidence_refs is not None else ["SRC-T"],
         gap_refs=[], qual_refs=(["QUAL-T"] if qual_refs is None else qual_refs),
-        rationale="r", scope="A", rule_version="v")
+        rationale="r", scope="A", rule_version="v",
+        input_digest=digest, case_basis_version=basis_version,
+        frozen_inputs=frozen, na_basis=None)
 
 
 class TestR103TraceFreeze:
@@ -410,9 +475,8 @@ class TestR103TraceFreeze:
             import_id = case.add_import_record("attachment", "synthetic", ref.sha256)
             case.add_source("SRC-RR", ref.sha256, len(data), import_id=import_id,
                             source_family="owner_attachment",
-                            capture_status="attachment",
-                            published_at="2026-07-01T00:00:00Z",
-                            published_at_provenance="合成字段")
+                            capture_status="attachment")
+            _sealed_subject_case(tmp_path)
             case.close()
             spec = {
                 "claim_id": "CLM-REPLAY",
@@ -711,7 +775,8 @@ class TestR106SourceIdentity:
     def test_independence_not_inferred_from_source_count(self, tmp_path):
         from kth_hybrid.intake import import_capture
 
-        body = f"{SUBJECT_A}发布独立性测试声明。".encode("utf-8")
+        body = (f"{SUBJECT_A}发布独立性测试声明。发布于2026年7月1日。"
+                ).encode("utf-8")
         for i, (url, day) in enumerate([("https://x.example/1", "01"),
                                         ("https://x.example/2", "02"),
                                         ("https://x.example/3", "03")]):
@@ -722,6 +787,11 @@ class TestR106SourceIdentity:
         try:
             from kth_hybrid.qualification import qualify_claim
 
+            iref = blobs.put_bytes(json.dumps(
+                {"subjects": [{"canonical_name_claimed": SUBJECT_A}]},
+                ensure_ascii=False).encode("utf-8"))
+            case.add_import_record("case_provenance",
+                                   "session:identity-plan.json", iref.sha256)
             for i in range(3):
                 import_capture(tmp_path / f"CAP-I{i}", blobs, case)
             occurrences = sum(1 for s in case.fetch_all("sources")
@@ -738,13 +808,20 @@ class TestR106SourceIdentity:
                 "excerpt_text": body[:subject_len].decode("utf-8"),
                 "interpretation": "t", "subject_scope": SUBJECT_A,
             }
+            dpos = body.decode("utf-8").find("2026年7月1日")
+            ds2 = len(body.decode("utf-8")[:dpos].encode("utf-8"))
+            de2 = ds2 + len("2026年7月1日".encode("utf-8"))
             source = {"source_id": "SRC-I", "blob_sha256": ref.sha256,
                       "byte_length": len(body), "capture_status":
                       "raw_capture_validated", "source_family": "news-media",
-                      "retrieved_at": "2026-09-01T00:00:00Z", "published_at":
-                      "2026-07-01T00:00:00Z", "published_at_provenance": "字段"}
+                      "retrieved_at": None, "published_at": None,
+                      "published_at_provenance": "",
+                      "time_evidence": {
+                          "kind": "document_self_date", "date": "2026-07-01",
+                          "date_locator": {"kind": "byte_range", "start": ds2,
+                                           "end": de2}}}
             outcome = qualify_claim(claim, source, blobs, BASIS_A,
-                                    same_body_sources=3)
+                                    same_body_sources=3, case=case)
             assert outcome.independence_judgment.verdict == "unknown"
             assert outcome.status == "needs_review", \
                 "除独立性未知外其余判断应为ok：结果须为needs_review而非rejected"

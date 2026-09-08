@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from kth_hybrid.audit import TraceBroken, render_trace, trace
@@ -50,6 +52,49 @@ def stack(tmp_path):
         pipeline_fault=False, investigation="receipt 无发布时间字段，未发现其他证明",
         unconfirmed=["发布时间是否早于证据截止"],
     )
+    from kth_hybrid.contracts import (
+        qualification_content_digest, run_input_digest_v3)
+
+    basis_version = case.set_case_basis_if_changed(
+        subject_legal_name="微玖（法定主体识别）", subject_aliases=["微玖"],
+        evidence_cutoff="2026-08-27T03:02:29Z",
+        subject_source_basis=json.dumps({
+            "kind": "field_reference",
+            "path": "case:identity-plan.json#/subjects/0/canonical_name_claimed",
+            "status": "claimed"}, ensure_ascii=False))
+    claim_row = case.fetch_one("claims", "claim_id", "CLM-1")
+    source_row = case.fetch_one("sources", "source_id", "SRC-1")
+    qual_row = case.fetch_one("qualifications", "qual_id", "QUAL-1")
+    frozen = {
+        "criterion": {"criterion_id": "CRL2-C1", "dimension": "CRL",
+                      "level": 2, "text": "t", "na_policy": None},
+        "catalog_sha256": "", "approved_ids": ["CRL1-C1", "CRL2-C1"],
+        "rule_version": "kth-hybrid.kernels.r1-narrow.v4",
+        "qualification_version": "kth-hybrid.qualification.v4",
+        "case_basis": {"subject_legal_name": "微玖（法定主体识别）",
+                       "subject_aliases": ["微玖"],
+                       "evidence_cutoff": "2026-08-27T03:02:29Z",
+                       "subject_source_basis": json.dumps({
+                           "kind": "field_reference",
+                           "path": "case:identity-plan.json#/subjects/0/canonical_name_claimed",
+                           "status": "claimed"}, ensure_ascii=False),
+                       "note": None},
+        "case_basis_version": basis_version,
+        "case_flags": {},
+        "mapping": {"status": None, "quote_sha256": None,
+                    "quote_start": 0, "quote_end": 0, "confirmation": None},
+        "source_inputs": {
+            "published_at": source_row.get("published_at"),
+            "retrieved_at": source_row.get("retrieved_at"),
+            "source_family": source_row.get("source_family"),
+            "capture_status": source_row.get("capture_status"),
+            "document_subject": source_row.get("document_subject"),
+            "time_evidence_revision": None,
+            "time_evidence_snapshot": None,
+        },
+        "qualification_digest": qualification_content_digest(qual_row),
+        "na_proposal": None,
+    }
     case.add_criterion_result(
         "RES-1", "CRL2-C1", "CRL",
         native_disposition=None, native_note="R1 未调用原版 vertical",
@@ -57,6 +102,8 @@ def stack(tmp_path):
         evidence_refs=["SRC-1"], gap_refs=["GAP-1"], qual_refs=["QUAL-1"],
         rationale="唯一候选主张时间资格不成立（晚抓取且无发布时间证明），如实不足。",
         scope="微玖（法定主体识别）", rule_version="kth-hybrid.qualification.v1",
+        input_digest=run_input_digest_v3(frozen, claim_row),
+        case_basis_version=basis_version, frozen_inputs=frozen, na_basis=None,
     )
     yield {"blobs": blobs, "case": case, "ref": ref}
     case.close()
