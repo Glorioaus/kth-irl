@@ -1692,10 +1692,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL1-C2",
@@ -1707,10 +1707,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL1-C3",
@@ -1722,10 +1722,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL1-C4",
@@ -1737,10 +1737,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL1-C5",
@@ -1752,10 +1752,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL2-C1",
@@ -1767,10 +1767,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL2-C2",
@@ -1782,10 +1782,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL2-C3",
@@ -1797,10 +1797,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL2-C4",
@@ -1812,10 +1812,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL3-C1",
@@ -1827,10 +1827,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL3-C2",
@@ -1842,10 +1842,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL3-C3",
@@ -1857,10 +1857,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL3-C4",
@@ -1872,10 +1872,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL4-C1",
@@ -1887,10 +1887,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL4-C2",
@@ -1902,10 +1902,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL4-C3",
@@ -1917,10 +1917,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL5-C1",
@@ -1932,10 +1932,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL5-C2",
@@ -1947,10 +1947,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL5-C3",
@@ -1962,10 +1962,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL6-C1",
@@ -1977,10 +1977,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL6-C2",
@@ -1992,10 +1992,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL6-C3",
@@ -2007,10 +2007,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL6-C4",
@@ -2022,10 +2022,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL6-C5",
@@ -2037,10 +2037,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL7-C1",
@@ -2052,10 +2052,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL7-C2",
@@ -2067,10 +2067,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL8-C1",
@@ -2082,10 +2082,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL8-C2",
@@ -2097,10 +2097,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL8-C3",
@@ -2112,10 +2112,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL9-C1",
@@ -2127,10 +2127,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL9-C2",
@@ -2142,10 +2142,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL9-C3",
@@ -2157,10 +2157,10 @@
       "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/iprl.py",
+      "method_difference": "保留optional与one-of门；权属、申请、授权、保护性和FTO分离，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_iprl.py::test_each_iprl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "FRL1-NEED",
