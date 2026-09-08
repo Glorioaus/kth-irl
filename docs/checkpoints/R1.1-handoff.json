@@ -1,0 +1,214 @@
+{
+  "schema_version": "kth-hybrid.r1_1-handoff.v1",
+  "generated_at": "2026-09-08T09:50:00+08:00",
+  "authorization": {
+    "instruction": "D:/t/kth-r1-review-20260908/发给GLM的R1限定修复指令.md",
+    "review_report": "D:/t/kth-r1-review-20260908/R1独立验收与修复裁决.md",
+    "scope": "仅R1-01至R1-06及P2更正；不授权R2/真实Provider/正式D1/正式报告",
+    "reviewer_approval_claimed": false
+  },
+  "branch": "codex/runtime-rebuild",
+  "reviewed_baseline": "609b26b（验收报告被审HEAD；与修复起点工作区一致，其间无其他提交）",
+  "code_commit": "a41559d（15文件，+1954/-552）",
+  "head_note": "本交接文件随下一个检查点提交入库；含交接文件后的HEAD/统计以其提交输出为准，不与代码提交数字混用",
+  "environment": {
+    "python": "3.12.10 (miniforge)",
+    "venv": "D:/UGit/kth-irl-hybrid/plugin/.venv（离线，未新增第三方依赖）",
+    "network": "零网络；未加载凭证；未调用真实Provider/运行时模型API；未改注册表/ACL；未push/merge/tag",
+    "case_snapshot_policy": "D:/t/kth-rebuild-cases/weijiu-r1 只读保留（被审快照）；新运行全部写 D:/t/kth-rebuild-cases/weijiu-r1_1"
+  },
+  "fix_items": [
+    {
+      "id": "R1-01",
+      "title": "资格判断绕过主体和时间",
+      "fix_locations": ["plugin/src/kth_hybrid/qualification.py（v2全重写）", "plugin/src/kth_hybrid/store.py（case_basis表/document_subject列/source_time_evidence追加版本表）"],
+      "adversarial_tests": ["test_wrong_entity_attachment_is_not_first_party", "test_future_document_date_rejected", "test_missing_document_date_rejected", "test_invalid_document_date_rejected", "test_filename_derived_date_is_candidate_only", "test_late_registration_without_time_proof_fails", "test_case_basis_must_carry_subject_source", "test_three_meanings_separated", "test_subject_scope_prefix_match_hack_removed", "test_unknown_source_family_needs_review_not_ok"],
+      "old_code_result": "34/37反例失败清单中R1-01部分全部失败（错主体/未来日期/缺日期均qualified；与审核adversarial-observations.json Q1-Q3同型）",
+      "new_code_result": "全部通过；真实BP主张重新资格化为needs_review（不再伪qualified）"
+    },
+    {
+      "id": "R1-02",
+      "title": "原生met可由提案直写，业务规则被通用路由替代",
+      "fix_locations": ["plugin/src/kth_hybrid/dimensions.py（v2）", "plugin/src/kth_hybrid/kernels/__init__.py（IMPLEMENTED_RULES单判据CRL1-C1带registry出处；删除use_class_supports_criterion通用路由；check_tmrl_identity_binding结构修复）"],
+      "adversarial_tests": ["test_native_met_proposal_never_becomes_final", "test_unregistered_criterion_rejected", "test_unimplemented_rule_is_method_unsupported", "test_implemented_rule_requires_provenance", "test_generic_level_routing_removed", "test_tmrl_identity_dict_structure_paired"],
+      "old_code_result": "E1无证据met直写/E2未登记判据succeeded/E3未实现误报insufficient均复现",
+      "new_code_result": "提案仅入notes且native保持null；未登记/未实现均method_unsupported；仅CRL1-C1按有出处规则消费；TMRL成对测试通过"
+    },
+    {
+      "id": "R1-03",
+      "title": "trace失败开放，冻结与重放检查不成立",
+      "fix_locations": ["plugin/src/kth_hybrid/audit.py（_load_json_strict/正向闭包/摘录文本绑定hash）", "plugin/src/kth_hybrid/runner.py（qualification_id/result_id完整ID、claim_input_digest、同ID异输入RuntimeError）", "plugin/src/kth_hybrid/store.py（claims.input_digest、runs留痕、append_time_evidence）"],
+      "adversarial_tests": ["test_succeeded_with_empty_qual_refs_fails", "test_malformed_json_refs_fail_closed", "test_evidence_closure_mismatch_fails", "test_replaced_excerpt_text_breaks_trace", "test_full_ids_no_truncation_collision", "test_case_basis_persisted_with_run", "test_time_evidence_revision_appends_not_updates", "test_same_claim_id_different_input_rejected_or_versioned"],
+      "old_code_result": "A1空链/A2畸形JSON/A3改写摘录文本trace均通过；A4同ID异输入replay_consistent=true；qual_id截断24字符",
+      "new_code_result": "全部TraceBroken/RuntimeError；完整ID；新Case runs=2条输入摘要留痕；时间证据追加版本且旧版保留"
+    },
+    {
+      "id": "R1-04",
+      "title": "唯一认领、fencing与终态不可覆盖存在竞争窗口",
+      "fix_locations": ["plugin/src/kth_hybrid/journal.py（v2：BEGIN IMMEDIATE+_WriteTxn+条件UPDATE行数检查+终态集合限制+_reject_reason区分输入/fencing/终态）"],
+      "adversarial_tests": ["test_fixed_interleave_double_claim_impossible(barrier固定交错)", "test_stale_worker_cannot_overwrite_after_new_commit", "test_same_token_second_commit_rejected_terminal_immutable", "test_failed_attempt_cannot_be_flipped_to_success", "test_worker_cannot_commit_other_workers_claim"],
+      "old_code_result": "复现结果.json四组反例全部成立（双claim token1/2；旧worker覆盖fresh-output；同token改replacement-output；失败翻成功）",
+      "new_code_result": "全部通过；并发关闭为结构性（写事务串行化+条件更新），非仅进程内锁"
+    },
+    {
+      "id": "R1-05",
+      "title": "崩溃恢复缺两条关键路径",
+      "fix_locations": ["plugin/src/kth_hybrid/journal.py（takeover_stale_claim：仅claimed且external_actions=0，新attempt更大token）", "plugin/src/kth_hybrid/runner.py（CountingSimulatedProvider：响应put_bytes落盘+读回重核后commit；crash_after_persist_before_commit注入点）"],
+      "adversarial_tests": ["test_claim_then_crash_has_controlled_takeover", "test_dispatched_claim_takeover_requires_evidence_and_marks_unknown", "test_provider_persists_response_before_success", "test_crash_between_response_write_and_commit"],
+      "old_code_result": "claimed卡死无法接管；succeeded后响应字节不存在（response_found_in_any_file=false）",
+      "new_code_result": "受控接管成功且旧worker复活被拒；已派发/unknown禁静默接管；output_ref可解析到blob并读回一致；持久化后提交前崩溃保留孤立工件且不盲重发"
+    },
+    {
+      "id": "R1-06",
+      "title": "只对正文去重，却把采集身份也合并",
+      "fix_locations": ["plugin/src/kth_hybrid/intake.py（source_id=CAP::<完整目录名>，实例级登记共享blob）", "plugin/src/kth_hybrid/store.py（capture_dependencies表逐份封存真实hash）"],
+      "adversarial_tests": ["test_same_body_two_occurrences_both_registered", "test_dependencies_actually_sealed_with_hashes", "test_isolated_copy_keeps_full_metadata_after_removing_origin", "test_independence_not_inferred_from_source_count"],
+      "old_code_result": "capture-dedup-probe.log：同正文两采集=1 Source；6份依赖报告齐全但0份封存",
+      "new_code_result": "新Case 76采集实例/18种blob/最大组12；760份依赖逐份封存（capture_dependencies行，真实hash可读回）；隔离副本删原目录后元数据完整；独立性仍未知（不从Source数推断）"
+    },
+    {
+      "id": "P2",
+      "title": "盘点分母/计量单位/固定断言、I/O因果、交接自洽",
+      "fix_locations": ["plugin/tests/test_real_capture_readonly.py（test_receipt_state_facts改为分母/分类/声明一致性）", "plugin/src/kth_hybrid/census.py（L3/L4计量分离：Claim/已审/各状态/distinct qualified/待提取来源/criterion结果/可用关系）", "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/io_probe_v2.py（操作前采样）+ R1.1.md撤回声明", "本文件（完整64位hash+PowerShell命令+commit口径分列）"],
+      "old_code_result": "固定36断言在80可读环境失败（审核复测101/1）；claims行数冒充已审数；R1.md过宽I/O断言；BP trace hash 63位",
+      "new_code_result": "分类闭合+清单声明一致性断言（76/80两环境均过，历史观测注释保留不反推）；计量分列且N/A/重复消费不增已资格数；I/O结论限定受控条件并撤回22次同因断言；全部hash 64位；PowerShell命令可粘贴执行"
+    }
+  ],
+  "test_coverage": {
+    "total": "144 passed / 0 failed / 0 skipped（full-suite-r1_1.log，退出码0）",
+    "adversarial_new": "37（test_r1_1_adversarial.py；旧代码34失败清单：D:/t/kth-rebuild-cases/adversarial-old-code-20260908.log sha256=5cb0730c09f86e9070fb3fc3202fd8d3cbcccfff4566ea4ca5cc17db516ded28）",
+    "original_r1_suite": "原102项中101项保留并适配至v2合同；1项（test_receipt_state_facts）按P2重写为一致性断言（未删除覆盖）",
+    "real_sample": "12（10真实只读盘点 + 2真实Case门控切片，幂等复跑断言输入摘要一致）",
+    "per_file": {"test_r1_1_adversarial.py": 37, "test_qualification.py": 15, "test_method_boundaries.py": 12, "test_vertical_slice.py": 11, "test_intake.py": 11, "test_store.py": 10, "test_real_capture_readonly.py": 10, "test_execution_boundary.py": 9, "test_catalog.py": 9, "test_audit_trace.py": 8, "test_recovery.py": 7, "test_evidence_census.py": 5}
+  },
+  "test_runs": [
+    {
+      "name": "R1.1全套（含真实Case门控与真实只读）",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_1'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_1='D:/t/kth-rebuild-cases/weijiu-r1_1'; .\\.venv\\Scripts\\python -m pytest tests\\ -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 144, "failed": 0, "skipped": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/full-suite-r1_1.log",
+      "log_sha256": "de345d6575b5b893680f7e3a4a8ba395dd635105b472554ccb6578d021af97f9"
+    },
+    {
+      "name": "反例在旧代码上的失败确认（修复前）",
+      "command": ".\\.venv\\Scripts\\python -m pytest tests\\test_r1_1_adversarial.py -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 1,
+      "passed": 3, "failed": 34,
+      "log_ref": "D:/t/kth-rebuild-cases/adversarial-old-code-20260908.log",
+      "log_sha256": "5cb0730c09f86e9070fb3fc3202fd8d3cbcccfff4566ea4ca5cc17db516ded28"
+    },
+    {
+      "name": "新Case构建（census导入+CaseBasis+真实切片+工件刷新，幂等复跑两次退出码均0）",
+      "command": ".\\.venv\\Scripts\\python D:\\t\\kth-rebuild-cases\\weijiu-r1_1\\audit\\build-case-r1_1.py",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/build-case-r1_1.log",
+      "log_sha256": "9e25bfc4526f2bf676b9646d16015f95cbfc00fa7dd7e11a42d73aa7eaf4ca52"
+    },
+    {
+      "name": "CLI演示（inspect×1、trace×2，均退出码0）",
+      "command": ".\\.venv\\Scripts\\python -m kth_hybrid.cli inspect|trace --case-dir D:\\t\\kth-rebuild-cases\\weijiu-r1_1 [--result-id <id>]",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "outputs": [
+        {"path": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/cli-inspect-r1_1.txt", "sha256": "e969715b4b212428aa477f912da2cba17da9db6b3c599730992a6c7e74524c36"},
+        {"path": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/cli-trace-bp-r1_1.txt", "sha256": "0b4bd2ae92ccd5eb72f28b1ab476a897200c38904e427d13a4dc9fe030cc9e30"},
+        {"path": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/cli-trace-cap-r1_1.txt", "sha256": "6ce8909d82bdcc4ed751bd17060f6f7bb7dacf65c07cef67b53d16f8afe72bf1"}
+      ]
+    },
+    {
+      "name": "I/O探针v2（操作前采样）",
+      "command": ".\\.venv\\Scripts\\python D:\\t\\kth-rebuild-cases\\weijiu-r1_1\\audit\\io_probe_v2.py",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/io-probe-v2-20260908.json",
+      "log_sha256": "281c315352517ef3a2ccc1f95c02a989aa6cf0652a3230342af6f1f72a028f4a"
+    }
+  ],
+  "evidence_census_ref": {
+    "path": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/evidence-census.json",
+    "sha256": "e948934179ba377da664c0411e3657f5fc28929eeec19026bf4448a5691736ce",
+    "chinese_summary": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/证据存量.md",
+    "counts": {
+      "L0": {"清单捕获": 80, "实读": 76, "不可读": 4, "采集实例Source": 76, "附件": 2, "放弃传输": 2, "依赖封存": 760},
+      "L1": {"非空正文": 36, "零字节": 40, "哈希与receipt一致": 76, "evidence_eligible=false": 76},
+      "L2": {"不同正文blob": 18, "最大同blob实例组": "40(空502)/12(公司报道)", "独立性": "未知"},
+      "L3": {"Claim总数": 2, "已审": 2, "按状态": {"needs_review": 1, "rejected": 1, "qualified": 0}, "distinct qualified": 0, "待提取来源": 79},
+      "L4": {"criterion结果": {"insufficient": 2}, "可用关系": 0, "原生处置": "均null"}
+    }
+  },
+  "trace_refs": [
+    {
+      "result_id": "RESR::CLM-R11-BP-CRL1::CRL1-C1",
+      "qualification": "needs_review（时间=文件名候选unknown；身份=苏州法人未核验unknown）",
+      "product_status": "insufficient", "trace_ok": true,
+      "input_digest": "33ebc7a058e08186a48762f15d66e39f6e036d45fedb5a18f06a97c9b5d5994f",
+      "output": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/cli-trace-bp-r1_1.txt",
+      "output_sha256": "0b4bd2ae92ccd5eb72f28b1ab476a897200c38904e427d13a4dc9fe030cc9e30"
+    },
+    {
+      "result_id": "RESR::CLM-R11-CAP-CRL1::CRL1-C1",
+      "qualification": "rejected（晚抓取无发布证明）",
+      "product_status": "insufficient", "trace_ok": true,
+      "input_digest": "e33299391f03dc789e8c3a5a32e90d7bdf3a80658dbbbc9c1bb8bc3428483359",
+      "output": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/cli-trace-cap-r1_1.txt",
+      "output_sha256": "6ce8909d82bdcc4ed751bd17060f6f7bb7dacf65c07cef67b53d16f8afe72bf1"
+    },
+    {
+      "real_slices_record": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/real-slices-r1_1.json",
+      "sha256": "2569566c2dc59e766edafef4678e13cdda8e4ab908ad947c809ca8bcd56e9b87",
+      "authoritative_specs": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/real-slice-specs-r1_1.json",
+      "authoritative_specs_sha256": "c6457e211c42dd4ee63e5f9ad7bda77be94fa28785f6e699229542565ef7d4ae"
+    }
+  ],
+  "recovery_refs": {
+    "io_probe_v2": {
+      "path": "D:/t/kth-rebuild-cases/weijiu-r1_1/audit/io-probe-v2-20260908.json",
+      "sha256": "281c315352517ef3a2ccc1f95c02a989aa6cf0652a3230342af6f1f72a028f4a",
+      "withdrawn_claim": "撤回『22次旧I/O错误均因目标目录存在』：无逐次目标前态证据；受控观测仅证明本机/同卷/短路径/NTFS下目录级replace到已存在目录确定性WinError5；v1探针*_exists_before操作后采样失实，保留为历史不删除"
+    },
+    "tests": [
+      "test_fixed_interleave_double_claim_impossible（barrier固定交错，双认领不可能）",
+      "test_stale_worker_cannot_overwrite_after_new_commit / test_same_token_second_commit_rejected_terminal_immutable / test_failed_attempt_cannot_be_flipped_to_success",
+      "test_claim_then_crash_has_controlled_takeover / test_dispatched_claim_takeover_requires_evidence_and_marks_unknown",
+      "test_provider_persists_response_before_success / test_crash_between_response_write_and_commit（孤立响应保留不盲重发）",
+      "test_isolated_copy_keeps_full_metadata_after_removing_origin（隔离副本，真实session未动）"
+    ]
+  },
+  "io_findings": [
+    "受控观测（限定条件）：目录级os.replace到已存在目录确定性WinError5（3次有界重试耗尽）；目标不存在时成功；文件级replace正常——新存储继续以文件级replace+SQLite WAL规避",
+    "撤回R1.md对22次历史错误的同因归因（无逐次前态证据；批准原版dimension_ports.py:71替换前显式拒绝已存在目标）",
+    "探针v2修正*_exists_before为操作前采样；v1探针与日志保留为历史记录",
+    "本机两段（R1/R1.1）均4条捕获PermissionError不可读；审核环境80可读——差异原因未查明，如实并列不互相否定"
+  ],
+  "method_deltas": [
+    "R1.1仅实现CRL1-C1一条带出处判据规则（kth-hybrid.kernels.r1-narrow.v2；registry_id KTH-CRL-G-2022-in-Compiled-F-2025）；已登记未实现→method_unsupported（与证据不足区分）",
+    "native提案只作候选记录，未调用原版求值时native_disposition恒null",
+    "资格v2：三含义分离/有源CaseBasis/严格ISO日期/filename候选级/来源族白名单——均为工程诚信规则，不构成KTH方法裁定",
+    "FRL na_policy（27never/9受限）与TMRL身份约束保留并有成对测试",
+    "真实正例重新资格化后为needs_review/rejected（R1的qualified依据不成立）——正向资格门诚实未通过"
+  ],
+  "unresolved_items": [
+    "真实合格窄主张仍缺：需新业务输入（正文自载成文日期素材/Owner截止前在池正式证明/主体关系核验），另行批准后按新版本登记",
+    "苏州/武汉法人关系未核验（BP第一方解释受阻，已入cannot_prove）",
+    "4条PermissionError不可读捕获的处置（Owner决定；本轮零ACL操作）",
+    "来源族/转载独立性未审（同blob组记未知）",
+    "79个采集实例来源未完成主张提取",
+    "真实Provider/模型链路未测（零网络授权；计数型模拟如实标记simulated）"
+  ],
+  "business_input_changes": [
+    "资格/判据规则收紧：qualification v1→v2、kernels r1-narrow v1→v2（废除通用路由）",
+    "BP来源新增登记：document_subject=微玖（苏州）法人（第1页投影依据）+ filename_derived_date候选级时间证据（追加版本）",
+    "主体、证据截止、证据池、CaseBasis事实未改动（相对R1）"
+  ],
+  "actual_time": {
+    "segments": 1,
+    "wall_clock": "约42分钟（2026-09-08 09:05–09:47 +0800，读修复指令起，连续无中断）",
+    "note": "单执行段实际墙钟；不据此重估项目总工期，也不凭代码量重新承诺数周",
+    "code_commit_time": "a41559d 2026-09-08 09:46:53 +0800"
+  },
+  "self_assessment": {
+    "verdict": "PARTIAL（限R1.1范围，自评，待独立复验）",
+    "fixed": "R1-01至R1-06全部反例修复并有实证（37/37新反例+144全套通过）；P2更正完成",
+    "not_passed": "真实正向资格门：现有素材在诚实规则下0条qualified（时间证据缺口），不发明新规则过门",
+    "r2_readiness": "负向通道（诚实不足/可追溯/不冒充/原子事务/恢复）已修复；正向门需新业务输入补证后重验"
+  }
+}
