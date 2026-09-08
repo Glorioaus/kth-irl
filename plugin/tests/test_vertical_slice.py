@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from kth_hybrid import cli
+from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.journal import CommitRejected, Journal
 from kth_hybrid.runner import (
     SimulatedCrash,
@@ -72,6 +73,18 @@ def case_dir(tmp_path):
         "kind": "document_self_date", "date": "2026-07-16",
         "date_locator": {"kind": "byte_range", "start": ds, "end": de},
         "basis": "合成正文日期"})
+    basis_version = case.set_case_basis(**BASIS)
+    case.add_mapping_review(
+        "REV-SYN-CRL1",
+        case_basis_version=basis_version,
+        claim_id="CLM-SYN-CRL1",
+        criterion_id="CRL1-C1",
+        quote_sha256=sha256_hex(QUOTE.encode("utf-8")),
+        support_scope="仅支持来源陈述市场需求假设",
+        decision="confirmed",
+        reviewer="synthetic-offline-review",
+        review_basis="受控合成复核记录",
+    )
     case.close()
     return tmp_path
 
@@ -97,6 +110,7 @@ def _claim_spec(doc: bytes = DOC_V4, claim_id="CLM-SYN-CRL1"):
         "subject_scope": SUBJECT,
         "criterion_mapping": _mapping_spec(doc, QUOTE),
         "semantic_confirmation": _CONFIRM,
+        "mapping_review_id": "REV-SYN-CRL1",
     }
 
 

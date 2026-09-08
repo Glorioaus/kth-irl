@@ -50,6 +50,18 @@ CREATE TABLE IF NOT EXISTS claim_criterion_mappings (
     status TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE TABLE IF NOT EXISTS mapping_reviews (
+    review_id TEXT PRIMARY KEY,
+    case_basis_version INTEGER NOT NULL,
+    claim_id TEXT NOT NULL,
+    criterion_id TEXT NOT NULL,
+    quote_sha256 TEXT NOT NULL,
+    support_scope TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('confirmed','rejected')),
+    reviewer TEXT NOT NULL,
+    review_basis TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 CREATE TABLE IF NOT EXISTS source_time_evidence (
     revision INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id TEXT NOT NULL,
@@ -327,6 +339,18 @@ class CaseStore:
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
+            CREATE TABLE IF NOT EXISTS mapping_reviews (
+                review_id TEXT PRIMARY KEY,
+                case_basis_version INTEGER NOT NULL,
+                claim_id TEXT NOT NULL,
+                criterion_id TEXT NOT NULL,
+                quote_sha256 TEXT NOT NULL,
+                support_scope TEXT NOT NULL,
+                decision TEXT NOT NULL CHECK (decision IN ('confirmed','rejected')),
+                reviewer TEXT NOT NULL,
+                review_basis TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
         """)
         columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(sources)").fetchall()}
@@ -565,6 +589,32 @@ class CaseStore:
             "criterion_id=? ORDER BY id", (claim_id, criterion_id),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def add_mapping_review(self, review_id: str, *, case_basis_version: int,
+                           claim_id: str, criterion_id: str, quote_sha256: str,
+                           support_scope: str, decision: str, reviewer: str,
+                           review_basis: str) -> None:
+        """登记一次实际离线/人工映射复核，运行期没有创建该记录的权限。"""
+        if decision not in ("confirmed", "rejected"):
+            raise ValueError(f"映射复核 decision 非法：{decision!r}")
+        if not all(isinstance(value, str) and value.strip() for value in
+                   (review_id, claim_id, criterion_id, quote_sha256,
+                    support_scope, reviewer, review_basis)):
+            raise ValueError("映射复核必须绑定非空的对象、范围、复核人和依据")
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO mapping_reviews(review_id, case_basis_version, claim_id, "
+                "criterion_id, quote_sha256, support_scope, decision, reviewer, "
+                "review_basis) VALUES (?,?,?,?,?,?,?,?,?)",
+                (review_id, case_basis_version, claim_id, criterion_id, quote_sha256,
+                 support_scope, decision, reviewer, review_basis),
+            )
+
+    def get_mapping_review(self, review_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM mapping_reviews WHERE review_id=?", (review_id,)
+        ).fetchone()
+        return dict(row) if row else None
 
     # ---- 记录写入（事务）----
 

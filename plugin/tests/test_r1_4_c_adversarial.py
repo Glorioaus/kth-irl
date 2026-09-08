@@ -12,6 +12,7 @@ import sqlite3
 
 import pytest
 
+from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.store import BlobStore, CaseStore
 
 
@@ -59,6 +60,7 @@ def _spec() -> dict:
             "end": len(TEXT.encode("utf-8")),
         },
         "semantic_confirmation": dict(CONFIRMATION),
+        "mapping_review_id": "REV-R1-4-C",
     }
 
 
@@ -83,6 +85,18 @@ def _seed_case(root: Path) -> None:
                 "end": start + len("2026-07-01"),
             },
         })
+        basis_version = case.set_case_basis(**_basis())
+        case.add_mapping_review(
+            "REV-R1-4-C",
+            case_basis_version=basis_version,
+            claim_id="C-R1-4",
+            criterion_id="CRL1-C1",
+            quote_sha256=sha256_hex(raw),
+            support_scope="仅支持来源陈述市场需求假设",
+            decision="confirmed",
+            reviewer="r1_4_c_offline_review",
+            review_basis="受控合成复核记录",
+        )
     finally:
         case.close()
 

@@ -271,6 +271,8 @@ class TestR12B:
         # 摘录覆盖含主体名的完整句（身份判断需要正文提及主体）
         excerpt_end = len((text.split("。")[0] + "。").encode("utf-8"))
         case_dir = Path(self._make_case("mapped", doc=doc))
+        review_id = _register_mapping_review(
+            case_dir, "CLM-MARKET", "CRL1-C1", quote)
         result = run_criterion_slice(
             case_dir, source_id="SRC-U", criterion_id="CRL1-C1",
             catalog=_wheel_catalog(),
@@ -284,6 +286,7 @@ class TestR12B:
                 "semantic_confirmation": {"confirmed": True,
                                           "confirmator": "executor-r12",
                                           "review_basis": "来源陈述该市场需求假设"},
+                "mapping_review_id": review_id,
             },
             case_basis=BASIS)
         assert result["qualification_status"] == "qualified"
@@ -346,11 +349,16 @@ class TestR12B:
                                     "path": "case:p.json#/s"},
               "flag_ref": {"kind": "field_reference",
                            "path": "case:p.json#/f"},
-              "applicability_resolved": {"_resolved": True, "value": "声明",
+              "subject_ref": {"kind": "field_reference",
+                              "path": "case:p.json#/subject"},
+              "applicability_resolved": {"_resolved": True,
+                                         "value": "no_external_financing",
                                          "path": "case:p.json#/s"},
               "flag_resolved": {"_resolved": True, "value": True,
-                                "path": "case:p.json#/f"}}
-        legal, _ = check_na_legality(frl4, ok, {})
+                                "path": "case:p.json#/f"},
+              "subject_resolved": {"_resolved": True, "value": SUBJECT,
+                                   "path": "case:p.json#/subject"}}
+        legal, _ = check_na_legality(frl4, ok, SUBJECT)
         assert legal
         for bad in (
             {**ok, "applicability_resolved": {"_resolved": False}},
@@ -359,7 +367,7 @@ class TestR12B:
             {"proposal": "not_applicable", "basis": "非空字符串",
              "case_flag_source": "非空字符串"},
         ):
-            illegal, why = check_na_legality(frl4, bad, {})
+            illegal, why = check_na_legality(frl4, bad, SUBJECT)
             assert not illegal, why
 
     @staticmethod
@@ -402,6 +410,30 @@ def _wheel_catalog():
     return build_catalog_from_wheel()
 
 
+def _register_mapping_review(case_dir: Path, claim_id: str, criterion_id: str,
+                             quote: str) -> str:
+    review_id = f"REV-R12::{claim_id}::{criterion_id}"
+    case = CaseStore(case_dir / "records.sqlite3")
+    try:
+        current = case.get_case_basis()
+        version = current["version"] if current is not None else case.set_case_basis(**BASIS)
+        if case.get_mapping_review(review_id) is None:
+            case.add_mapping_review(
+                review_id,
+                case_basis_version=version,
+                claim_id=claim_id,
+                criterion_id=criterion_id,
+                quote_sha256=sha256_hex(quote.encode("utf-8")),
+                support_scope="仅支持来源陈述市场需求假设",
+                decision="confirmed",
+                reviewer="r1_2_synthetic_offline_review",
+                review_basis="受控合成复核记录",
+            )
+    finally:
+        case.close()
+    return review_id
+
+
 # ---------- C. 冻结完整输入与trace ----------
 
 class TestR12C:
@@ -432,6 +464,8 @@ class TestR12C:
             spec["semantic_confirmation"] = {
                 "confirmed": True, "confirmator": "executor-r12",
                 "review_basis": "来源陈述该市场需求假设"}
+            spec["mapping_review_id"] = _register_mapping_review(
+                case_dir, claim_id, "CRL1-C1", quote)
         return run_criterion_slice(
             case_dir, source_id="SRC-U", criterion_id="CRL1-C1",
             catalog=_wheel_catalog(), claim_spec=spec, case_basis=BASIS)
@@ -542,8 +576,7 @@ class TestR12C:
 
         def verify_then_break(case, blobs, candidate_row):
             # 模拟"验证时刻"链路被外部破坏：资格记录在验证前被删除
-            with case._conn:
-                case._conn.execute("DELETE FROM qualifications")
+            case._conn.execute("DELETE FROM qualifications")
             return original(case, blobs, candidate_row)
 
         # 使用新claim id避免与已发布结果冲突；验证在断链状态下必须失败
@@ -557,6 +590,8 @@ class TestR12C:
         q_start = len(text[:pos].encode("utf-8"))
         q_end = q_start + len(quote.encode("utf-8"))
         case.close()
+        review_id = _register_mapping_review(
+            root, "CLM-FRZ-FAILPATH", "CRL1-C1", quote)
         runner_mod._verify_candidate = verify_then_break
         try:
             result = run_criterion_slice(
@@ -573,6 +608,7 @@ class TestR12C:
                     "semantic_confirmation": {
                         "confirmed": True, "confirmator": "executor-r12",
                         "review_basis": "来源陈述该市场需求假设"},
+                    "mapping_review_id": review_id,
                 },
                 case_basis=BASIS)
         finally:

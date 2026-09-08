@@ -25,6 +25,7 @@ CRL_VIEW = {"dimension_levels_supported": [1, 2, 3, 4], "case_flags": {},
             "approved_criterion_ids": {"CRL1-C1", "CRL2-C1", "CRL1-C2",
                                        "CRL5-C1"}}
 FRL_VIEW = {"dimension_levels_supported": list(range(1, 10)), "case_flags": {},
+            "case_subject": "微玖（融资主体）",
             "scope": "微玖（融资主体）",
             "approved_criterion_ids": {"FRL1-NEED", "FRL4-PITCH"}}
 TMRL_VIEW = {"dimension_levels_supported": list(range(1, 10)), "case_flags": {},
@@ -110,10 +111,16 @@ def test_frl_restricted_na_requires_explicit_no_external_financing():
                                    "path": "case:p.json#/s"},
              "flag_ref": {"kind": "field_reference",
                           "path": "case:p.json#/f"},
-             "applicability_resolved": {"_resolved": True, "value": "声明",
+             "subject_ref": {"kind": "field_reference",
+                             "path": "case:p.json#/subject"},
+             "applicability_resolved": {"_resolved": True,
+                                        "value": "no_external_financing",
                                         "path": "case:p.json#/s"},
              "flag_resolved": {"_resolved": True, "value": True,
-                               "path": "case:p.json#/f"}}
+                               "path": "case:p.json#/f"},
+             "subject_resolved": {"_resolved": True,
+                                  "value": "微玖（融资主体）",
+                                  "path": "case:p.json#/subject"}}
     candidate = _qualified_candidate()
     # flag 解析为假 → 非法
     candidate["na_proposal"] = {**na_ok, "flag_resolved": {
@@ -186,8 +193,10 @@ def test_only_implemented_rule_consumes_positive_channel():
     candidate = _qualified_candidate()
     candidate["criterion_mapping"] = {
         "status": "confirmed", "quote_sha256": "0" * 64,
-        "confirmation": {"confirmed": True, "confirmator": "executor",
-                         "review_basis": "来源陈述该假设"},
+        "confirmation": {"_controlled": True, "review_id": "REV-UNIT",
+                         "decision": "confirmed", "reviewer": "executor",
+                         "review_basis": "来源陈述该假设",
+                         "support_scope": "仅支持来源陈述该假设"},
         "basis": "引文逐字核验通过＋留痕确认（合成）"}
     result = evaluate_criterion(crl1, candidate, CRL_VIEW)
     assert result.product_status == "succeeded"

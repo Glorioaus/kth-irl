@@ -333,6 +333,21 @@ def verify_result_bindings(case, blobs, result_row):
                         != frozen_mapping["quote_sha256"]:
                     report.broken.append(
                         "映射引文不再逐字位于封存摘录（引文/原文绑定破坏）")
+        confirmation = frozen_mapping.get("confirmation")
+        if isinstance(confirmation, dict) and confirmation.get("_controlled") is True:
+            review = case.get_mapping_review(confirmation.get("review_id"))
+            if review is None:
+                report.broken.append(
+                    f"映射受控复核 {confirmation.get('review_id')!r} 缺失")
+            else:
+                for field in ("case_basis_version", "claim_id", "criterion_id",
+                              "quote_sha256", "decision", "reviewer",
+                              "review_basis", "support_scope"):
+                    if review.get(field) != confirmation.get(field):
+                        report.broken.append(
+                            f"映射受控复核 {confirmation.get('review_id')} 的 {field}"
+                            " 与冻结值不一致")
+                        break
 
     # 7) CaseBasis 版本快照完整一致（C6：全字段，不只名称/截止）
     bound_version = result_row.get("case_basis_version")
@@ -377,7 +392,27 @@ def verify_result_bindings(case, blobs, result_row):
                 report.broken.append(
                     f"主体封存证明闭包不一致：{error or '原件/字段/值绑定已变更'}")
 
-    # 9) 正向结果链（空链/非法N/A）
+    # 9) 合法 N/A 的政策字段必须仍能从封存对象重建，不能只相信冻结 JSON。
+    na_proposal = frozen.get("na_proposal")
+    if isinstance(na_proposal, dict) and na_proposal.get("proposal") == "not_applicable":
+        from .qualification import resolve_case_field_reference_binding
+
+        for ref_key, resolved_key in (("applicability_ref", "applicability_resolved"),
+                                      ("flag_ref", "flag_resolved"),
+                                      ("subject_ref", "subject_resolved")):
+            expected = na_proposal.get(resolved_key)
+            if not isinstance(expected, dict) or not expected.get("_resolved"):
+                continue
+            _value, error, current = resolve_case_field_reference_binding(
+                na_proposal.get(ref_key), case, blobs)
+            actual = {"_resolved": error is None, "value": _value,
+                      "path": (na_proposal.get(ref_key) or {}).get("path"),
+                      "binding": current}
+            if error or actual != expected:
+                report.broken.append(
+                    f"N/A 封存字段 {ref_key} 与冻结解析结果不一致")
+
+    # 10) 正向结果链（空链/非法N/A）
     na_raw = result_row.get("na_basis")
     na_valid = False
     if na_raw:

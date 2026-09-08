@@ -92,20 +92,59 @@ def _resolve_na_proposal(na_proposal, case, blobs):
     """预解析 N/A 适用性与 flag 引用到封存对象字段值（R1.3-B）。"""
     if not isinstance(na_proposal, dict):
         return na_proposal
-    out = dict(na_proposal)
+    # ``*_resolved`` 是系统派生字段。请求中的同名值全部剥离，避免调用方
+    # 以 `_resolved=true` 冒充已核验政策；仅保留引用，再从封存对象重建。
+    out = {key: value for key, value in na_proposal.items()
+           if key not in {"applicability_resolved", "flag_resolved",
+                          "subject_resolved"}}
     for ref_key, res_key in (("applicability_ref", "applicability_resolved"),
-                             ("flag_ref", "flag_resolved")):
+                             ("flag_ref", "flag_resolved"),
+                             ("subject_ref", "subject_resolved")):
         ref = out.get(ref_key)
         if ref is None:
+            out[res_key] = {"_resolved": False, "error": f"缺少 {ref_key}"}
             continue
-        value, err = _resolve_case_field_reference(ref, case, blobs)
+        value, err, binding = resolve_case_field_reference_binding(ref, case, blobs)
         if err:
             out[res_key] = {"_resolved": False, "error": err,
                             "path": ref.get("path") if isinstance(ref, dict) else None}
         else:
             out[res_key] = {"_resolved": True, "value": value,
-                            "path": ref.get("path")}
+                            "path": ref.get("path"), "binding": binding}
     return out
+
+
+def _controlled_mapping_review(case: CaseStore, review_id, *, basis_version: int,
+                               claim_id: str, criterion_id: str,
+                               mapping: dict) -> dict | None:
+    """运行期只消费已登记的具体复核，不信任 claim_spec 自报确认。"""
+    if not isinstance(review_id, str) or not review_id.strip():
+        return None
+    review = case.get_mapping_review(review_id)
+    if review is None:
+        return None
+    expected = {
+        "case_basis_version": basis_version,
+        "claim_id": claim_id,
+        "criterion_id": criterion_id,
+        "quote_sha256": mapping.get("quote_sha256"),
+    }
+    if any(review.get(field) != value for field, value in expected.items()):
+        return None
+    if review.get("decision") != "confirmed":
+        return None
+    return {
+        "_controlled": True,
+        "review_id": review["review_id"],
+        "decision": review["decision"],
+        "reviewer": review["reviewer"],
+        "review_basis": review["review_basis"],
+        "support_scope": review["support_scope"],
+        "case_basis_version": review["case_basis_version"],
+        "claim_id": review["claim_id"],
+        "criterion_id": review["criterion_id"],
+        "quote_sha256": review["quote_sha256"],
+    }
 
 
 class CountingSimulatedProvider:
@@ -352,8 +391,11 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
             candidate_mapping = {"status": "unmapped", "filter_hits": [],
                                  "quote_sha256": None,
                                  "basis": "调用方未提供判据映射引文"}
+        mapping_review = _controlled_mapping_review(
+            case, claim_spec.get("mapping_review_id"), basis_version=basis_version,
+            claim_id=claim_id, criterion_id=criterion_id, mapping=candidate_mapping)
         mapping = confirm_mapping(
-            candidate_mapping, claim_spec.get("semantic_confirmation"),
+            candidate_mapping, mapping_review,
             interpretation=claim_spec.get("interpretation") or "")
         case.add_claim_mapping(
             claim_id, criterion_id,
@@ -417,6 +459,7 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
             "case_basis_version": basis_version,
             "case_provenance_bindings": {"subject": subject_proof},
             "case_flags": case_flags or {},
+            "case_subject": basis["subject_legal_name"],
             "mapping": {
                 "status": mapping.get("status"),
                 "quote_sha256": mapping.get("quote_sha256"),
@@ -442,6 +485,7 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
 
         evidence_view = {
             "case_flags": case_flags or {},
+            "case_subject": basis["subject_legal_name"],
             "dimension_levels_supported": canonical.get("levels_supported")
             or catalog["dimensions"][canonical["dimension"]]["levels_supported"],
             "scope": claim_spec["subject_scope"],

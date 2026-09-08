@@ -292,6 +292,9 @@ def _run_slice(root, basis, text, *, claim_id="C", confirmation=None,
     }
     if confirmation is not None:
         spec["semantic_confirmation"] = confirmation
+        spec["mapping_review_id"] = _register_mapping_review(
+            root, basis, claim_id, criterion_id,
+            spec["criterion_mapping"]["quote"])
     if na is not None:
         spec["na_proposal"] = na
     kwargs = {}
@@ -300,6 +303,29 @@ def _run_slice(root, basis, text, *, claim_id="C", confirmation=None,
     return run_criterion_slice(
         root, source_id="S", criterion_id=criterion_id, catalog=_catalog(),
         case_basis=basis, claim_spec=spec, **kwargs)
+
+
+def _register_mapping_review(root, basis, claim_id, criterion_id, quote) -> str:
+    review_id = f"REV-R13::{claim_id}::{criterion_id}"
+    case = CaseStore(root / "records.sqlite3")
+    try:
+        current = case.get_case_basis()
+        version = current["version"] if current is not None else case.set_case_basis(**basis)
+        if case.get_mapping_review(review_id) is None:
+            case.add_mapping_review(
+                review_id,
+                case_basis_version=version,
+                claim_id=claim_id,
+                criterion_id=criterion_id,
+                quote_sha256=sha256_hex(quote.encode("utf-8")),
+                support_scope="仅支持来源陈述市场需求假设",
+                decision="confirmed",
+                reviewer="r1_3_synthetic_offline_review",
+                review_basis="受控合成复核记录",
+            )
+    finally:
+        case.close()
+    return review_id
 
 
 class TestR13B:
@@ -368,8 +394,9 @@ class TestR13B:
         root, basis = _make_slice_case(tmp_path, text)
         blobs = BlobStore(root / "blobs")
         policy = json.dumps({
-            "no_external_financing": {"declared": True,
-                                      "statement": "公司决议不计划外部融资"}},
+            "subject": SUBJECT,
+            "applicability": "no_external_financing",
+            "flag": True},
             ensure_ascii=False).encode("utf-8")
         pref = blobs.put_bytes(policy)
         case = CaseStore(root / "records.sqlite3")
@@ -385,10 +412,13 @@ class TestR13B:
             na={"proposal": "not_applicable",
                 "applicability_ref": {
                     "kind": "field_reference",
-                    "path": "case:financing-policy.json#/no_external_financing/statement"},
+                    "path": "case:financing-policy.json#/applicability"},
                 "flag_ref": {
                     "kind": "field_reference",
-                    "path": "case:financing-policy.json#/no_external_financing/declared"}})
+                    "path": "case:financing-policy.json#/flag"},
+                "subject_ref": {
+                    "kind": "field_reference",
+                    "path": "case:financing-policy.json#/subject"}})
         assert result["product_status"] == "succeeded", "有源N/A正例必须通过"
         assert result["native_disposition"] is None
 
@@ -456,6 +486,8 @@ class TestR13C:
                                   "end": len(text.encode("utf-8"))},
             "semantic_confirmation": _CONFIRM,
         }
+        spec["mapping_review_id"] = _register_mapping_review(
+            root, basis, "C", "CRL1-C1", text)
         first = run_criterion_slice(
             root, source_id="S", criterion_id="CRL1-C1", catalog=_catalog(),
             case_basis=basis, claim_spec=spec)
@@ -477,8 +509,10 @@ class TestR13C:
         text = f"{SUBJECT} blue wall."
         root, basis = _make_slice_case(tmp_path, text)
         blobs = BlobStore(root / "blobs")
-        policy = json.dumps({"no_external_financing": {
-            "declared": True, "statement": "决议不计划外部融资"}},
+        policy = json.dumps({
+            "subject": SUBJECT,
+            "applicability": "no_external_financing",
+            "flag": True},
             ensure_ascii=False).encode()
         pref = blobs.put_bytes(policy)
         case = CaseStore(root / "records.sqlite3")
@@ -498,10 +532,13 @@ class TestR13C:
             "na_proposal": {"proposal": "not_applicable",
                             "applicability_ref": {
                                 "kind": "field_reference",
-                                "path": "case:financing-policy.json#/no_external_financing/statement"},
+                                "path": "case:financing-policy.json#/applicability"},
                             "flag_ref": {
                                 "kind": "field_reference",
-                                "path": "case:financing-policy.json#/no_external_financing/declared"}},
+                                "path": "case:financing-policy.json#/flag"},
+                            "subject_ref": {
+                                "kind": "field_reference",
+                                "path": "case:financing-policy.json#/subject"}},
         }
         first = run_criterion_slice(
             root, source_id="S", criterion_id=frl, catalog=_catalog(),
@@ -530,6 +567,8 @@ class TestR13C:
                                   "end": len(GOV_TEXT.encode("utf-8"))},
             "semantic_confirmation": _CONFIRM,
         }
+        spec["mapping_review_id"] = _register_mapping_review(
+            root, basis, "C", "CRL1-C1", GOV_TEXT)
         original = runner_mod._verify_candidate
         def crash(*args, **kwargs):
             raise RuntimeError("审核注入：验证入口进程中断")
@@ -602,6 +641,8 @@ class TestR13C:
                                   "end": len(GOV_TEXT.encode("utf-8"))},
             "semantic_confirmation": _CONFIRM,
         }
+        spec["mapping_review_id"] = _register_mapping_review(
+            root, basis, "C", "CRL1-C1", GOV_TEXT)
         result = run_criterion_slice(
             root, source_id="S", criterion_id="CRL1-C1", catalog=_catalog(),
             case_basis=basis, claim_spec=spec)

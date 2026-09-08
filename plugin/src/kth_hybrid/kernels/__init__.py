@@ -70,12 +70,12 @@ def implemented_criterion(criterion_id: str) -> dict | None:
     return IMPLEMENTED_RULES.get(criterion_id)
 
 
-def check_na_legality(criterion: dict, proposal, case_flags: dict) -> tuple[bool, str]:
+def check_na_legality(criterion: dict, proposal, case_subject: str) -> tuple[bool, str]:
     """N/A 合法性 v4（R1.3-B）：预解析封存证据合同。
 
-    - proposal 为 ``{"proposal", "applicability_ref", "flag_ref"}``，两个引用
-      必须由 runner **预解析**为封存对象字段（``applicability_resolved`` /
-      ``flag_resolved`` 带 ``_resolved`` 与实际值）；非空字符串不接受；
+    - proposal 为 ``{"proposal", "applicability_ref", "flag_ref", "subject_ref"}``，
+      三个引用必须由 runner **预解析**为封存对象字段（含 ``_resolved``、值和
+      原件/字段绑定）；调用方给出的同名派生字段不会被使用；
     - na_policy=never 一律拒绝；受限行要求解析后的 flag 值为真；
     - N/A 仍须先通过判据身份校验（由 dimensions 在身份检查后调用）。
     """
@@ -83,31 +83,44 @@ def check_na_legality(criterion: dict, proposal, case_flags: dict) -> tuple[bool
         return True, "无 N/A 提案"
     if not isinstance(proposal, dict) or proposal.get("proposal") != "not_applicable":
         return False, f"N/A 提案结构非法：{proposal!r}（期望结构化对象）"
-    applicability = proposal.get("applicability_resolved")
-    flag = proposal.get("flag_resolved")
-    if not isinstance(applicability, dict) or not applicability.get("_resolved"):
-        return False, "N/A 适用性依据未解析到封存对象字段（applicability_ref）"
-    if not isinstance(flag, dict) or not flag.get("_resolved"):
-        return False, "N/A case flag 来源未解析到封存对象字段（flag_ref）"
     policy = criterion.get("na_policy")
     if policy is None or policy == "never":
         return False, (
             f"判据 {criterion.get('criterion_id')} 的 na_policy="
             f"{policy or '（无，按 never 处理）'}，不允许 N/A"
         )
+    applicability = proposal.get("applicability_resolved")
+    flag = proposal.get("flag_resolved")
+    policy_subject = proposal.get("subject_resolved")
+    if not isinstance(applicability, dict) or not applicability.get("_resolved"):
+        return False, "N/A 适用性依据未解析到封存对象字段（applicability_ref）"
+    if not isinstance(flag, dict) or not flag.get("_resolved"):
+        return False, "N/A case flag 来源未解析到封存对象字段（flag_ref）"
+    if not isinstance(policy_subject, dict) or not policy_subject.get("_resolved"):
+        return False, "N/A 政策主体未解析到封存对象字段（subject_ref）"
     if policy == "explicit_no_external_financing_only":
+        applicability_value = applicability.get("value")
         flag_value = flag.get("value")
-        if flag_value is True or (isinstance(flag_value, str)
-                                  and flag_value.strip()):
+        subject_value = policy_subject.get("value")
+        if applicability_value != "no_external_financing":
+            return False, (
+                "N/A 适用性必须是封存政策字段的受控结论"
+                "'no_external_financing'，不以任意非空文本代替"
+            )
+        if subject_value != case_subject:
+            return False, (
+                f"N/A 政策主体 {subject_value!r} ≠ 当前评估主体 {case_subject!r}"
+            )
+        if type(flag_value) is bool and flag_value:
             return True, (
                 f"判据 {criterion.get('criterion_id')} 为受限 N/A 行；适用性依据"
-                f"已解析（{applicability.get('path')}："
-                f"{str(applicability.get('value'))[:60]}）；"
-                f"flag 已解析（{flag.get('path')}：{flag_value!r}），N/A 合法"
+                f"为封存受控结论（{applicability.get('path')}）；当前主体"
+                f"已核验（{policy_subject.get('path')}）；flag 为严格布尔 true"
+                f"（{flag.get('path')}），N/A 合法"
             )
         return False, (
             f"判据 {criterion.get('criterion_id')} 为受限 N/A 行，但已解析的"
-            f"flag 值非真（{flag_value!r}），N/A 非法"
+            f"flag 不是布尔 true（{flag_value!r}），N/A 非法"
         )
     return False, f"未知 na_policy：{policy}"
 
@@ -176,7 +189,8 @@ def confirm_mapping(candidate, confirmation, interpretation=""):
 
     - 无确认/无效确认 → 保持 candidate（不伪装已自动判定）；
     - 引文或解释含否定表述 → 拒绝确认（unmapped_negated），即使调用方确认；
-    - 有效确认 {confirmed: True, confirmator, review_basis} → confirmed。
+    - 只有 runner 从 ``mapping_reviews`` 读取并标记为 ``_controlled`` 的复核
+      记录才能成为 confirmed；裸 ``claim_spec`` 布尔值保持 candidate。
     """
     if candidate.get("status") != "candidate":
         return candidate
@@ -188,15 +202,19 @@ def confirm_mapping(candidate, confirmation, interpretation=""):
         out["basis"] += f"；语义确认被否定门控拒绝（{marker}）"
         return out
     if not isinstance(confirmation, dict) \
-            or confirmation.get("confirmed") is not True \
-            or not str(confirmation.get("confirmator") or "").strip() \
-            or not str(confirmation.get("review_basis") or "").strip():
+            or confirmation.get("_controlled") is not True \
+            or confirmation.get("decision") != "confirmed" \
+            or not str(confirmation.get("review_id") or "").strip() \
+            or not str(confirmation.get("reviewer") or "").strip() \
+            or not str(confirmation.get("review_basis") or "").strip() \
+            or not str(confirmation.get("support_scope") or "").strip():
         return candidate
     out = dict(candidate)
     out["status"] = "confirmed"
     out["confirmation"] = confirmation
-    out["basis"] += (f"；语义确认：{confirmation['confirmator']}"
-                     f"（{confirmation['review_basis']}）")
+    out["basis"] += (f"；受控语义复核：{confirmation['review_id']} / "
+                     f"{confirmation['reviewer']}（{confirmation['support_scope']}；"
+                     f"{confirmation['review_basis']}）")
     return out
 
 

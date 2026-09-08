@@ -111,7 +111,7 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
     # N/A 提案合法性（结构化+有源；na_policy 是 registry 机械字段）
     na_legal, na_basis = check_na_legality(
         criterion, judgment_candidate.get("na_proposal"),
-        evidence_view.get("case_flags") or {},
+        evidence_view.get("case_subject") or "",
     )
     if not na_legal:
         evaluation.notes.append(f"N/A 提案被拒：{na_basis}")
@@ -124,8 +124,8 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
         )
         proposal = judgment_candidate["na_proposal"]
         evaluation.notes.append(
-            f"N/A 适用性依据：{proposal.get('basis')}（flag来源："
-            f"{proposal.get('case_flag_source')}）"
+            f"N/A 封存依据：{(proposal.get('applicability_resolved') or {}).get('path')}"
+            f"（flag来源：{(proposal.get('flag_resolved') or {}).get('path')}）"
         )
         return evaluation
 
@@ -145,7 +145,9 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
     # 正向通道（R1.3-B）：合格主张 × 用途交集 × **映射已确认**（引文逐字位于
     # 封存摘录+关键词候选+留痕语义确认经否定门控；candidate 不构成支持关系）
     mapping = judgment_candidate.get("criterion_mapping") or {}
-    mapping_ok = mapping.get("status") == "confirmed"
+    mapping_ok = (mapping.get("status") == "confirmed"
+                  and isinstance(mapping.get("confirmation"), dict)
+                  and mapping["confirmation"].get("_controlled") is True)
     supporting = []
     rejected_reasons = []
     for qual in qualifications:
@@ -198,8 +200,8 @@ def evaluate_criterion(criterion: dict, judgment_candidate: dict,
             f"{len(supporting)} 条合格窄主张按已实现规则 {criterion_id}（出处："
             f"{rule['provenance']}）＋封存引文映射（{mapping.get('basis', '')}）"
             "支持该判据的证据可得性。**本结果不是原生 met 判定**：原生处置为 "
-            "null（未调用原版 vertical），语义确认待人工/方法审查（R2）；不足与 "
-            "met 的原生语义不得由本状态冒充。"
+            "null（未调用原版 vertical）；受控复核仅支持其登记范围，不扩大为 "
+            "市场规模、产能或成熟度已被独立证实。"
         )
         evaluation.notes.extend(rejected_reasons)
         return evaluation
