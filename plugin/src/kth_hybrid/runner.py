@@ -33,6 +33,7 @@ from .kernels import (
     confirm_mapping,
     interpret_claim_for_criterion,
 )
+from .kernels.crl import evaluate_crl_dimension
 from .qualification import (
     GapOutcome,
     QualificationOutcome,
@@ -164,6 +165,46 @@ def _controlled_mapping_review(case: CaseStore, review_id, *, basis_version: int
         "criterion_id": review["criterion_id"],
         "quote_sha256": review["quote_sha256"],
     }
+
+
+def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
+                            case_basis: dict, scope: str,
+                            output_path: Path | str | None = None) -> dict:
+    """R2-A：只消费已落库、主张/资格/hash均匹配的CRL受控复核记录。"""
+    case_dir = Path(case_dir)
+    blobs = BlobStore(case_dir / "blobs")
+    case = CaseStore(case_dir / "records.sqlite3")
+    try:
+        basis, version = _effective_case_basis(case, case_basis)
+        criteria = [dict(row) for row in catalog["dimensions"]["CRL"]["registry"]["criteria"]]
+        reviews, rejected = [], []
+        for row in case.fetch_crl_evidence_reviews(version):
+            claim = case.fetch_one("claims", "claim_id", row["claim_id"])
+            qual = case.fetch_one("qualifications", "qual_id", qualification_id(row["claim_id"]))
+            if claim is None or qual is None or qual["status"] != "qualified":
+                rejected.append({"review_id": row["review_id"], "reason": "主张/资格不可用"})
+            elif claim["excerpt_sha256"] != row["quote_sha256"]:
+                rejected.append({"review_id": row["review_id"], "reason": "引文hash不符"})
+            else:
+                reviews.append({key: row[key] for key in ("review_id", "criterion_id", "claim_id", "decision", "findings", "reviewer", "review_basis", "support_scope")})
+        dimension = evaluate_crl_dimension(criteria, reviews, scope=scope)
+        frozen = {"case_basis": basis, "case_basis_version": version,
+                  "catalog_sha256": catalog.get("wheel_sha256"), "criteria": criteria,
+                  "reviews": reviews, "rejected_reviews": rejected, "scope": scope,
+                  "rule_version": dimension["rule_version"]}
+        digest = sha256_hex(json.dumps(frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        result = {"schema_version": "kth-hybrid.r2a-crl-dimension.v1",
+                  "input_digest": digest, "dimension": dimension,
+                  "frozen_inputs": frozen,
+                  "traceability": {"review_refs": [r["review_id"] for r in reviews],
+                                   "claim_refs": sorted({r["claim_id"] for r in reviews})}}
+        destination = Path(output_path) if output_path else case_dir / "audit" / "crl-dimension-r2a.json"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        case.new_run(input_digest=digest)
+        return {**result, "output_path": str(destination)}
+    finally:
+        case.close()
 
 
 class CountingSimulatedProvider:

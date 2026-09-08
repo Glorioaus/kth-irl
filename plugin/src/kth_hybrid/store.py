@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS mapping_reviews (
     review_basis TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE TABLE IF NOT EXISTS crl_evidence_reviews (
+    review_id TEXT PRIMARY KEY,
+    case_basis_version INTEGER NOT NULL,
+    claim_id TEXT NOT NULL,
+    criterion_id TEXT NOT NULL,
+    quote_sha256 TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('supports','does_not_support')),
+    findings_json TEXT NOT NULL,
+    support_scope TEXT NOT NULL,
+    reviewer TEXT NOT NULL,
+    review_basis TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 CREATE TABLE IF NOT EXISTS source_time_evidence (
     revision INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id TEXT NOT NULL,
@@ -351,6 +364,19 @@ class CaseStore:
                 review_basis TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
+            CREATE TABLE IF NOT EXISTS crl_evidence_reviews (
+                review_id TEXT PRIMARY KEY,
+                case_basis_version INTEGER NOT NULL,
+                claim_id TEXT NOT NULL,
+                criterion_id TEXT NOT NULL,
+                quote_sha256 TEXT NOT NULL,
+                decision TEXT NOT NULL CHECK (decision IN ('supports','does_not_support')),
+                findings_json TEXT NOT NULL,
+                support_scope TEXT NOT NULL,
+                reviewer TEXT NOT NULL,
+                review_basis TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%fZ','now'))
+            );
         """)
         columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(sources)").fetchall()}
@@ -615,6 +641,31 @@ class CaseStore:
             "SELECT * FROM mapping_reviews WHERE review_id=?", (review_id,)
         ).fetchone()
         return dict(row) if row else None
+
+    def add_crl_evidence_review(self, review_id: str, *, case_basis_version: int,
+                                claim_id: str, criterion_id: str, quote_sha256: str,
+                                decision: str, findings: dict, support_scope: str,
+                                reviewer: str, review_basis: str) -> None:
+        if decision not in ("supports", "does_not_support") or not isinstance(findings, dict):
+            raise ValueError("CRL复核decision或findings非法")
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO crl_evidence_reviews(review_id,case_basis_version,claim_id,criterion_id,quote_sha256,decision,findings_json,support_scope,reviewer,review_basis) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (review_id, case_basis_version, claim_id, criterion_id, quote_sha256,
+                 decision, json.dumps(findings, ensure_ascii=False, sort_keys=True),
+                 support_scope, reviewer, review_basis),
+            )
+
+    def fetch_crl_evidence_reviews(self, case_basis_version: int) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM crl_evidence_reviews WHERE case_basis_version=? ORDER BY review_id",
+            (case_basis_version,)).fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            item["findings"] = json.loads(item.pop("findings_json"))
+            out.append(item)
+        return out
 
     # ---- 记录写入（事务）----
 

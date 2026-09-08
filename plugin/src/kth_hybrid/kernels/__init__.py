@@ -23,6 +23,8 @@ R1.3-B 变化：
 
 from __future__ import annotations
 
+from .crl import evaluate_crl_dimension
+
 RULE_VERSION = "kth-hybrid.kernels.r1-narrow.v4"
 
 # R1.1 已实现的判据规则（显式、逐条、带出处；未列入者 → method_unsupported）
