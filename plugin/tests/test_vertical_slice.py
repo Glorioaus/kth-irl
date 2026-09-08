@@ -1,8 +1,8 @@
-"""T06/R1.2：垂直切片 v3——可信判据解析、引文映射、冻结输入、计数型派发、CLI。
+"""T06/R1.4：垂直切片——可信判据解析、引文映射、冻结输入、计数型派发、CLI。
 
 v3 变化：runner 以 criterion_id+catalog 从可信目录解析判据（拒自报/篡改）；
-主张需带引文映射（逐字位于封存摘录＋语义过滤留痕）；CaseBasis/输入版本化；
-trace 失败不得发布成功。真实样本门控指向 R1.2 新Case（KTH_REAL_CASE_DIR_2）。
+主张需带引文映射（逐字位于封存摘录＋受控复核）；CaseBasis/输入版本化；
+trace 失败不得发布成功。真实样本门控指向 R1.4 新Case（KTH_REAL_CASE_DIR_4）。
 """
 
 from __future__ import annotations
@@ -274,14 +274,14 @@ def test_cli_trace_broken_chain_returns_nonzero(case_dir, capsys):
     assert "链核验：失败" in captured.out
 
 
-# ---- 真实 Case 门控复验（KTH_REAL_CASE_DIR_2；R1.2 新Case weijiu-r1_2） ----
+# ---- 真实 Case 门控复验（KTH_REAL_CASE_DIR_4；R1.4 新Case weijiu-r1_4） ----
 
-REAL_CASE = os.environ.get("KTH_REAL_CASE_DIR_3")
+REAL_CASE = os.environ.get("KTH_REAL_CASE_DIR_4")
 
 
-@pytest.mark.skipif(not REAL_CASE, reason="未设置 KTH_REAL_CASE_DIR_3（R1.3新Case）")
-class TestRealCaseSlicesR13:
-    """R1.2 真实切片期望（诚实规则下的结果）：
+@pytest.mark.skipif(not REAL_CASE, reason="未设置 KTH_REAL_CASE_DIR_4（R1.4新Case）")
+class TestRealCaseSlicesR14:
+    """R1.4 真实切片期望（诚实规则下的结果）：
 
     - 政府页（8bd0fcdb）：正文自载发布时间（真实定位）＋第三方提及主体全名
       ＋市场需求引文映射＋留痕语义确认 → 期望 qualified 且 CRL1-C1 消费
@@ -292,13 +292,11 @@ class TestRealCaseSlicesR13:
 
     def _load_specs(self):
         return json.loads(
-            (Path(REAL_CASE) / "audit" / "real-slice-specs-r1_3.json")
+            (Path(REAL_CASE) / "audit" / "real-slice-specs-r1_4.json")
             .read_text(encoding="utf-8"))
 
     def _run(self, spec, specs):
         claim_spec = dict(spec["claim_spec"])
-        claim_spec.setdefault("semantic_confirmation",
-                              specs.get("semantic_confirmation"))
         return run_criterion_slice(
             Path(REAL_CASE), source_id=spec["source_id"],
             claim_spec=claim_spec, criterion_id=spec["criterion_id"],
