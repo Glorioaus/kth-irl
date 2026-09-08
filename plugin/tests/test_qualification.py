@@ -109,12 +109,12 @@ def test_case_basis_without_source_is_rejected(blobs, sealed_case):
 
 def test_qualified_narrow_claim_with_located_publication_time(blobs, sealed_case):
     # v4：published_at 需结构化定位（自报过去时间不构成证明）
-    doc = REPORT.decode("utf-8") + " 发布时间：2026-07-20 09:30。"
+    doc = REPORT.decode("utf-8") + " 发布时间：2026-07-20T09:30:00Z。"
     data = doc.encode("utf-8")
     ref = blobs.put_bytes(data)
-    pos = doc.find("2026-07-20 09:30")
+    pos = doc.find("2026-07-20T09:30:00Z")
     ls = len(doc[:pos].encode("utf-8"))
-    le = ls + len("2026-07-20 09:30".encode("utf-8"))
+    le = ls + len("2026-07-20T09:30:00Z".encode("utf-8"))
     start, end = 0, len(SUBJECT.encode("utf-8"))
     excerpt = data[start:end]
     claim = _claim("CLM-Q", sha256_hex(excerpt), excerpt.decode("utf-8"), start, end)
@@ -155,9 +155,19 @@ def test_first_party_requires_matching_document_subject(blobs, sealed_case):
     spos = text.find(SUBJECT)
     ss = len(text[:spos].encode("utf-8"))
     se = ss + len(SUBJECT.encode("utf-8"))
+    review = blobs.put_bytes(json.dumps({
+        "subject": SUBJECT,
+        "document_sha256": ref.sha256,
+    }, ensure_ascii=False).encode("utf-8"))
+    sealed_case.add_import_record(
+        "case_provenance", "session:document-subject-review.json", review.sha256)
     same = _source(ref.sha256, len(dated), document_subject=SUBJECT,
-                   document_subject_basis={"kind": "byte_range", "start": ss,
-                                           "end": se}, **common)
+                   document_subject_basis={
+                       "kind": "case_field_reference",
+                       "path": "case:document-subject-review.json#/subject",
+                       "document_sha256_path":
+                           "case:document-subject-review.json#/document_sha256",
+                   }, **common)
     outcome = qualify_claim(claim, same, blobs, BASIS, case=sealed_case)
     assert outcome.status == "qualified"
     assert "company_self_statement" in outcome.allowed_uses

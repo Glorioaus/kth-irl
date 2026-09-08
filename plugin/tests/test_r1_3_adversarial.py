@@ -76,6 +76,16 @@ class TestR13A:
         }
         case = CaseStore(tmp_path / "records.sqlite3")
         try:
+            document_basis = source.get("document_subject_basis")
+            if isinstance(document_basis, dict) and \
+                    document_basis.get("kind") == "case_field_reference":
+                review = blobs.put_bytes(json.dumps({
+                    "subject": source.get("document_subject"),
+                    "document_sha256": source["blob_sha256"],
+                }, ensure_ascii=False).encode("utf-8"))
+                case.add_import_record(
+                    "case_provenance", "session:document-subject-review.json",
+                    review.sha256)
             return qualify_claim(claim, source, blobs, basis, case=case)
         finally:
             case.close()
@@ -139,7 +149,7 @@ class TestR13A:
         assert outcome.status != "qualified"
 
     def test_a2_positive_structured_first_party_locator(self, tmp_path):
-        # 合法正例：结构化定位（正文区间）内容确实载明主体归属
+        # 合法正例：封存归属记录同时绑定主体字段和当前原件 hash。
         basis = _basis_with_sealed_subject(tmp_path)
         text = f"{SUBJECT}发布年度报告：关注AR眼镜市场。"
         pos = text.find(SUBJECT)
@@ -149,12 +159,17 @@ class TestR13A:
             tmp_path, text, basis,
             source_family="owner_attachment", capture_status="attachment",
             document_subject=SUBJECT,
-            document_subject_basis={"kind": "byte_range", "start": s, "end": e},
+            document_subject_basis={
+                "kind": "case_field_reference",
+                "path": "case:document-subject-review.json#/subject",
+                "document_sha256_path":
+                    "case:document-subject-review.json#/document_sha256",
+            },
             retrieved_at=None,
             time_evidence={"kind": "filename_derived_date", "date": "2026-07-01",
                            "basis": "候选"})
         assert outcome.identity_judgment.verdict == "ok", \
-            "结构化定位内容含主体名的第一方归属必须能通过"
+            "封存归属记录绑定当前原件的第一方材料必须能通过"
 
     def test_a3_same_day_time_changed(self, tmp_path):
         # 正文发布2026-08-27T10:08:25Z；声明改为同日01:00:00Z——声明与定位内容不符
