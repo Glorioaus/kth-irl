@@ -1,0 +1,57 @@
+{
+  "schema_version": "kth-hybrid.r1_3-handoff.v1",
+  "generated_at": "2026-09-08T13:05:00+08:00",
+  "authorization": {
+    "instruction": "D:/t/kth-r12-review-20260908/发给GLM的R1.3限定收口指令.md",
+    "review_report": "D:/t/kth-r12-review-20260908/R1.2独立复验结论.md",
+    "scope": "仅R1.3限定收口（A/B/C残留+直接相关测试/交接修正）；不授权R2/重设架构/扩大预算",
+    "reviewer_approval_claimed": false
+  },
+  "branch": "codex/runtime-rebuild",
+  "reviewed_baseline": "3a4f6b48475abd89276f0dda9b243a718fefad38（核对一致，工作区干净）",
+  "code_commit": "0a83c62（14文件，+2240/-391）＋ 4278dae（清理误入临时脚本）",
+  "environment": {
+    "python": "3.12.10 (miniforge)",
+    "venv": "D:/UGit/kth-irl-hybrid/plugin/.venv（离线，未新增依赖）",
+    "network": "零网络；未读凭证；未调真实Provider/模型API；未改ACL/注册表；未push/merge/tag；未运行旧修复脚本",
+    "case_policy": "weijiu-r1/r1_1/r1_2 只读保留；新运行全部写 D:/t/kth-rebuild-cases/weijiu-r1_3"
+  },
+  "acceptance_matrix": "见 R1.3.md（A/B/C五列矩阵：入口/信任边界/原始证明/成功发布点/故障点）",
+  "fix_items": [
+    {"id": "A", "title": "统一可核验依据", "fix_locations": ["qualification.py v4: _resolve_case_field_reference/_judged_from_located_text/_registration_binding_error/_extract_datetime_from_text", "store.set_case_basis_if_changed"], "adversarial_tests": ["test_a1_missing_subject_ref_and_unproved_published_at", "test_a1_positive_sealed_subject_ref", "test_a1_subject_ref_value_mismatch", "test_a2_fake_first_party_proof", "test_a2_positive_structured_first_party_locator", "test_a3_same_day_time_changed", "test_a3_date_only_same_day_as_cutoff_stays_unknown", "test_a4_registration_other_document", "test_a4_positive_registration_bound_to_current"], "old_result": "复现 residual-observations：A1-A4 全部 qualified（主体引用不解析/第一方任意字符串/同日改凌晨/登记借用他件）", "new_result": "9/9 通过：非法证明全部拒绝（fail/ValueError），真实封存引用+真实定位正例同时通过；时间从定位文本提取实际值比对（精度+时区：钟面按声明时区解释）"},
+    {"id": "B", "title": "受控窄映射与有源N/A", "fix_locations": ["kernels v4: interpret_claim_for_criterion(candidate)/confirm_mapping(否定门控)/check_na_legality v4(预解析)", "runner._resolve_na_proposal", "dimensions(confirmed必要条件)"], "adversarial_tests": ["test_b1_negated_hypothesis_not_mapped_even_with_confirmation", "test_b1_positive_market_statement_with_confirmation", "test_b1_keyword_without_confirmation_stays_candidate", "test_b2_unsourced_na_rejected", "test_b2_positive_sourced_na"], "old_result": "复现：B1否定文本succeeded/trace ok；B2指向不存在文件的N/A succeeded", "new_result": "5/5 通过：否定门控拒绝（即使调用方确认）；关键词仅candidate；无确认→insufficient；N/A引用必须预解析到封存对象字段"},
+    {"id": "C", "title": "完整输入绑定与原子发布", "fix_locations": ["contracts.run_input_digest_v3(v4扩展: source_inputs/时间证据修订快照/qualification_digest/mapping含confirmation/na_proposal全文)", "audit.verify_result_bindings(发布前与trace共用)", "runner: 先验证后INSERT原子发布；CaseBasis冻结取存储版本快照"], "adversarial_tests": ["test_c1_changed_na_proof_replay_rejected", "test_c2_crash_at_verification_no_succeeded_published", "test_c2_deterministic_trace_failure_not_published", "test_c3_source_date_tamper_breaks_trace", "test_c4_qualification_tamper_breaks_trace", "test_c5_mapping_deleted_breaks_trace", "test_c6_basis_snapshot_tamper_breaks_trace", "test_c7_source_time_change_replay_rejected", "test_c_new_time_revision_does_not_break_old_result"], "old_result": "复现：C1/C7接受且摘要不变；C2中断后独立连接见succeeded；C3-C6 trace仍通过", "new_result": "9/9 通过：摘要含完整闭包（改时间/N-A依据/任何冻结字段→重放拒）；验证先行（中断→无行；确定失败→execution_failed）；来源字段/资格状态与内容/映射记录/CaseBasis版本快照（含别名与来源依据）改动→trace断；新时间修订不破坏旧结果"},
+    {"id": "delivery", "title": "测试与统计更正", "fix_locations": ["test_r1_2_adversarial.py: test_trace_failed…重写为确定性发布门（前置正向发布断言+验证时刻断链注入+独立连接复查）", "store.find_import幂等+build脚本case_provenance去重", "snapshot-stats-r1_3.json阶段末自动生成（业务对象/运行历史/版本历史三口径）"], "adversarial_tests": ["test_case_provenance_import_idempotent", "test_case_basis_changed_only_appends_new_version"], "old_result": "条件断言（破坏CLM-FRZ后换测CLM-FRZ2）；identity-plan重复导入2行；交接runs=6 vs 接收9", "new_result": "确定性测试通过（前置断言succeeded实际发生）；imports 94（重复消除）；快照分列：业务对象零增长 / runs=6（运行历史）/ CaseBasis版本1+时间修订3（真实事件）；差异来源已说明（门控测试执行的运行记录）"}
+  ],
+  "test_coverage": {
+    "total": "195 passed / 0 failed / 0 skipped（full-suite-r1_3.log 退出码0）",
+    "r1_3_adversarial_new": 25,
+    "r1_1_adversarial_retained": 37,
+    "r1_2_adversarial_retained": 23,
+    "real_sample": "13（10真实只读 + 3真实Case门控[GOV正例/BP/公司报道]）",
+    "baseline_reproduction": "25项新反例在基线3a4f6b4：20失败+3接口缺失+2通过（r13-adversarial-old-20260908.log sha256=7190b2ebb87ff3b7c9aabda91dda5cc1af3df3c78b6897e5a3176482cc445333；接口缺失不计红灯，与复验口径一致）",
+    "per_file": {"test_r1_1_adversarial.py": 37, "test_r1_3_adversarial.py": 25, "test_r1_2_adversarial.py": 23, "test_qualification.py": 15, "test_vertical_slice.py": 14, "test_method_boundaries.py": 12, "test_intake.py": 11, "test_store.py": 10, "test_real_capture_readonly.py": 10, "test_execution_boundary.py": 9, "test_catalog.py": 9, "test_audit_trace.py": 8, "test_recovery.py": 7, "test_evidence_census.py": 5}
+  },
+  "test_runs": [
+    {"name": "R1.3全套（含真实门控3+真实只读10）", "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_3'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_3='D:/t/kth-rebuild-cases/weijiu-r1_3'; .\\.venv\\Scripts\\python -m pytest tests\\ -q", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0, "passed": 195, "failed": 0, "skipped": 0, "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/full-suite-r1_3.log", "log_sha256": "dd447e39089f5ed0ec7c0a0a22facfe0be0678ee2cac8fcb800a978bf98f66f1"},
+    {"name": "R1.3反例基线复现（3a4f6b4）", "command": ".\\.venv\\Scripts\\python -m pytest tests\\test_r1_3_adversarial.py -q", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 1, "passed": 3, "failed": 20, "note": "20失败含业务红灯（A1-A4/B1/B2/C1-C7形态）与接口缺失（新函数参数），后者按指令不计红灯", "log_ref": "D:/t/kth-rebuild-cases/r13-adversarial-old-20260908.log", "log_sha256": "7190b2ebb87ff3b7c9aabda91dda5cc1af3df3c78b6897e5a3176482cc445333"},
+    {"name": "新Case构建+真实切片+幂等复跑（两轮退出码均0；业务对象零增长）", "command": ".\\.venv\\Scripts\\python D:\\t\\kth-rebuild-cases\\weijiu-r1_3\\audit\\build-case-r1_3.py", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0, "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/build-case-r1_3.log", "log_sha256": "9475c7e059f5f8b7b3b482b1a2282c332681df81a7ba930bcaba42c24f3ff561"},
+    {"name": "CLI演示（inspect×1、trace×2，退出码0）", "command": ".\\.venv\\Scripts\\python -m kth_hybrid.cli inspect|trace --case-dir D:\\t\\kth-rebuild-cases\\weijiu-r1_3 [--result-id <id>]", "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0, "outputs": [{"path": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/cli-inspect-r1_3.txt", "sha256": "e16d3ed12e7a863528647ea3b1a8634e3da0c8d574ef7e62c0e110552280ec9a"}, {"path": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/cli-trace-gov-r1_3.txt", "sha256": "d71b19b286937e36e85bdfe1cff6cc2a15cd69bc680fd15f7f5594364ddddb30"}, {"path": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/cli-trace-bp-r1_3.txt", "sha256": "c6ddb937e6e018fa1fbe4e218079c89f77bd9d420500cb0bbb6d93ecc7b8e631"}]}
+  ],
+  "evidence_census_ref": {"path": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/evidence-census.json", "sha256": "386ef138d6a839fdadbefd44145266981313d567df5ec1ce564217be2eb71b55", "chinese_summary": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/证据存量.md", "counts": {"L0": {"清单捕获": 80, "实读": 76, "不可读": 4, "采集实例": 76, "附件": 2, "放弃传输": 2, "依赖三口径": "380/380/380"}, "L1": {"非空正文": 36, "零字节": 40, "hash一致": 76}, "L2": {"不同blob": 18, "独立性": "未知"}, "L3": {"Claim": 3, "已审": 3, "按状态": {"qualified": 1, "needs_review": 1, "rejected": 1}, "distinct_qualified": 1, "待提取来源": 78}, "L4": {"criterion结果": {"succeeded": 1, "insufficient": 2}, "可用关系": 1, "原生处置": "均null"}}},
+  "trace_refs": [
+    {"result_id": "RESR::CLM-R13-GOV-CRL1::CRL1-C1", "qualification": "qualified（第三方载明主体全名＋自载发布时间2026-01-31 17:17定位＋单源）", "mapping": "confirmed（引文逐字＋否定门控＋留痕确认 executor-r1_3；范围=来源陈述该假设）", "product_status": "succeeded（非原生met）", "trace_ok": true, "output": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/cli-trace-gov-r1_3.txt", "output_sha256": "d71b19b286937e36e85bdfe1cff6cc2a15cd69bc680fd15f7f5594364ddddb30"},
+    {"result_id": "RESR::CLM-R13-BP-CRL1::CRL1-C1", "qualification": "needs_review（第一方主体一致；时间=文件名候选级）", "product_status": "insufficient", "trace_ok": true, "output": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/cli-trace-bp-r1_3.txt", "output_sha256": "c6ddb937e6e018fa1fbe4e218079c89f77bd9d420500cb0bbb6d93ecc7b8e631"},
+    {"result_id": "RESR::CLM-R13-CAP-CRL1::CRL1-C1", "qualification": "rejected（自载发布2026-08-27T10:08:25Z晚截止7h06m）", "product_status": "insufficient", "trace_ok": true},
+    {"real_slices": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/real-slices-r1_3.json", "sha256": "15d05edf5793b8f87c11bc0d0319405cd489290fc997232021d04724524e9eeb", "authoritative_specs": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/real-slice-specs-r1_3.json", "specs_sha256": "9b5ec158df4d1b8da2800eb3fb857960087e6c68de798ae6a4ccf45799fbeaa0"}
+  ],
+  "crash_publish_boundaries": [
+    {"boundary": "验证入口中断（进程级RuntimeError）", "test": "test_c2_crash_at_verification_no_succeeded_published", "result": "结果表无该result_id（未发布）"},
+    {"boundary": "验证确定失败（断链注入）", "test": "test_c2_deterministic_trace_failure_not_published + 重写的确定性发布门测试", "result": "落库execution_failed失败候选（rationale注明非业务NO），trace_ok=false"}
+  ],
+  "snapshot_stats": {"path": "D:/t/kth-rebuild-cases/weijiu-r1_3/audit/snapshot-stats-r1_3.json", "sha256": "c56cb48998f08cbc4f1fd2e2980b1947404afa1b91a24ec57893214c1e26c198", "business_objects": {"sources": 81, "imports": 94, "claims": 3, "qualifications": 3, "criterion_results": 3, "dependency_stats": {"rows": 380, "logical": 380, "distinct_blobs": 380}}, "run_history": 6, "version_history": {"case_basis_versions": 1, "time_evidence_revisions": 3}},
+  "unresolved_items": ["语义确认为留痕受控复核记录（executor-r1_3），非自动化语义判定——设计边界，不宣称一般语义理解", "主体法人身份claimed未工商核验（零网络）", "78来源实例未完成主张提取（含同hash重复）", "4条PermissionError不可读捕获=技术差异保留，未升级为Owner补材料", "180条仅CRL1-C1有实现规则（T07/R2）；真实Provider/模型链路未测"],
+  "input_version_changes": ["合同v4：主体/第一方/时间/登记证明全部须解析到封存原件（结构化定位+字段值）；published_at同标准", "映射合同：candidate/confirmed两态+否定门控+留痕确认；N/A预解析封存引用", "冻结合同v4：source判断字段+时间证据修订快照+资格内容摘要+映射确认+N/A全文；原子发布（先验证后INSERT）"],
+  "actual_time": {"segments": 1, "wall_clock": "约79分钟（2026-09-08 11:41–13:00 +0800，读指令起，连续无中断）", "note": "沿用原验证时间盒，不自动续期", "code_commit_time": "0a83c62 2026-09-08 12:53 +0800 / 4278dae 12:59"},
+  "self_assessment": {"verdict": "R1.3范围内A/B/C残留已收口（自评，待独立复验）", "software": "25项新反例（基线20失败复现）→25/25通过；195全套；崩溃发布边界确定性验证", "real_gate": "政府页正例在新合同下完整成立：qualified→confirmed映射→CRL1-C1 succeeded→trace通过（范围=来源陈述该假设）", "honest_limits": "语义确认是留痕人工复核非自动判定；主体claimed；其余78来源未提取——均如实列示，未推迟为R2待办的已修项"}
+}
