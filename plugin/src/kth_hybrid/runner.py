@@ -38,6 +38,7 @@ from .kernels.frl import evaluate_frl_dimension
 from .kernels.brl import evaluate_brl_dimension
 from .kernels.trl import evaluate_trl_dimension
 from .kernels.iprl import evaluate_iprl_dimension
+from .kernels.tmrl import evaluate_tmrl_dimension
 from .qualification import (
     GapOutcome,
     QualificationOutcome,
@@ -823,6 +824,16 @@ def run_iprl_dimension_slice(case_dir: Path | str, *, catalog: dict,
         case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
         assessment_unit=assessment_unit, dimension_id="IPRL",
         evaluator=evaluate_iprl_dimension, output_name="iprl-dimension-night.json")
+
+
+def run_tmrl_dimension_slice(case_dir: Path | str, *, catalog: dict,
+                             case_basis: dict, scope: str,
+                             assessment_unit: dict) -> dict:
+    """夜间TMRL候选Case入口。"""
+    return _run_assessment_unit_dimension_slice(
+        case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
+        assessment_unit=assessment_unit, dimension_id="TMRL",
+        evaluator=evaluate_tmrl_dimension, output_name="tmrl-dimension-night.json")
 
 
 class CountingSimulatedProvider:

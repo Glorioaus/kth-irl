@@ -1122,10 +1122,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL1-C2",
@@ -1137,10 +1137,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL2-C1",
@@ -1152,10 +1152,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL2-C2",
@@ -1167,10 +1167,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL2-C3",
@@ -1182,10 +1182,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL3-C1",
@@ -1197,10 +1197,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL3-C2",
@@ -1212,10 +1212,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL3-C3",
@@ -1227,10 +1227,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL4-C1",
@@ -1242,10 +1242,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL4-C2",
@@ -1257,10 +1257,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL4-C3",
@@ -1272,10 +1272,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL4-C4",
@@ -1287,10 +1287,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL4-C5",
@@ -1302,10 +1302,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL5-C1",
@@ -1317,10 +1317,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL5-C2",
@@ -1332,10 +1332,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL5-C3",
@@ -1347,10 +1347,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL5-C4",
@@ -1362,10 +1362,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL5-C5",
@@ -1377,10 +1377,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL6-C1",
@@ -1392,10 +1392,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL6-C2",
@@ -1407,10 +1407,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL6-C3",
@@ -1422,10 +1422,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL6-C4",
@@ -1437,10 +1437,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL6-C5",
@@ -1452,10 +1452,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL7-C1",
@@ -1467,10 +1467,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL7-C2",
@@ -1482,10 +1482,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL7-C3",
@@ -1497,10 +1497,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL7-C4",
@@ -1512,10 +1512,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL7-C5",
@@ -1527,10 +1527,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL8-C1",
@@ -1542,10 +1542,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL8-C2",
@@ -1557,10 +1557,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL8-C3",
@@ -1572,10 +1572,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL8-C4",
@@ -1587,10 +1587,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL8-C5",
@@ -1602,10 +1602,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL9-C1",
@@ -1617,10 +1617,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL9-C2",
@@ -1632,10 +1632,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL9-C3",
@@ -1647,10 +1647,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL9-C4",
@@ -1662,10 +1662,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL9-C5",
@@ -1677,10 +1677,10 @@
       "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/tmrl.py",
+      "method_difference": "身份overlay不设成熟度；团队、人员、期间、工作/投入/运行证据分别绑定，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_tmrl.py::test_each_tmrl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "IPRL1-C1",
