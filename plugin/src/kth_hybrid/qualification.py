@@ -146,6 +146,59 @@ def _registration_binding_error(proof, source, blobs) -> str | None:
     return None
 
 
+def _parse_reference_tokens(field_path: str) -> tuple[list[str | int] | None, str | None]:
+    """解析既有 ``/``、``.``、``[n]`` 语法为一份共享的 token 合同。"""
+    if not isinstance(field_path, str) or not field_path:
+        return None, "字段路径为空"
+    tokens: list[str | int] = []
+    buffer: list[str] = []
+    index = 0
+    last_was_separator = False
+    while index < len(field_path):
+        char = field_path[index]
+        if char in "/.":
+            if buffer:
+                tokens.append("".join(buffer))
+                buffer = []
+                last_was_separator = True
+            elif last_was_separator:
+                return None, f"字段路径在 {index} 处出现重复分隔符"
+            elif index != 0 and not tokens:
+                return None, f"字段路径在 {index} 处缺少段名"
+            else:
+                last_was_separator = True
+            index += 1
+            continue
+        if char == "[":
+            if buffer:
+                tokens.append("".join(buffer))
+                buffer = []
+            close = field_path.find("]", index + 1)
+            if close < 0:
+                return None, "字段路径方括号未闭合"
+            raw_index = field_path[index + 1:close]
+            if not raw_index.isdigit():
+                return None, f"数组下标必须为非负整数，得到 {raw_index!r}"
+            tokens.append(int(raw_index))
+            index = close + 1
+            last_was_separator = False
+            continue
+        if char == "]":
+            return None, f"字段路径在 {index} 处有未配对的 ]"
+        buffer.append(char)
+        last_was_separator = False
+        index += 1
+    if buffer:
+        tokens.append("".join(buffer))
+    if not tokens or last_was_separator:
+        return None, "字段路径缺少最终字段"
+    return tokens, None
+
+
+def _canonical_path(tokens: list[str | int]) -> str:
+    return "/" + "/".join(str(token) for token in tokens)
+
+
 def resolve_case_field_reference_binding(
         ref: dict, case, blobs: BlobStore, expect_value=None
 ) -> tuple[object, str | None, dict | None]:
@@ -163,6 +216,9 @@ def resolve_case_field_reference_binding(
         return None, f"引用路径必须为 case:<file>#<json/path>，得到 {raw_path!r}", None
     file_part, field_path = raw_path[len("case:"):].split("#", 1)
     file_part = file_part.strip("/")
+    parsed_tokens, path_error = _parse_reference_tokens(field_path)
+    if path_error:
+        return None, f"字段路径非法：{path_error}", None
     if case is None:
         return None, "无可核验的Case库（引用无法解析到封存对象）", None
     record = None
@@ -180,19 +236,21 @@ def resolve_case_field_reference_binding(
         node = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
         return None, f"封存原件解析失败：{exc}", None
-    for token in [t for t in re.split(r"/|\.|(\[|\])", field_path) if t]:
-        token = token.strip("/")
-        if token in ("[", "]", ""):
-            continue
+    resolved_tokens: list[str | int] = []
+    for token in parsed_tokens:
         if isinstance(node, list):
             try:
                 node = node[int(token)]
             except (ValueError, IndexError):
                 return None, f"字段路径失败于 {token!r}", None
+            resolved_tokens.append(int(token))
         elif isinstance(node, dict):
+            if not isinstance(token, str):
+                return None, f"对象字段不能使用数组下标 {token!r}", None
             if token not in node:
                 return None, f"封存原件无字段 {token!r}", None
             node = node[token]
+            resolved_tokens.append(token)
         else:
             return None, f"字段路径失败于 {token!r}", None
     if expect_value is not None and node != expect_value:
@@ -202,6 +260,9 @@ def resolve_case_field_reference_binding(
         "origin_path": record["origin_path"],
         "origin_sha256": record["origin_sha256"],
         "field_path": field_path,
+        "field_tokens": resolved_tokens,
+        "record_tokens": resolved_tokens[:-1],
+        "canonical_path": _canonical_path(resolved_tokens),
         "value_sha256": sha256_hex(
             json.dumps(node, ensure_ascii=False, sort_keys=True).encode("utf-8")),
     }
@@ -274,18 +335,23 @@ def _parse_subject_source_basis(raw) -> dict:
     return parsed
 
 
-def _binding_scope(binding: dict) -> tuple[str, str, str] | None:
+def _binding_scope(binding: dict) -> tuple[str, str, tuple[str | int, ...]] | None:
     """返回证明字段所属的封存记录与逻辑对象作用域。"""
     if not isinstance(binding, dict):
         return None
     origin_path = binding.get("origin_path")
     origin_sha256 = binding.get("origin_sha256")
-    field_path = binding.get("field_path")
     if not all(isinstance(value, str) and value for value in
-               (origin_path, origin_sha256, field_path)):
+               (origin_path, origin_sha256)):
         return None
-    tokens = [token.strip("/") for token in field_path.split("/") if token.strip("/")]
-    return origin_path, origin_sha256, "/" + "/".join(tokens[:-1])
+    record_tokens = binding.get("record_tokens")
+    if isinstance(record_tokens, list) and record_tokens:
+        return origin_path, origin_sha256, tuple(record_tokens)
+    field_path = binding.get("field_path")
+    tokens, error = _parse_reference_tokens(field_path)
+    if error or not tokens:
+        return None
+    return origin_path, origin_sha256, tuple(tokens[:-1])
 
 
 def _same_record_relation(*bindings: dict) -> tuple[bool, str]:
@@ -296,6 +362,14 @@ def _same_record_relation(*bindings: dict) -> tuple[bool, str]:
     if len(set(scopes)) != 1:
         return False, "证明字段不属于同一封存逻辑记录/作用域，不能拼接关系"
     return True, "同一封存逻辑记录/作用域"
+
+
+def _frozen_scope(binding: dict) -> list[object]:
+    """将规范作用域转换为 JSON 稳定表示，供冻结与 trace 精确比对。"""
+    scope = _binding_scope(binding)
+    if scope is None:
+        return []
+    return [scope[0], scope[1], list(scope[2])]
 
 
 def decode_document_subject_basis(value) -> tuple[dict | None, str | None]:
@@ -343,7 +417,7 @@ def _verified_subject_aliases(subject_basis_ref: dict, case, blobs: BlobStore,
     return declared_aliases & set(value), None, {
         "aliases": aliases_binding,
         "subject": aliases_subject_binding,
-        "relation": list(_binding_scope(aliases_binding)),
+        "relation": _frozen_scope(aliases_binding),
     }
 
 
@@ -374,7 +448,7 @@ def _verify_document_subject_binding(proof, document_subject: str, source: dict,
     return True, (f"封存归属记录主体 {subject_value!r} 与当前原件 hash 均已核验"), {
         "subject": subject_binding,
         "document_sha256": hash_binding,
-        "relation": list(_binding_scope(subject_binding)),
+        "relation": _frozen_scope(subject_binding),
     }
 
 
@@ -391,29 +465,38 @@ def resolve_case_basis_proof_bindings(case_basis: dict, case, blobs: BlobStore) 
     if error or subject_binding is None:
         return None, f"主体来源依据不可核验：{error or '无绑定'}"
     declared_aliases = set(case_basis.get("subject_aliases", []))
-    _aliases, aliases_error, aliases_binding = _verified_subject_aliases(
+    aliases, aliases_error, aliases_binding = _verified_subject_aliases(
         subject_ref, case, blobs, declared_aliases, subject)
     bindings = {"subject": subject_binding}
     if aliases_binding is not None:
         bindings["aliases"] = aliases_binding
     elif aliases_error and declared_aliases:
         bindings["aliases_error"] = aliases_error
+    bindings["effective_subject_names"] = sorted({subject, *aliases})
     return bindings, None
 
 
 def resolve_document_subject_proof_bindings(
-        source: dict, subject: str, case, blobs: BlobStore
+        source: dict, subject: str, case, blobs: BlobStore, *,
+        effective_subject_names: set[str] | None = None
 ) -> tuple[dict | None, str | None]:
     """重建第一方归属的关系证明；存储字符串与直接 dict 走同一合同。"""
     document_subject = (source.get("document_subject") or "").strip()
-    if not document_subject or document_subject != subject:
-        return None, "来源未登记与当前评估主体一致的 document_subject"
+    effective_names = effective_subject_names or {subject}
+    if not document_subject or document_subject not in effective_names:
+        return None, "来源未登记与当前有效主体/别名一致的 document_subject"
     proof, error = decode_document_subject_basis(source.get("document_subject_basis"))
     if error:
         return None, error
     ok, basis, bindings = _verify_document_subject_binding(
         proof, document_subject, source, case, blobs)
-    return (bindings, None) if ok and bindings is not None else (None, basis)
+    if not ok or bindings is None:
+        return None, basis
+    return {
+        **bindings,
+        "matched_subject": document_subject,
+        "matched_subject_kind": "canonical" if document_subject == subject else "alias",
+    }, None
 
 
 def resolve_timezone_rule_binding(time_evidence: dict, source: dict, case,
@@ -448,7 +531,7 @@ def resolve_timezone_rule_binding(time_evidence: dict, source: dict, case,
     return parsed.tzinfo, {
         "rule": rule_binding,
         "scope": scope_binding,
-        "relation": list(_binding_scope(rule_binding)),
+        "relation": _frozen_scope(rule_binding),
     }, None
 
 

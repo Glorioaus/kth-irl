@@ -413,10 +413,21 @@ def verify_result_bindings(case, blobs, result_row):
         document_binding = proof_bindings.get("document_subject")
         if document_binding is not None and source is not None:
             try:
-                from .qualification import resolve_document_subject_proof_bindings
+                from .qualification import (
+                    resolve_case_basis_proof_bindings,
+                    resolve_document_subject_proof_bindings,
+                )
 
+                case_bindings, case_error = resolve_case_basis_proof_bindings(
+                    frozen_basis, case, blobs)
                 current, document_error = resolve_document_subject_proof_bindings(
-                    source, frozen_basis.get("subject_legal_name"), case, blobs)
+                    source, frozen_basis.get("subject_legal_name"), case, blobs,
+                    effective_subject_names=set((case_bindings or {}).get(
+                        "effective_subject_names", [
+                            frozen_basis.get("subject_legal_name")])),
+                )
+                if case_error:
+                    document_error = case_error
             except (TypeError, ValueError) as exc:
                 current, document_error = None, str(exc)
             if document_error or current != document_binding:

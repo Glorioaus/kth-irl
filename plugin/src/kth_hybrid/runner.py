@@ -365,7 +365,11 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
 
         proof_bindings = {"case_basis": basis_proofs}
         document_proof, document_proof_error = resolve_document_subject_proof_bindings(
-            source, basis["subject_legal_name"], case, blobs)
+            source, basis["subject_legal_name"], case, blobs,
+            effective_subject_names=set(
+                basis_proofs.get("effective_subject_names", [
+                    basis["subject_legal_name"]])),
+        )
         if document_proof is not None:
             proof_bindings["document_subject"] = document_proof
         elif source.get("document_subject") and document_proof_error:
