@@ -170,34 +170,108 @@ def _controlled_mapping_review(case: CaseStore, review_id, *, basis_version: int
 def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                             case_basis: dict, scope: str,
                             output_path: Path | str | None = None) -> dict:
-    """R2-A：只消费已落库、主张/资格/hash均匹配的CRL受控复核记录。"""
+    """R2-A：复用R1证据门，验证后原子发布不可变CRL维度结果。"""
     case_dir = Path(case_dir)
     blobs = BlobStore(case_dir / "blobs")
     case = CaseStore(case_dir / "records.sqlite3")
     try:
         basis, version = _effective_case_basis(case, case_basis)
+        if scope != basis["subject_legal_name"]:
+            raise ValueError("CRL维度scope必须等于冻结Case主体，不能接受任意scope")
         criteria = [dict(row) for row in catalog["dimensions"]["CRL"]["registry"]["criteria"]]
-        reviews, rejected = [], []
-        for row in case.fetch_crl_evidence_reviews(version):
-            claim = case.fetch_one("claims", "claim_id", row["claim_id"])
-            qual = case.fetch_one("qualifications", "qual_id", qualification_id(row["claim_id"]))
-            if claim is None or qual is None or qual["status"] != "qualified":
-                rejected.append({"review_id": row["review_id"], "reason": "主张/资格不可用"})
-            elif claim["excerpt_sha256"] != row["quote_sha256"]:
-                rejected.append({"review_id": row["review_id"], "reason": "引文hash不符"})
-            else:
-                reviews.append({key: row[key] for key in ("review_id", "criterion_id", "claim_id", "decision", "findings", "reviewer", "review_basis", "support_scope")})
-        dimension = evaluate_crl_dimension(criteria, reviews, scope=scope)
-        frozen = {"case_basis": basis, "case_basis_version": version,
-                  "catalog_sha256": catalog.get("wheel_sha256"), "criteria": criteria,
-                  "reviews": reviews, "rejected_reviews": rejected, "scope": scope,
-                  "rule_version": dimension["rule_version"]}
-        digest = sha256_hex(json.dumps(frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-        result = {"schema_version": "kth-hybrid.r2a-crl-dimension.v1",
-                  "input_digest": digest, "dimension": dimension,
-                  "frozen_inputs": frozen,
-                  "traceability": {"review_refs": [r["review_id"] for r in reviews],
-                                   "claim_refs": sorted({r["claim_id"] for r in reviews})}}
+        criterion_ids = {row["criterion_id"] for row in criteria}
+        with case.immediate_transaction():
+            basis_proofs, basis_error = resolve_case_basis_proof_bindings(basis, case, blobs)
+            reviews, rejected, evidence_bindings = [], [], []
+            if basis_error or basis_proofs is None:
+                rejected.append({"review_id": "__case_basis__",
+                                 "reason": f"CaseBasis证明不可核验：{basis_error}"})
+                basis_proofs = None
+            for row in case.fetch_crl_evidence_reviews(version):
+                claim = case.fetch_one("claims", "claim_id", row["claim_id"])
+                qual = case.fetch_one("qualifications", "qual_id", qualification_id(row["claim_id"]))
+                source = case.fetch_one("sources", "source_id", claim["source_id"]) if claim else None
+                reason = None
+                if basis_proofs is None:
+                    reason = "CaseBasis证明不可核验"
+                elif row.get("subject_scope") != scope:
+                    reason = "CRL复核subject_scope与维度scope不一致"
+                elif row["criterion_id"] not in criterion_ids:
+                    reason = "CRL复核指向未登记/非CRL准则"
+                elif claim is None or qual is None or qual["status"] != "qualified" or source is None:
+                    reason = "主张、来源或资格不可用"
+                try:
+                    data = blobs.read_bytes(source["blob_sha256"]) if source else b""
+                except Exception as exc:
+                    data, reason = b"", f"原件不可读：{exc}"
+                current_claim_digest = claim_content_digest(claim) if claim else None
+                if not reason and (len(data) != source["byte_length"] or
+                                   current_claim_digest != claim.get("content_digest")):
+                    reason = "来源长度或Claim冻结内容不一致"
+                if not reason:
+                    from .audit import _excerpt_bytes_for_claim
+                    excerpt = _excerpt_bytes_for_claim(blobs, claim, source)
+                    if excerpt is None or sha256_hex(excerpt) != claim["excerpt_sha256"]:
+                        reason = "定位/投影/摘录hash不符"
+                if not reason and claim["excerpt_sha256"] != row["quote_sha256"]:
+                    reason = "复核引文hash与封存摘录不一致"
+                source_for_qualification = dict(source or {})
+                latest_time = case.latest_time_evidence(source["source_id"]) if source else None
+                if latest_time:
+                    source_for_qualification["time_evidence"] = {
+                        key: value for key, value in latest_time.items()
+                        if key not in ("revision", "created_at")}
+                if not reason:
+                    outcome = qualify_claim(
+                        claim, source_for_qualification, blobs, basis,
+                        same_body_sources=_same_body_occurrence_count(case, source["blob_sha256"]),
+                        review_attempt="r2a-dimension-reverify", case=case)
+                    if not isinstance(outcome, QualificationOutcome) or outcome.status != "qualified":
+                        reason = "R1资格重核不再qualified"
+                binding = {"review": {key: row.get(key) for key in
+                           ("review_id", "criterion_id", "claim_id", "quote_sha256",
+                            "decision", "findings", "subject_scope", "support_scope",
+                            "reviewer", "review_basis")},
+                           "claim": claim, "claim_digest": current_claim_digest,
+                           "source": source,
+                           "qualification_digest": qualification_content_digest(qual) if qual else None}
+                if reason:
+                    rejected.append({"review_id": row["review_id"], "reason": reason,
+                                     "evidence_binding": binding})
+                    continue
+                review = {key: row[key] for key in
+                          ("review_id", "criterion_id", "claim_id", "decision", "findings",
+                           "reviewer", "review_basis", "support_scope")}
+                reviews.append(review)
+                evidence_bindings.append(binding)
+            dimension = evaluate_crl_dimension(criteria, reviews, scope=scope)
+            if rejected:
+                for item in dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                dimension.update(product_status="execution_failed", attained_level=None,
+                                 first_unmet_level=None, execution_errors=rejected)
+            frozen = {"case_basis": basis, "case_basis_version": version,
+                      "case_basis_proofs": basis_proofs,
+                      "catalog_sha256": catalog.get("wheel_sha256"), "criteria": criteria,
+                      "reviews": reviews, "rejected_reviews": rejected,
+                      "evidence_bindings": evidence_bindings, "scope": scope,
+                      "rule_version": dimension["rule_version"]}
+            digest = sha256_hex(json.dumps(frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+            result_id_value = f"CRLR2A::{digest}"
+            result = {"schema_version": "kth-hybrid.r2a-crl-dimension.v2",
+                      "result_id": result_id_value, "input_digest": digest,
+                      "dimension": dimension, "frozen_inputs": frozen,
+                      "traceability": {"review_refs": [r["review_id"] for r in reviews],
+                                       "claim_refs": sorted({r["claim_id"] for r in reviews})}}
+            result_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            result_ref = blobs.put_bytes(result_bytes)
+            existing = case.get_crl_dimension_result(digest)
+            if existing is None:
+                case.add_crl_dimension_result_in_transaction(
+                    result_id_value, input_digest=digest, case_basis_version=version,
+                    scope=scope, product_status=dimension["product_status"],
+                    result_blob_sha256=result_ref.sha256)
         destination = Path(output_path) if output_path else case_dir / "audit" / "crl-dimension-r2a.json"
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

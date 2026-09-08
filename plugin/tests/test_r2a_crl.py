@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import kth_hybrid.kernels as kernels
 from kth_hybrid.catalog import build_catalog_from_wheel
+import pytest
 
 
 def test_r2a_exposes_a_dedicated_crl_dimension_evaluator():
@@ -44,6 +45,32 @@ def _all_findings() -> dict:
         "user_payer_decider_roles": True,
         "positioning_against_alternatives": True,
     }
+
+
+@pytest.mark.parametrize("criterion_id", sorted([
+    "CRL1-C1", "CRL1-C2", "CRL1-C3", "CRL2-C1", "CRL2-C2", "CRL2-C3",
+    "CRL3-C1", "CRL3-C2", "CRL3-C3", "CRL4-C1", "CRL4-C2", "CRL4-C3",
+    "CRL4-C4",
+]))
+def test_each_rule_has_a_minimal_positive_and_missing_finding_negative(criterion_id):
+    evaluator = kernels.evaluate_crl_dimension
+    criteria = _criteria()
+    requirements = kernels.RULE_REQUIREMENTS[criterion_id]
+    positive = {}
+    for requirement in requirements:
+        positive[requirement] = (
+            ["customer-1", "customer-2"] if requirement == "primary_feedback_contacts"
+            and criterion_id == "CRL4-C1"
+            else ["customer-1"] if requirement == "primary_feedback_contacts" else True)
+    met = evaluator(criteria, [_review(criterion_id, positive)], scope="合成产品单元")
+    row = next(item for item in met["criteria"] if item["criterion_id"] == criterion_id)
+    assert row["native_disposition"] == "met"
+    missing = dict(positive)
+    missing.pop(requirements[0])
+    insufficient = evaluator(criteria, [_review(criterion_id, missing)], scope="合成产品单元")
+    row = next(item for item in insufficient["criteria"] if item["criterion_id"] == criterion_id)
+    assert row["native_disposition"] is None
+    assert row["product_status"] == "insufficient"
 
 
 def test_all_13_rules_can_be_individually_met_with_criterion_specific_reviews():
@@ -91,6 +118,27 @@ def test_reviewed_negative_is_native_not_met_not_product_insufficient():
 
     assert row["native_disposition"] == "not_met"
     assert row["product_status"] == "succeeded"
+
+
+def test_conflicting_controlled_reviews_are_partial():
+    result = kernels.evaluate_crl_dimension(
+        _criteria(), [_review("CRL1-C1", {"market_need_hypothesis": True}),
+                      _review("CRL1-C1", {}, decision="does_not_support")],
+        scope="合成产品单元")
+    row = next(item for item in result["criteria"] if item["criterion_id"] == "CRL1-C1")
+    assert row["native_disposition"] == "partial"
+
+
+def test_multiple_reviews_merge_distinct_contacts_without_double_counting():
+    reviews = [
+        _review("CRL4-C1", {"primary_feedback_contacts": ["c1"],
+                            "importance_confirmed": True}),
+        {**_review("CRL4-C1", {"primary_feedback_contacts": ["c2"]}),
+         "review_id": "REV::CRL4-C1::2", "claim_id": "CLM::CRL4-C1::2"},
+    ]
+    result = kernels.evaluate_crl_dimension(_criteria(), reviews, scope="合成产品单元")
+    row = next(item for item in result["criteria"] if item["criterion_id"] == "CRL4-C1")
+    assert row["native_disposition"] == "met"
 
 
 def test_crl4_multiple_contacts_are_deduplicated_before_becoming_met():

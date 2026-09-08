@@ -23,7 +23,7 @@ R1.3-B 变化：
 
 from __future__ import annotations
 
-from .crl import evaluate_crl_dimension
+from .crl import RULE_REQUIREMENTS, evaluate_crl_dimension
 
 RULE_VERSION = "kth-hybrid.kernels.r1-narrow.v4"
 

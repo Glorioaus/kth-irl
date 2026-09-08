@@ -1,8 +1,9 @@
 # AGENTS.md —— 本仓库工作纪律（对所有实现/审核 Agent 生效）
 
-**当前上位文件（2026-09-08 起）：**《KTH整体重建执行计划v3》＋ Owner 2026-09-08 开工授权
-（仅 R0＋R1：T01–T06 及 I/O 历史交接、audit/trace、证据 census、R1 交接工件）。工程决定
-记录见 `docs/decisions/runtime-v3.md`。旧上位文件《Hybrid v1.1 实施计划》降为 M0 历史。
+**当前上位文件（2026-09-08 起）：**《KTH整体重建执行计划v3》＋ Owner R2-A 首批授权。
+本批只扩展到 T07 的 CRL 13 条、1–4级离线维度切片、180条范围清单及最终census更正；
+T08/T09、其他五维、真实模型/Provider、D1/D2、报告与发布仍未授权。工程决定记录见
+`docs/decisions/runtime-v3.md`。旧上位文件《Hybrid v1.1 实施计划》降为 M0 历史。
 
 按开工授权，以下旧约束**仅在 R0＋R1 期间被取代**：M0-only 写入限制（plugin\ 目录自 T02
 起按工作包写代码/测试）；M0.5 Walking Skeleton 强制门（被 R1 验收口径取代：真实证据存量

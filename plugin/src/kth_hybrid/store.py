@@ -70,9 +70,19 @@ CREATE TABLE IF NOT EXISTS crl_evidence_reviews (
     quote_sha256 TEXT NOT NULL,
     decision TEXT NOT NULL CHECK (decision IN ('supports','does_not_support')),
     findings_json TEXT NOT NULL,
+    subject_scope TEXT NOT NULL,
     support_scope TEXT NOT NULL,
     reviewer TEXT NOT NULL,
     review_basis TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS crl_dimension_results (
+    result_id TEXT PRIMARY KEY,
+    input_digest TEXT NOT NULL UNIQUE,
+    case_basis_version INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    product_status TEXT NOT NULL,
+    result_blob_sha256 TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE IF NOT EXISTS source_time_evidence (
@@ -372,10 +382,20 @@ class CaseStore:
                 quote_sha256 TEXT NOT NULL,
                 decision TEXT NOT NULL CHECK (decision IN ('supports','does_not_support')),
                 findings_json TEXT NOT NULL,
+                subject_scope TEXT,
                 support_scope TEXT NOT NULL,
                 reviewer TEXT NOT NULL,
                 review_basis TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%fZ','now'))
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS crl_dimension_results (
+                result_id TEXT PRIMARY KEY,
+                input_digest TEXT NOT NULL UNIQUE,
+                case_basis_version INTEGER NOT NULL,
+                scope TEXT NOT NULL,
+                product_status TEXT NOT NULL,
+                result_blob_sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
         """)
         columns = {row[1] for row in self._conn.execute(
@@ -396,6 +416,10 @@ class CaseStore:
             if column not in result_columns:
                 self._conn.execute(
                     f"ALTER TABLE criterion_results ADD COLUMN {column} TEXT")
+        crl_review_columns = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(crl_evidence_reviews)").fetchall()}
+        if "subject_scope" not in crl_review_columns:
+            self._conn.execute("ALTER TABLE crl_evidence_reviews ADD COLUMN subject_scope TEXT")
         self._conn.commit()
 
     # ---- 阶段与运行 ----
@@ -645,15 +669,16 @@ class CaseStore:
     def add_crl_evidence_review(self, review_id: str, *, case_basis_version: int,
                                 claim_id: str, criterion_id: str, quote_sha256: str,
                                 decision: str, findings: dict, support_scope: str,
-                                reviewer: str, review_basis: str) -> None:
+                                subject_scope: str, reviewer: str,
+                                review_basis: str) -> None:
         if decision not in ("supports", "does_not_support") or not isinstance(findings, dict):
             raise ValueError("CRL复核decision或findings非法")
         with self._conn:
             self._conn.execute(
-                "INSERT INTO crl_evidence_reviews(review_id,case_basis_version,claim_id,criterion_id,quote_sha256,decision,findings_json,support_scope,reviewer,review_basis) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO crl_evidence_reviews(review_id,case_basis_version,claim_id,criterion_id,quote_sha256,decision,findings_json,subject_scope,support_scope,reviewer,review_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (review_id, case_basis_version, claim_id, criterion_id, quote_sha256,
                  decision, json.dumps(findings, ensure_ascii=False, sort_keys=True),
-                 support_scope, reviewer, review_basis),
+                 subject_scope, support_scope, reviewer, review_basis),
             )
 
     def fetch_crl_evidence_reviews(self, case_basis_version: int) -> list[dict]:
@@ -666,6 +691,42 @@ class CaseStore:
             item["findings"] = json.loads(item.pop("findings_json"))
             out.append(item)
         return out
+
+    def get_crl_evidence_review(self, review_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM crl_evidence_reviews WHERE review_id=?", (review_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["findings"] = json.loads(item.pop("findings_json"))
+        return item
+
+    def get_crl_dimension_result(self, input_digest: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM crl_dimension_results WHERE input_digest=?", (input_digest,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_crl_dimension_result_by_id(self, result_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM crl_dimension_results WHERE result_id=?", (result_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def add_crl_dimension_result_in_transaction(
+            self, result_id: str, *, input_digest: str, case_basis_version: int,
+            scope: str, product_status: str, result_blob_sha256: str) -> None:
+        if not self._conn.in_transaction:
+            raise RuntimeError("CRL维度结果发布必须位于显式事务内")
+        self._conn.execute(
+            "INSERT INTO crl_dimension_results(result_id,input_digest,case_basis_version,scope,product_status,result_blob_sha256) VALUES (?,?,?,?,?,?)",
+            (result_id, input_digest, case_basis_version, scope, product_status,
+             result_blob_sha256),
+        )
+
+    def count_crl_dimension_results(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM crl_dimension_results").fetchone()[0])
 
     # ---- 记录写入（事务）----
 
