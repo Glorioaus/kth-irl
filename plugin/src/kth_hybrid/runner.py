@@ -39,6 +39,7 @@ from .qualification import (
     qualify_claim,
     RULE_VERSION as QUALIFICATION_VERSION,
     _resolve_case_field_reference,
+    resolve_case_field_reference_binding,
 )
 from .store import BlobStore, CaseStore
 
@@ -202,6 +203,67 @@ def _verify_candidate(case: CaseStore, blobs: BlobStore,
     return verify_result_bindings(case, blobs, candidate_row)
 
 
+_CASE_BASIS_FIELDS = (
+    "subject_legal_name", "subject_aliases", "evidence_cutoff",
+    "subject_source_basis",
+)
+
+
+def _requested_case_basis(case_basis: dict) -> dict:
+    """只接受运行会实际消费的 CaseBasis 字段，忽略调用方附带声明。"""
+    missing = [field for field in _CASE_BASIS_FIELDS if field not in case_basis]
+    if missing:
+        raise ValueError(f"case_basis 缺少必需字段：{missing}")
+    aliases = case_basis["subject_aliases"]
+    if not isinstance(aliases, list) or not all(isinstance(item, str) for item in aliases):
+        raise ValueError("case_basis.subject_aliases 必须为字符串列表")
+    return {
+        "subject_legal_name": case_basis["subject_legal_name"],
+        "subject_aliases": aliases,
+        "evidence_cutoff": case_basis["evidence_cutoff"],
+        "subject_source_basis": case_basis["subject_source_basis"],
+    }
+
+
+def _effective_case_basis(case: CaseStore, supplied_basis: dict) -> tuple[dict, int]:
+    """建立或读取唯一有效依据；已存在 Case 不允许同结果改用调用方 basis。"""
+    requested = _requested_case_basis(supplied_basis)
+    current = case.get_case_basis()
+    if current is None:
+        version = case.set_case_basis(**requested)
+    else:
+        version = current["version"]
+        stored = case.get_case_basis_version(version)
+        if stored is None:
+            raise RuntimeError(f"CaseBasis 版本 {version} 不存在，不能继续求值")
+        changed = [field for field in _CASE_BASIS_FIELDS
+                   if stored.get(field) != requested.get(field)]
+        if changed:
+            raise RuntimeError(
+                "有效 CaseBasis 与调用方输入不一致（差异字段："
+                f"{changed}）；同一Case/结果不得改用新主体、别名或截止重放"
+            )
+    snapshot = case.get_case_basis_version(version)
+    if snapshot is None:
+        raise RuntimeError(f"CaseBasis 版本 {version} 快照缺失，不能继续求值")
+    return ({key: value for key, value in snapshot.items() if key != "version"},
+            version)
+
+
+def _subject_provenance_binding(case_basis: dict, case: CaseStore,
+                                blobs: BlobStore) -> dict:
+    """解析主体引用并冻结实际读取的 provenance 对象、字段和值。"""
+    try:
+        reference = json.loads(case_basis["subject_source_basis"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"subject_source_basis 不是合法 JSON 引用：{exc}") from exc
+    _value, error, binding = resolve_case_field_reference_binding(
+        reference, case, blobs, expect_value=case_basis["subject_legal_name"])
+    if error or binding is None:
+        raise ValueError(f"主体来源依据不可核验：{error or '未生成封存对象绑定'}")
+    return binding
+
+
 def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dict,
                         criterion_id: str, catalog: dict,
                         case_basis: dict | None = None,
@@ -211,12 +273,15 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
     case_dir = Path(case_dir)
     if not case_basis or not case_basis.get("subject_source_basis"):
         raise ValueError("case_basis 必须携带 subject_source_basis（有源主体/截止）")
-    basis = case_basis
     canonical = resolve_criterion(criterion_id, catalog)
     approved = approved_ids_from_catalog(catalog)
     blobs = BlobStore(case_dir / "blobs")
     case = CaseStore(case_dir / "records.sqlite3")
     try:
+        # 资格、冻结、摘要和 trace 共同消费这一份存储版本快照。调用方仅能
+        # 在Case尚无依据时建立首个版本；后续同ID重放不得偷换截止或别名。
+        basis, basis_version = _effective_case_basis(case, case_basis)
+        subject_proof = _subject_provenance_binding(basis, case, blobs)
         source = case.fetch_one("sources", "source_id", source_id)
         if source is None:
             raise KeyError(f"来源 {source_id} 不存在（先运行 census 导入）")
@@ -336,20 +401,6 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
             qual_digest = qualification_content_digest(qual_row)
             qual_refs.append(qual_id)
 
-        basis_row = case.get_case_basis()
-        if basis_row is None:
-            basis_version = case.set_case_basis(
-                subject_legal_name=basis["subject_legal_name"],
-                subject_aliases=basis.get("subject_aliases", []),
-                evidence_cutoff=basis["evidence_cutoff"],
-                subject_source_basis=basis["subject_source_basis"])
-        else:
-            basis_version = basis_row["version"]
-        # 冻结的case_basis取**存储的版本快照**（与绑定版本完全一致，含note）
-        basis_snapshot = {k: v for k, v in
-                          case.get_case_basis_version(basis_version).items()
-                          if k != "version"}
-
         # N/A 预解析（封存对象字段值）
         na_proposal = _resolve_na_proposal(
             claim_spec.get("na_proposal"), case, blobs)
@@ -362,8 +413,9 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
             "approved_ids": sorted(approved),
             "rule_version": RULE_VERSION,
             "qualification_version": QUALIFICATION_VERSION,
-            "case_basis": basis_snapshot,
+            "case_basis": basis,
             "case_basis_version": basis_version,
+            "case_provenance_bindings": {"subject": subject_proof},
             "case_flags": case_flags or {},
             "mapping": {
                 "status": mapping.get("status"),
@@ -459,39 +511,42 @@ def run_criterion_slice(case_dir: Path | str, *, source_id: str, claim_spec: dic
             "na_basis": json.dumps(na_basis, ensure_ascii=False) if na_basis
             else None,
         }
-        # 原子发布（R1.3-C）：先完整验证，后单条 INSERT；验证失败/中断
-        # 不发布成功（不先提交succeeded再trace再改回）
-        report = _verify_candidate(case, blobs, candidate_row)
+        # 验证读取与结果写入被同一 BEGIN IMMEDIATE 保护。先前发生的变更会
+        # 被完整核验发现；事务期间另一连接不能插入破坏验证结论的改写。
         if existing_result is None:
-            if report.ok:
-                case.add_criterion_result(
-                    rid, criterion_id, canonical["dimension"],
-                    native_disposition=evaluation.native_disposition,
-                    native_note=evaluation.native_note,
-                    product_status=evaluation.product_status,
-                    evidence_refs=evaluation.evidence_refs,
-                    gap_refs=evaluation.gap_refs, qual_refs=qual_refs,
-                    rationale=evaluation.rationale, scope=evaluation.scope,
-                    rule_version=evaluation.rule_version, input_digest=digest,
-                    case_basis_version=basis_version,
-                    frozen_inputs=frozen_inputs, na_basis=na_basis)
-                published_status = evaluation.product_status
-            else:
-                failure_rationale = (
-                    "发布前验证失败，保留为失败候选（非业务NO；验证未通过不得"
-                    "发布成功）：" + "；".join(report.broken[:3]))
-                case.add_criterion_result(
-                    rid, criterion_id, canonical["dimension"],
-                    native_disposition=evaluation.native_disposition,
-                    native_note=evaluation.native_note,
-                    product_status="execution_failed",
-                    evidence_refs=evaluation.evidence_refs,
-                    gap_refs=evaluation.gap_refs, qual_refs=qual_refs,
-                    rationale=failure_rationale, scope=evaluation.scope,
-                    rule_version=evaluation.rule_version, input_digest=digest,
-                    case_basis_version=basis_version,
-                    frozen_inputs=frozen_inputs, na_basis=na_basis)
-                published_status = "execution_failed"
+            with case.immediate_transaction():
+                report = _verify_candidate(case, blobs, candidate_row)
+                if report.ok:
+                    case.add_criterion_result_in_transaction(
+                        rid, criterion_id, canonical["dimension"],
+                        native_disposition=evaluation.native_disposition,
+                        native_note=evaluation.native_note,
+                        product_status=evaluation.product_status,
+                        evidence_refs=evaluation.evidence_refs,
+                        gap_refs=evaluation.gap_refs, qual_refs=qual_refs,
+                        rationale=evaluation.rationale, scope=evaluation.scope,
+                        rule_version=evaluation.rule_version, input_digest=digest,
+                        case_basis_version=basis_version,
+                        frozen_inputs=frozen_inputs, na_basis=na_basis)
+                    published_status = evaluation.product_status
+                else:
+                    failure_rationale = (
+                        "发布前验证失败，保留为失败候选（非业务NO；验证未通过不得"
+                        "发布成功）：" + "；".join(report.broken[:3]))
+                    case.add_criterion_result_in_transaction(
+                        rid, criterion_id, canonical["dimension"],
+                        native_disposition=evaluation.native_disposition,
+                        native_note=evaluation.native_note,
+                        product_status="execution_failed",
+                        evidence_refs=evaluation.evidence_refs,
+                        gap_refs=evaluation.gap_refs, qual_refs=qual_refs,
+                        rationale=failure_rationale, scope=evaluation.scope,
+                        rule_version=evaluation.rule_version, input_digest=digest,
+                        case_basis_version=basis_version,
+                        frozen_inputs=frozen_inputs, na_basis=na_basis)
+                    published_status = "execution_failed"
+        else:
+            report = _verify_candidate(case, blobs, candidate_row)
 
         case.new_run(input_digest=digest)
         replay_consistent = True

@@ -147,38 +147,40 @@ def _registration_binding_error(proof, source, blobs) -> str | None:
     return "登记证明未绑定当前原件（缺少 document_sha256 绑定）"
 
 
-def _resolve_case_field_reference(ref: dict, case, blobs: BlobStore,
-                                   expect_value=None) -> tuple[object, str | None]:
+def resolve_case_field_reference_binding(
+        ref: dict, case, blobs: BlobStore, expect_value=None
+) -> tuple[object, str | None, dict | None]:
     """解析 ``case:<file>#<json/path>`` 字段引用到封存原件的具体字段值。
 
     R1.3-A：JSON 形状不等于引用真实存在——必须找到对应 case_provenance 导入
     的封存 blob、解析 JSON、走到字段；``expect_value`` 给定时还须值一致。
-    返回 (值, 错误)。
+    返回 ``(值, 错误, 封存对象/字段绑定)``。绑定用于让发布结果能重核
+    实际消费的 provenance 对象，而不是只冻结调用方路径字符串。
     """
     if not isinstance(ref, dict) or ref.get("kind") != "field_reference"             or not ref.get("path"):
-        return None, "引用必须是 {kind:'field_reference', path}"
+        return None, "引用必须是 {kind:'field_reference', path}", None
     raw_path = ref["path"]
     if not raw_path.startswith("case:") or "#" not in raw_path:
-        return None, f"引用路径必须为 case:<file>#<json/path>，得到 {raw_path!r}"
+        return None, f"引用路径必须为 case:<file>#<json/path>，得到 {raw_path!r}", None
     file_part, field_path = raw_path[len("case:"):].split("#", 1)
     file_part = file_part.strip("/")
     if case is None:
-        return None, "无可核验的Case库（引用无法解析到封存对象）"
+        return None, "无可核验的Case库（引用无法解析到封存对象）", None
     record = None
     for row in case.fetch_all("import_records"):
         if row["kind"] == "case_provenance" and row["origin_path"].endswith(file_part):
             record = row
             break
     if record is None:
-        return None, f"未找到封存的 {file_part}（case_provenance）"
+        return None, f"未找到封存的 {file_part}（case_provenance）", None
     try:
         raw = blobs.read_bytes(record["origin_sha256"])
     except (OSError, StoreIntegrityError, KeyError) as exc:
-        return None, f"封存原件不可读：{exc}"
+        return None, f"封存原件不可读：{exc}", None
     try:
         node = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
-        return None, f"封存原件解析失败：{exc}"
+        return None, f"封存原件解析失败：{exc}", None
     for token in [t for t in re.split(r"/|\.|(\[|\])", field_path) if t]:
         token = token.strip("/")
         if token in ("[", "]", ""):
@@ -187,16 +189,32 @@ def _resolve_case_field_reference(ref: dict, case, blobs: BlobStore,
             try:
                 node = node[int(token)]
             except (ValueError, IndexError):
-                return None, f"字段路径失败于 {token!r}"
+                return None, f"字段路径失败于 {token!r}", None
         elif isinstance(node, dict):
             if token not in node:
-                return None, f"封存原件无字段 {token!r}"
+                return None, f"封存原件无字段 {token!r}", None
             node = node[token]
         else:
-            return None, f"字段路径失败于 {token!r}"
+            return None, f"字段路径失败于 {token!r}", None
     if expect_value is not None and node != expect_value:
-        return None, (f"引用字段值 {node!r} 与期望值 {expect_value!r} 不一致")
-    return node, None
+        return None, (f"引用字段值 {node!r} 与期望值 {expect_value!r} 不一致"), None
+    binding = {
+        "path": raw_path,
+        "origin_path": record["origin_path"],
+        "origin_sha256": record["origin_sha256"],
+        "field_path": field_path,
+        "value_sha256": sha256_hex(
+            json.dumps(node, ensure_ascii=False, sort_keys=True).encode("utf-8")),
+    }
+    return node, None, binding
+
+
+def _resolve_case_field_reference(ref: dict, case, blobs: BlobStore,
+                                  expect_value=None) -> tuple[object, str | None]:
+    """兼容既有调用：只返回已解析字段值与错误。"""
+    value, error, _binding = resolve_case_field_reference_binding(
+        ref, case, blobs, expect_value=expect_value)
+    return value, error
 
 
 def _extract_datetime_from_text(text: str) -> list[tuple[datetime, bool]]:

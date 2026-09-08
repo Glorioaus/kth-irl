@@ -227,6 +227,38 @@ def verify_result_bindings(case, blobs, result_row):
     # 3) 来源判断字段未被改动（C3/C7）
     frozen_source = frozen.get("source_inputs") or {}
     if source is not None:
+        # 发布前与读时同用这一段：原件可读/hash、登记长度、主张定位、
+        # 摘录hash/文本都必须重新核验，不能由 trace 单独补查。
+        try:
+            source_bytes = blobs.read_bytes(source["blob_sha256"])
+        except (OSError, StoreIntegrityError, KeyError) as exc:
+            report.broken.append(
+                f"来源 {source['source_id']} 封存原字节不可读/复核失败：{exc}")
+            source_bytes = None
+        if source_bytes is not None:
+            if len(source_bytes) != source["byte_length"]:
+                report.broken.append(f"来源 {source['source_id']} 字节长度不符")
+            if claim["locator_kind"] == "byte_range":
+                start, end = claim["locator_start"], claim["locator_end"]
+                if not (isinstance(start, int) and isinstance(end, int)
+                        and 0 <= start < end <= len(source_bytes)):
+                    report.broken.append(
+                        f"主张 {claim['claim_id']} 定位越界 [{start},{end})")
+                else:
+                    excerpt = source_bytes[start:end]
+                    if sha256_hex(excerpt) != claim["excerpt_sha256"]:
+                        report.broken.append(
+                            f"主张 {claim['claim_id']} 摘录hash与封存原字节不符")
+                    if (sha256_hex(
+                            (claim.get("excerpt_text") or "").encode("utf-8"))
+                            != claim["excerpt_sha256"]):
+                        report.broken.append(
+                            f"主张 {claim['claim_id']} 摘录文本与登记hash不符")
+            else:
+                projection_problem = _verify_projection(claim, source_bytes)
+                if projection_problem:
+                    report.broken.append(
+                        f"主张 {claim['claim_id']} {projection_problem}")
         for field in ("published_at", "retrieved_at", "source_family",
                       "capture_status", "document_subject"):
             if source.get(field) != frozen_source.get(field):
@@ -321,7 +353,31 @@ def verify_result_bindings(case, blobs, result_row):
                     f"结果 {rid} 的 CaseBasis 版本 {bound_version} 快照与冻结输入"
                     f"不一致（差异字段：{differing}）")
 
-    # 8) 正向结果链（空链/非法N/A）
+    # 8) 主体依据不能只冻结路径字符串：解析到实际的 case_provenance 原件、
+    # 字段和值后，重建的绑定必须与发布时相同。旧R1.3结果没有该字段，保留
+    # 只读兼容；R1.4的新结果缺失或断裂时可见失败。
+    bindings = frozen.get("case_provenance_bindings")
+    if bindings is not None:
+        subject_binding = bindings.get("subject") if isinstance(bindings, dict) else None
+        if not isinstance(subject_binding, dict):
+            report.broken.append(f"结果 {rid} 缺少主体封存证明绑定")
+        else:
+            try:
+                from .qualification import resolve_case_field_reference_binding
+
+                subject_ref = json.loads(
+                    (frozen.get("case_basis") or {}).get("subject_source_basis") or "")
+                _value, error, current_binding = resolve_case_field_reference_binding(
+                    subject_ref, case, blobs,
+                    expect_value=(frozen.get("case_basis") or {}).get(
+                        "subject_legal_name"))
+            except (TypeError, ValueError) as exc:
+                error, current_binding = f"主体依据解析失败：{exc}", None
+            if error or current_binding != subject_binding:
+                report.broken.append(
+                    f"主体封存证明闭包不一致：{error or '原件/字段/值绑定已变更'}")
+
+    # 9) 正向结果链（空链/非法N/A）
     na_raw = result_row.get("na_basis")
     na_valid = False
     if na_raw:
@@ -336,6 +392,13 @@ def verify_result_bindings(case, blobs, result_row):
             and not na_valid:
         report.broken.append(
             f"结果 {rid} 为 succeeded 但资格引用为空且无合法 N/A 依据")
+    if result_row.get("product_status") == "succeeded" and source is not None \
+            and not na_valid:
+        evidence_refs = _load_json(result_row.get("evidence_refs"))
+        if set(evidence_refs) != {source["source_id"]}:
+            report.broken.append(
+                f"结果 {rid} 的 Evidence 集合与资格→主张→来源闭包不符："
+                f"列出 {sorted(set(evidence_refs))}，闭包 {[source['source_id']]}")
     return report
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 import tempfile
 from pathlib import Path
 from threading import RLock
@@ -267,6 +268,23 @@ class CaseStore:
             (_SCHEMA_VERSION,),
         )
         self._conn.commit()
+
+    @contextmanager
+    def immediate_transaction(self):
+        """串行化发布门：验证读取到结果写入必须处于同一写事务。"""
+        if self._conn.in_transaction:
+            raise RuntimeError("CaseStore 已有未完成事务，不能嵌套发布事务")
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield self
+        except Exception:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        else:
+            if not self._conn.in_transaction:
+                raise RuntimeError("发布事务在验证完成前被提前结束")
+            self._conn.execute("COMMIT")
 
     def _migrate(self) -> None:
         """已建库的增量列迁移（v1→v2→v3：R1/R1.1/R1.2 修复所需列与表）。"""
@@ -663,6 +681,32 @@ class CaseStore:
                             sort_keys=True) if frozen_inputs else None,
                  json.dumps(na_basis, ensure_ascii=False) if na_basis else None),
             )
+
+    def add_criterion_result_in_transaction(
+            self, result_id: str, criterion_id: str, dimension: str, *,
+            native_disposition: str | None, native_note: str | None,
+            product_status: str, evidence_refs: list[str], gap_refs: list[str],
+            qual_refs: list[str], rationale: str, scope: str, rule_version: str,
+            input_digest: str | None = None, case_basis_version: int | None = None,
+            frozen_inputs: dict | None = None, na_basis: dict | None = None) -> None:
+        """在 :meth:`immediate_transaction` 内插入已核验候选，禁止隐式提交。"""
+        if not self._conn.in_transaction:
+            raise RuntimeError("判据结果发布必须位于显式事务内")
+        self._conn.execute(
+            "INSERT INTO criterion_results(result_id, criterion_id, dimension, "
+            "native_disposition, native_note, product_status, evidence_refs, "
+            "gap_refs, qual_refs, rationale, scope, rule_version, input_digest, "
+            "case_basis_version, frozen_inputs, na_basis) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (result_id, criterion_id, dimension, native_disposition, native_note,
+             product_status, json.dumps(evidence_refs, ensure_ascii=False),
+             json.dumps(gap_refs, ensure_ascii=False),
+             json.dumps(qual_refs, ensure_ascii=False), rationale, scope,
+             rule_version, input_digest, case_basis_version,
+             json.dumps(frozen_inputs, ensure_ascii=False,
+                        sort_keys=True) if frozen_inputs else None,
+             json.dumps(na_basis, ensure_ascii=False) if na_basis else None),
+        )
 
     # ---- 读取 ----
 
