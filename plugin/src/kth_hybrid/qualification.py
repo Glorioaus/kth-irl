@@ -641,14 +641,34 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         declared_has_time = bool(re.search(
             r"T\d{1,2}:\d{2}| \d{1,2}:\d{2}|\d{1,2}时\d{1,2}分",
             declared_raw))
+        timezone_rule = time_evidence.get("timezone_rule")
+        timezone_basis = time_evidence.get("timezone_basis")
+        sourced_timezone = None
+        if isinstance(timezone_rule, str) and timezone_rule.strip() \
+                and isinstance(timezone_basis, str) and timezone_basis.strip():
+            try:
+                offset_text = "+00:00" if timezone_rule == "Z" else timezone_rule
+                sourced_timezone = datetime.fromisoformat(
+                    f"2000-01-01T00:00:00{offset_text}").tzinfo
+            except ValueError:
+                sourced_timezone = None
         matched = None
         for value, has_time, has_timezone in extracted:
             if declared_has_time:
-                if not has_time or has_timezone != declared_has_timezone:
+                if not has_time:
                     continue
                 if has_timezone and value == declared_dt:
                     matched = (value, has_time)
                     break
+                if (not has_timezone and declared_has_timezone
+                        and sourced_timezone is not None):
+                    sourced_actual = value.replace(
+                        tzinfo=sourced_timezone).astimezone(timezone.utc)
+                    if sourced_actual == declared_dt:
+                        matched = (sourced_actual, has_time)
+                        break
+                if has_timezone != declared_has_timezone:
+                    continue
                 if not has_timezone and (
                         value.year, value.month, value.day, value.hour, value.minute
                 ) == (
@@ -702,7 +722,9 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         return Judgment(
             VERDICT_OK,
             f"{label}实际时间 {actual.isoformat()}（自定位文本提取，声明一致）"
-            f"{'≤' if actual_has_time else '（日期级）≤'} 截止")
+            f"{'≤' if actual_has_time else '（日期级）≤'} 截止"
+            + (f"（时区规则 {timezone_rule}：{timezone_basis}）"
+               if sourced_timezone is not None and actual_has_time else ""))
 
     if published_at is not None:
         published_locator = source.get("published_at_locator")

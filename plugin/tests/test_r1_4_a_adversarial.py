@@ -111,6 +111,20 @@ def test_a1_zulu_and_pre_cutoff_date_precision_remain_legal(tmp_path):
     assert date_outcome.status == "qualified"
 
 
+def test_a1_sourced_timezone_rule_converts_unzoned_clock_to_utc(tmp_path):
+    timestamp = "2026-01-31 17:17:00"
+    text = f"{SUBJECT} identifies market demand. Published {timestamp}."
+    evidence = _dated_evidence(text, timestamp)
+    evidence["date"] = "2026-01-31T17:17:00+08:00"
+    evidence["timezone_rule"] = "+08:00"
+    evidence["timezone_basis"] = "发布页所属中国标准时间来源规则"
+
+    outcome = _qualify(tmp_path, text, time_evidence=evidence)
+
+    assert outcome.status == "qualified"
+    assert "2026-01-31T09:17:00+00:00" in outcome.time_judgment.basis
+
+
 def test_a3_outer_document_hash_cannot_override_sealed_registration(tmp_path):
     text = f"{SUBJECT} identifies market demand."
     blobs = BlobStore(tmp_path / "blobs")
