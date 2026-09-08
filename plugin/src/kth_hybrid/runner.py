@@ -36,6 +36,7 @@ from .kernels import (
 from .kernels.crl import evaluate_crl_dimension
 from .kernels.frl import evaluate_frl_dimension
 from .kernels.brl import evaluate_brl_dimension
+from .kernels.trl import evaluate_trl_dimension
 from .qualification import (
     GapOutcome,
     QualificationOutcome,
@@ -801,6 +802,16 @@ def run_brl_dimension_slice(case_dir: Path | str, *, catalog: dict,
         case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
         assessment_unit=assessment_unit, dimension_id="BRL",
         evaluator=evaluate_brl_dimension, output_name="brl-dimension-night.json")
+
+
+def run_trl_dimension_slice(case_dir: Path | str, *, catalog: dict,
+                            case_basis: dict, scope: str,
+                            assessment_unit: dict) -> dict:
+    """夜间TRL候选Case入口。"""
+    return _run_assessment_unit_dimension_slice(
+        case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
+        assessment_unit=assessment_unit, dimension_id="TRL",
+        evaluator=evaluate_trl_dimension, output_name="trl-dimension-night.json")
 
 
 class CountingSimulatedProvider:

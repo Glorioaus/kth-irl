@@ -747,10 +747,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL1-C2",
@@ -762,10 +762,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL2-C1",
@@ -777,10 +777,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL2-C2",
@@ -792,10 +792,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL3-C1",
@@ -807,10 +807,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL3-C2",
@@ -822,10 +822,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL3-C3",
@@ -837,10 +837,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL4-C1",
@@ -852,10 +852,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL4-C2",
@@ -867,10 +867,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL5-C1",
@@ -882,10 +882,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL5-C2",
@@ -897,10 +897,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL5-C3",
@@ -912,10 +912,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL5-C4",
@@ -927,10 +927,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL6-C1",
@@ -942,10 +942,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL6-C2",
@@ -957,10 +957,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL6-C3",
@@ -972,10 +972,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL7-C1",
@@ -987,10 +987,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL7-C2",
@@ -1002,10 +1002,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL7-C3",
@@ -1017,10 +1017,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL8-C1",
@@ -1032,10 +1032,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL8-C2",
@@ -1047,10 +1047,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL8-C3",
@@ -1062,10 +1062,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL8-C4",
@@ -1077,10 +1077,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL9-C1",
@@ -1092,10 +1092,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL9-C2",
@@ -1107,10 +1107,10 @@
       "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/trl.py",
+      "method_difference": "复用批准wheel G/2022证据类别与累计门；强制项目配置、系统边界、环境、方法、测量与高等级用户/时间身份，候选待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_trl.py::test_each_trl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TMRL1-C1",
