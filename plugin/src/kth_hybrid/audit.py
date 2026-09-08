@@ -864,6 +864,10 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
     entity = frozen.get("financing_entity") or {}
     broken.extend(_verify_reference_bundle(
         case, blobs, entity.get("proof_bindings") or {}, "融资主体证明"))
+    assessment_scope = frozen.get("assessment_scope") or {}
+    broken.extend(_verify_reference_bundle(
+        case, blobs, assessment_scope.get("proof_bindings") or {},
+        "评估单元证明"))
     applicability = frozen.get("applicability")
     if isinstance(applicability, dict):
         broken.extend(_verify_reference_bundle(

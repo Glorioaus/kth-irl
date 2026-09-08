@@ -207,10 +207,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL1-MO",
@@ -222,10 +222,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL1-CO",
@@ -237,10 +237,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL1-SU",
@@ -252,10 +252,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL2-BM",
@@ -267,10 +267,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL2-MO",
@@ -282,10 +282,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL2-CO",
@@ -297,10 +297,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL2-SU",
@@ -312,10 +312,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL3-BM",
@@ -327,10 +327,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL3-MO",
@@ -342,10 +342,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL3-CO",
@@ -357,10 +357,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL3-SU",
@@ -372,10 +372,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL4-BM",
@@ -387,10 +387,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL4-MO",
@@ -402,10 +402,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL4-CO",
@@ -417,10 +417,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL4-SU",
@@ -432,10 +432,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL5-BM",
@@ -447,10 +447,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL5-MO",
@@ -462,10 +462,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL5-CO",
@@ -477,10 +477,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL5-SU",
@@ -492,10 +492,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL6-BM",
@@ -507,10 +507,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL6-MO",
@@ -522,10 +522,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL6-CO",
@@ -537,10 +537,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL6-SU",
@@ -552,10 +552,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL7-BM",
@@ -567,10 +567,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL7-MO",
@@ -582,10 +582,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL7-CO",
@@ -597,10 +597,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL7-SU",
@@ -612,10 +612,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL8-BM",
@@ -627,10 +627,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL8-MO",
@@ -642,10 +642,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL8-CO",
@@ -657,10 +657,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL8-SU",
@@ -672,10 +672,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL9-BM",
@@ -687,10 +687,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL9-MO",
@@ -702,10 +702,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL9-CO",
@@ -717,10 +717,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "BRL9-SU",
@@ -732,10 +732,10 @@
       "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "night_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/brl.py",
+      "method_difference": "复用批准wheel D/2025证据类别与累计门；新线受控review按材料评估单元形成商业推理，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_night_brl.py::test_each_brl_rule_has_positive_and_missing_behavior"
     },
     {
       "criterion_id": "TRL1-C1",

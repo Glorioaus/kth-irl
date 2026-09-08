@@ -35,6 +35,7 @@ from .kernels import (
 )
 from .kernels.crl import evaluate_crl_dimension
 from .kernels.frl import evaluate_frl_dimension
+from .kernels.brl import evaluate_brl_dimension
 from .qualification import (
     GapOutcome,
     QualificationOutcome,
@@ -431,6 +432,7 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
               if key not in {"quote_sha256", "subject_scope", "scope_id",
                              "dimension_id"}}
     review["financing_entity_id"] = row["scope_id"]
+    review["scope_id"] = row["scope_id"]
     return review, binding, reason
 
 
@@ -607,6 +609,198 @@ def run_frl_dimension_slice(
         return {**result, "output_path": str(destination)}
     finally:
         case.close()
+
+
+def _resolve_assessment_unit(case: CaseStore, blobs: BlobStore,
+                             value: dict, scope: str) -> dict:
+    required = {
+        "scope_id", "subject_scope", "unit_kind", "unit_label",
+        "scope_id_ref", "subject_ref", "unit_kind_ref", "unit_label_ref",
+    }
+    if not isinstance(value, dict) or not required <= set(value):
+        raise ValueError("评估单元输入结构不完整")
+    if value["subject_scope"] != scope:
+        raise ValueError("评估单元主体与Case主体不一致")
+    proof_bindings = _resolve_reference_bundle(case, blobs, [
+        ("scope_id", value["scope_id"], value["scope_id_ref"]),
+        ("subject", scope, value["subject_ref"]),
+        ("unit_kind", value["unit_kind"], value["unit_kind_ref"]),
+        ("unit_label", value["unit_label"], value["unit_label_ref"]),
+    ])
+    return {
+        "scope_id": value["scope_id"],
+        "subject_scope": scope,
+        "unit_kind": value["unit_kind"],
+        "unit_label": value["unit_label"],
+        "proof_bindings": proof_bindings,
+    }
+
+
+def _run_assessment_unit_dimension_slice(
+        case_dir: Path | str, *, catalog: dict, case_basis: dict, scope: str,
+        assessment_unit: dict, dimension_id: str, evaluator,
+        output_name: str) -> dict:
+    case_dir = Path(case_dir)
+    blobs = BlobStore(case_dir / "blobs")
+    case = CaseStore(case_dir / "records.sqlite3")
+    try:
+        basis, version = _effective_case_basis(case, case_basis)
+        if scope != basis["subject_legal_name"]:
+            raise ValueError(f"{dimension_id}维度scope必须等于冻结Case主体")
+        if not isinstance(assessment_unit, dict) \
+                or assessment_unit.get("subject_scope") != scope:
+            raise ValueError("评估单元主体与Case主体不一致")
+        raw_scope_id = assessment_unit.get("scope_id")
+        if not isinstance(raw_scope_id, str) or not raw_scope_id.strip():
+            raise ValueError("评估单元scope_id不能为空")
+        with case.immediate_transaction():
+            reviews, rejected, evidence_bindings = [], [], []
+            basis_proofs, basis_error = resolve_case_basis_proof_bindings(
+                basis, case, blobs)
+            if basis_error or basis_proofs is None:
+                rejected.append({
+                    "review_id": "__case_basis__",
+                    "reason": f"CaseBasis证明不可核验：{basis_error or '无绑定'}",
+                })
+                basis_proofs = None
+            try:
+                unit = _resolve_assessment_unit(
+                    case, blobs, assessment_unit, scope)
+                unit_error = None
+            except ValueError as exc:
+                unit_error = str(exc)
+                unit = {
+                    "scope_id": raw_scope_id,
+                    "subject_scope": scope,
+                    "unit_kind": assessment_unit.get("unit_kind") or "__invalid__",
+                    "unit_label": assessment_unit.get("unit_label") or "__invalid__",
+                    "proof_bindings": {},
+                }
+                rejected.append({
+                    "review_id": "__assessment_unit__",
+                    "reason": f"评估单元证明不可核验：{unit_error}",
+                })
+            criteria = [dict(row) for row in catalog["dimensions"][
+                dimension_id]["registry"]["criteria"]]
+            criterion_ids = {row["criterion_id"] for row in criteria}
+            review_fields = (
+                "review_id", "dimension_id", "criterion_id", "claim_id",
+                "quote_sha256", "decision", "evidence_class", "findings",
+                "subject_scope", "scope_id", "support_scope", "reviewer",
+                "review_basis",
+            )
+            rows = case.fetch_dimension_evidence_reviews(
+                dimension_id, version, raw_scope_id)
+            for row in rows:
+                reason = None
+                if basis_proofs is None:
+                    reason = "CaseBasis证明不可核验"
+                elif unit_error:
+                    reason = "评估单元证明不可核验"
+                elif row["subject_scope"] != scope:
+                    reason = f"{dimension_id}复核subject_scope与维度scope不一致"
+                elif row["criterion_id"] not in criterion_ids:
+                    reason = f"{dimension_id}复核指向未登记准则"
+                if reason:
+                    review = {key: row.get(key) for key in review_fields}
+                    binding = {"review": review, "qualification_view": None}
+                else:
+                    review, binding, reason = _bind_dimension_review(
+                        case, blobs, row, basis, basis_proofs, review_fields)
+                if reason:
+                    rejected.append({
+                        "review_id": row["review_id"], "reason": reason,
+                        "evidence_binding": binding,
+                    })
+                else:
+                    reviews.append(review)
+                    evidence_bindings.append(binding)
+            dimension = evaluator(
+                criteria, reviews, scope=scope, assessment_unit=unit)
+            if rejected:
+                for item in dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None, execution_errors=rejected)
+            frozen = {
+                "dimension_id": dimension_id,
+                "case_basis": basis,
+                "case_basis_version": version,
+                "case_basis_proofs": basis_proofs,
+                "catalog_sha256": catalog.get("wheel_sha256"),
+                "criteria": criteria,
+                "reviews": reviews,
+                "rejected_reviews": rejected,
+                "evidence_bindings": evidence_bindings,
+                "scope": scope,
+                "scope_id": raw_scope_id,
+                "assessment_scope": unit,
+                "rule_version": dimension["rule_version"],
+            }
+            digest = sha256_hex(json.dumps(
+                frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+            result_id_value = f"DIMR2::{dimension_id}::{digest}"
+            result = {
+                "schema_version": "kth-hybrid.dimension-result.v1",
+                "result_id": result_id_value,
+                "input_digest": digest,
+                "dimension": dimension,
+                "frozen_inputs": frozen,
+                "traceability": {
+                    "review_refs": [row["review_id"] for row in reviews],
+                    "claim_refs": sorted({row["claim_id"] for row in reviews}),
+                    "assessment_unit_ref": raw_scope_id,
+                },
+            }
+            from .audit import validate_dimension_payload
+            publish_errors = validate_dimension_payload(case, blobs, result)
+            if publish_errors and dimension["product_status"] != "execution_failed":
+                for item in dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None,
+                    execution_errors=[{
+                        "review_id": "__publish_validation__",
+                        "reason": "发布前完整维度绑定核验失败",
+                        "broken": publish_errors,
+                    }],
+                )
+                frozen["publish_validation_errors"] = publish_errors
+                digest = sha256_hex(json.dumps(
+                    frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+                result_id_value = f"DIMR2::{dimension_id}::{digest}"
+                result.update(result_id=result_id_value, input_digest=digest)
+            result_ref = blobs.put_bytes(json.dumps(
+                result, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+            if case.get_dimension_result(digest) is None:
+                case.add_dimension_result_in_transaction(
+                    result_id_value, dimension_id=dimension_id,
+                    input_digest=digest, case_basis_version=version,
+                    scope=scope, scope_id=raw_scope_id,
+                    product_status=dimension["product_status"],
+                    result_blob_sha256=result_ref.sha256)
+        destination = case_dir / "audit" / output_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        case.new_run(input_digest=digest)
+        return {**result, "output_path": str(destination)}
+    finally:
+        case.close()
+
+
+def run_brl_dimension_slice(case_dir: Path | str, *, catalog: dict,
+                            case_basis: dict, scope: str,
+                            assessment_unit: dict) -> dict:
+    """夜间BRL候选Case入口。"""
+    return _run_assessment_unit_dimension_slice(
+        case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
+        assessment_unit=assessment_unit, dimension_id="BRL",
+        evaluator=evaluate_brl_dimension, output_name="brl-dimension-night.json")
 
 
 class CountingSimulatedProvider:
