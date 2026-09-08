@@ -14,7 +14,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL1-C2",
@@ -28,7 +29,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL1-C3",
@@ -42,7 +44,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL2-C1",
@@ -56,7 +59,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL2-C2",
@@ -70,7 +74,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL2-C3",
@@ -84,7 +89,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL3-C1",
@@ -98,7 +104,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL3-C2",
@@ -112,7 +119,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL3-C3",
@@ -126,7 +134,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL4-C1",
@@ -140,7 +149,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL4-C2",
@@ -154,7 +164,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL4-C3",
@@ -168,7 +179,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "CRL4-C4",
@@ -182,7 +194,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "r2a_implemented",
       "implementation_pointer": "plugin/src/kth_hybrid/kernels/crl.py",
-      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价"
+      "method_difference": "CRL采用受控离线findings；wheel由宿主adjudication提供处置，未声明全等价",
+      "new_test_pointer": "plugin/tests/test_r2a_crl.py::test_each_rule_has_a_minimal_positive_and_missing_finding_negative"
     },
     {
       "criterion_id": "BRL1-BM",
@@ -196,7 +209,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL1-MO",
@@ -210,7 +224,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL1-CO",
@@ -224,7 +239,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL1-SU",
@@ -238,7 +254,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL2-BM",
@@ -252,7 +269,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL2-MO",
@@ -266,7 +284,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL2-CO",
@@ -280,7 +299,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL2-SU",
@@ -294,7 +314,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL3-BM",
@@ -308,7 +329,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL3-MO",
@@ -322,7 +344,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL3-CO",
@@ -336,7 +359,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL3-SU",
@@ -350,7 +374,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL4-BM",
@@ -364,7 +389,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL4-MO",
@@ -378,7 +404,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL4-CO",
@@ -392,7 +419,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL4-SU",
@@ -406,7 +434,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL5-BM",
@@ -420,7 +449,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL5-MO",
@@ -434,7 +464,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL5-CO",
@@ -448,7 +479,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL5-SU",
@@ -462,7 +494,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL6-BM",
@@ -476,7 +509,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL6-MO",
@@ -490,7 +524,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL6-CO",
@@ -504,7 +539,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL6-SU",
@@ -518,7 +554,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL7-BM",
@@ -532,7 +569,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL7-MO",
@@ -546,7 +584,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL7-CO",
@@ -560,7 +599,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL7-SU",
@@ -574,7 +614,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL8-BM",
@@ -588,7 +629,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL8-MO",
@@ -602,7 +644,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL8-CO",
@@ -616,7 +659,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL8-SU",
@@ -630,7 +674,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL9-BM",
@@ -644,7 +689,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL9-MO",
@@ -658,7 +704,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL9-CO",
@@ -672,7 +719,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "BRL9-SU",
@@ -686,7 +734,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL1-C1",
@@ -700,7 +749,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL1-C2",
@@ -714,7 +764,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL2-C1",
@@ -728,7 +779,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL2-C2",
@@ -742,7 +794,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL3-C1",
@@ -756,7 +809,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL3-C2",
@@ -770,7 +824,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL3-C3",
@@ -784,7 +839,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL4-C1",
@@ -798,7 +854,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL4-C2",
@@ -812,7 +869,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL5-C1",
@@ -826,7 +884,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL5-C2",
@@ -840,7 +899,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL5-C3",
@@ -854,7 +914,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL5-C4",
@@ -868,7 +929,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL6-C1",
@@ -882,7 +944,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL6-C2",
@@ -896,7 +959,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL6-C3",
@@ -910,7 +974,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL7-C1",
@@ -924,7 +989,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL7-C2",
@@ -938,7 +1004,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL7-C3",
@@ -952,7 +1019,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL8-C1",
@@ -966,7 +1034,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL8-C2",
@@ -980,7 +1049,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL8-C3",
@@ -994,7 +1064,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL8-C4",
@@ -1008,7 +1079,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL9-C1",
@@ -1022,7 +1094,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TRL9-C2",
@@ -1036,7 +1109,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL1-C1",
@@ -1050,7 +1124,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL1-C2",
@@ -1064,7 +1139,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL2-C1",
@@ -1078,7 +1154,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL2-C2",
@@ -1092,7 +1169,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL2-C3",
@@ -1106,7 +1184,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL3-C1",
@@ -1120,7 +1199,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL3-C2",
@@ -1134,7 +1214,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL3-C3",
@@ -1148,7 +1229,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL4-C1",
@@ -1162,7 +1244,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL4-C2",
@@ -1176,7 +1259,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL4-C3",
@@ -1190,7 +1274,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL4-C4",
@@ -1204,7 +1289,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL4-C5",
@@ -1218,7 +1304,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL5-C1",
@@ -1232,7 +1319,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL5-C2",
@@ -1246,7 +1334,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL5-C3",
@@ -1260,7 +1349,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL5-C4",
@@ -1274,7 +1364,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL5-C5",
@@ -1288,7 +1379,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL6-C1",
@@ -1302,7 +1394,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL6-C2",
@@ -1316,7 +1409,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL6-C3",
@@ -1330,7 +1424,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL6-C4",
@@ -1344,7 +1439,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL6-C5",
@@ -1358,7 +1454,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL7-C1",
@@ -1372,7 +1469,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL7-C2",
@@ -1386,7 +1484,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL7-C3",
@@ -1400,7 +1499,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL7-C4",
@@ -1414,7 +1514,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL7-C5",
@@ -1428,7 +1529,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL8-C1",
@@ -1442,7 +1544,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL8-C2",
@@ -1456,7 +1559,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL8-C3",
@@ -1470,7 +1574,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL8-C4",
@@ -1484,7 +1589,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL8-C5",
@@ -1498,7 +1604,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL9-C1",
@@ -1512,7 +1619,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL9-C2",
@@ -1526,7 +1634,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL9-C3",
@@ -1540,7 +1649,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL9-C4",
@@ -1554,7 +1664,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "TMRL9-C5",
@@ -1568,7 +1679,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL1-C1",
@@ -1582,7 +1694,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL1-C2",
@@ -1596,7 +1709,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL1-C3",
@@ -1610,7 +1724,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL1-C4",
@@ -1624,7 +1739,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL1-C5",
@@ -1638,7 +1754,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL2-C1",
@@ -1652,7 +1769,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL2-C2",
@@ -1666,7 +1784,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL2-C3",
@@ -1680,7 +1799,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL2-C4",
@@ -1694,7 +1814,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL3-C1",
@@ -1708,7 +1829,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL3-C2",
@@ -1722,7 +1844,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL3-C3",
@@ -1736,7 +1859,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL3-C4",
@@ -1750,7 +1874,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL4-C1",
@@ -1764,7 +1889,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL4-C2",
@@ -1778,7 +1904,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL4-C3",
@@ -1792,7 +1919,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL5-C1",
@@ -1806,7 +1934,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL5-C2",
@@ -1820,7 +1949,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL5-C3",
@@ -1834,7 +1964,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL6-C1",
@@ -1848,7 +1979,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL6-C2",
@@ -1862,7 +1994,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL6-C3",
@@ -1876,7 +2009,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL6-C4",
@@ -1890,7 +2024,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL6-C5",
@@ -1904,7 +2039,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL7-C1",
@@ -1918,7 +2054,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL7-C2",
@@ -1932,7 +2069,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL8-C1",
@@ -1946,7 +2084,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL8-C2",
@@ -1960,7 +2099,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL8-C3",
@@ -1974,7 +2114,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL9-C1",
@@ -1988,7 +2129,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL9-C2",
@@ -2002,7 +2144,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "IPRL9-C3",
@@ -2016,7 +2159,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL1-NEED",
@@ -2030,7 +2174,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL1-OPTIONS",
@@ -2044,7 +2189,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL1-STATUS",
@@ -2058,7 +2204,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL1-PITCH",
@@ -2072,7 +2219,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL2-NEED",
@@ -2086,7 +2234,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL2-OPTIONS",
@@ -2100,7 +2249,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL2-STATUS",
@@ -2114,7 +2264,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL2-PITCH",
@@ -2128,7 +2279,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL3-NEED",
@@ -2142,7 +2294,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL3-OPTIONS",
@@ -2156,7 +2309,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL3-STATUS",
@@ -2170,7 +2324,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL3-PITCH",
@@ -2184,7 +2339,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL4-NEED",
@@ -2198,7 +2354,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL4-OPTIONS",
@@ -2212,7 +2369,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL4-STATUS",
@@ -2226,7 +2384,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL4-PITCH",
@@ -2240,7 +2399,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL5-NEED",
@@ -2254,7 +2414,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL5-OPTIONS",
@@ -2268,7 +2429,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL5-STATUS",
@@ -2282,7 +2444,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL5-PITCH",
@@ -2296,7 +2459,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL6-NEED",
@@ -2310,7 +2474,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL6-OPTIONS",
@@ -2324,7 +2489,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL6-STATUS",
@@ -2338,7 +2504,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL6-PITCH",
@@ -2352,7 +2519,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL7-NEED",
@@ -2366,7 +2534,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL7-OPTIONS",
@@ -2380,7 +2549,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL7-STATUS",
@@ -2394,7 +2564,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL7-PITCH",
@@ -2408,7 +2579,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL8-NEED",
@@ -2422,7 +2594,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL8-OPTIONS",
@@ -2436,7 +2609,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL8-STATUS",
@@ -2450,7 +2624,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL8-PITCH",
@@ -2464,7 +2639,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL9-NEED",
@@ -2478,7 +2654,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL9-OPTIONS",
@@ -2492,7 +2669,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL9-STATUS",
@@ -2506,7 +2684,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     },
     {
       "criterion_id": "FRL9-PITCH",
@@ -2520,7 +2699,8 @@
       "test_pointer_status": "未机械定位",
       "implementation_status": "后续未实现",
       "implementation_pointer": null,
-      "method_difference": "非本批范围"
+      "method_difference": "非本批范围",
+      "new_test_pointer": null
     }
   ]
 }
