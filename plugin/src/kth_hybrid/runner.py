@@ -37,6 +37,7 @@ from .kernels.crl import evaluate_crl_dimension
 from .qualification import (
     GapOutcome,
     QualificationOutcome,
+    build_qualification_input_view,
     qualify_claim,
     RULE_VERSION as QUALIFICATION_VERSION,
     _same_record_relation,
@@ -215,26 +216,27 @@ def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                         reason = "定位/投影/摘录hash不符"
                 if not reason and claim["excerpt_sha256"] != row["quote_sha256"]:
                     reason = "复核引文hash与封存摘录不一致"
-                source_for_qualification = dict(source or {})
-                latest_time = case.latest_time_evidence(source["source_id"]) if source else None
-                if latest_time:
-                    source_for_qualification["time_evidence"] = {
-                        key: value for key, value in latest_time.items()
-                        if key not in ("revision", "created_at")}
+                qualification_view = None
                 if not reason:
-                    outcome = qualify_claim(
-                        claim, source_for_qualification, blobs, basis,
+                    qualification_view, outcome, proof_errors = \
+                        build_qualification_input_view(
+                        claim, source, qual, basis, case, blobs,
                         same_body_sources=_same_body_occurrence_count(case, source["blob_sha256"]),
-                        review_attempt="r2a-dimension-reverify", case=case)
+                        review_attempt="r2a-dimension-reverify",
+                        case_basis_proofs=basis_proofs,
+                    )
                     if not isinstance(outcome, QualificationOutcome) or outcome.status != "qualified":
                         reason = "R1资格重核不再qualified"
+                    elif proof_errors:
+                        reason = "完整资格证明不可核验：" + "；".join(proof_errors)
                 binding = {"review": {key: row.get(key) for key in
                            ("review_id", "criterion_id", "claim_id", "quote_sha256",
                             "decision", "findings", "subject_scope", "support_scope",
                             "reviewer", "review_basis")},
                            "claim": claim, "claim_digest": current_claim_digest,
                            "source": source,
-                           "qualification_digest": qualification_content_digest(qual) if qual else None}
+                           "qualification_digest": qualification_content_digest(qual) if qual else None,
+                           "qualification_view": qualification_view}
                 if reason:
                     rejected.append({"review_id": row["review_id"], "reason": reason,
                                      "evidence_binding": binding})
@@ -259,11 +261,31 @@ def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                       "rule_version": dimension["rule_version"]}
             digest = sha256_hex(json.dumps(frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"CRLR2A::{digest}"
-            result = {"schema_version": "kth-hybrid.r2a-crl-dimension.v2",
+            result = {"schema_version": "kth-hybrid.r2a-crl-dimension.v3",
                       "result_id": result_id_value, "input_digest": digest,
                       "dimension": dimension, "frozen_inputs": frozen,
                       "traceability": {"review_refs": [r["review_id"] for r in reviews],
                                        "claim_refs": sorted({r["claim_id"] for r in reviews})}}
+            from .audit import validate_crl_dimension_payload
+            publish_errors = validate_crl_dimension_payload(case, blobs, result)
+            if publish_errors and dimension["product_status"] != "execution_failed":
+                for item in dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None,
+                    execution_errors=[{
+                        "review_id": "__publish_validation__",
+                        "reason": "发布前完整资格视图核验失败",
+                        "broken": publish_errors,
+                    }],
+                )
+                frozen["publish_validation_errors"] = publish_errors
+                digest = sha256_hex(json.dumps(
+                    frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+                result_id_value = f"CRLR2A::{digest}"
+                result.update(result_id=result_id_value, input_digest=digest)
             result_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True).encode("utf-8")
             result_ref = blobs.put_bytes(result_bytes)
             existing = case.get_crl_dimension_result(digest)

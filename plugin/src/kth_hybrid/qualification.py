@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
 
-from .contracts import sha256_hex
+from .contracts import claim_content_digest, qualification_content_digest, sha256_hex
 from .store import BlobStore, StoreIntegrityError
 
 VERDICT_OK = "ok"
@@ -582,6 +582,218 @@ class GapOutcome:
     pipeline_fault: bool = False
     investigation: str = ""
     unconfirmed: list[str] = field(default_factory=list)
+
+
+_USE_LATEST_TIME = object()
+
+
+def _time_evidence_selection(source: dict, case, selected_time) -> dict:
+    """返回本次资格判断实际消费的时间修订及内容快照。"""
+    entry = (case.latest_time_evidence(source["source_id"])
+             if selected_time is _USE_LATEST_TIME else selected_time)
+    if entry is not None:
+        return {
+            "revision": entry.get("revision"),
+            "created_at": entry.get("created_at"),
+            "snapshot": {
+                key: value for key, value in entry.items()
+                if key not in {"revision", "created_at"}
+            },
+        }
+    legacy = source.get("time_evidence")
+    if isinstance(legacy, str) and legacy.strip():
+        try:
+            legacy = json.loads(legacy)
+        except ValueError:
+            legacy = {}
+    return {
+        "revision": None,
+        "created_at": None,
+        "snapshot": legacy if isinstance(legacy, dict) and legacy else None,
+    }
+
+
+def _registration_proof_binding(time_evidence: dict | None, source: dict,
+                                blobs: BlobStore) -> tuple[dict | None, str | None]:
+    """冻结 registered_at 实际解析的记录字段及其原件关系。"""
+    if not isinstance(time_evidence, dict) \
+            or time_evidence.get("kind") != "registered_at":
+        return None, None
+    proof = time_evidence.get("registration_proof") or {}
+    relation_error = _registration_binding_error(proof, source, blobs)
+    record_dt, proof_error = _resolve_registration_proof(proof, blobs)
+    if relation_error or proof_error or record_dt is None:
+        return None, relation_error or proof_error or "登记证明未解析到时间"
+    return {
+        "blob_sha256": proof.get("blob_sha256"),
+        "field": proof.get("field"),
+        "recorded_time": record_dt.isoformat(),
+        "document_sha256": source.get("blob_sha256"),
+    }, None
+
+
+def build_qualification_input_view(
+        claim: dict, source: dict, stored_qualification: dict | None,
+        case_basis: dict, case, blobs: BlobStore, *, same_body_sources: int,
+        review_attempt: str, selected_time=_USE_LATEST_TIME,
+        case_basis_proofs: dict | None = None,
+) -> tuple[dict, QualificationOutcome | GapOutcome, list[str]]:
+    """构建一次资格判断的完整、版本化输入视图。
+
+    视图同时供R2维度发布与trace使用；历史重核可显式传入绑定修订，禁止
+    用最新时间证据替换旧结果的原始输入。
+    """
+    errors: list[str] = []
+    proofs = case_basis_proofs
+    if proofs is None:
+        proofs, basis_error = resolve_case_basis_proof_bindings(
+            case_basis, case, blobs)
+        if basis_error or proofs is None:
+            errors.append(f"CaseBasis证明不可核验：{basis_error or '无绑定'}")
+            proofs = {}
+
+    time_selection = _time_evidence_selection(source, case, selected_time)
+    source_for_qualification = dict(source)
+    if time_selection["snapshot"] is not None:
+        source_for_qualification["time_evidence"] = time_selection["snapshot"]
+    else:
+        source_for_qualification.pop("time_evidence", None)
+
+    outcome = qualify_claim(
+        claim, source_for_qualification, blobs, case_basis,
+        same_body_sources=same_body_sources,
+        review_attempt=review_attempt, case=case,
+    )
+    proof_bindings: dict[str, object] = {"case_basis": proofs}
+
+    effective_names = set(proofs.get(
+        "effective_subject_names", [case_basis["subject_legal_name"]]))
+    document_proof, document_error = resolve_document_subject_proof_bindings(
+        source_for_qualification, case_basis["subject_legal_name"], case, blobs,
+        effective_subject_names=effective_names,
+    )
+    if document_proof is not None:
+        proof_bindings["document_subject"] = document_proof
+    if isinstance(outcome, QualificationOutcome) \
+            and "company_self_statement" in outcome.allowed_uses \
+            and document_proof is None:
+        errors.append(f"第一方归属证明不可核验：{document_error or '无绑定'}")
+
+    time_snapshot = time_selection["snapshot"]
+    if isinstance(time_snapshot, dict) and time_snapshot.get("timezone_rule"):
+        _tz, timezone_proof, timezone_error = resolve_timezone_rule_binding(
+            time_snapshot, source_for_qualification, case, blobs)
+        if timezone_proof is not None:
+            proof_bindings["timezone"] = timezone_proof
+        elif isinstance(outcome, QualificationOutcome) \
+                and "时区规则" in outcome.time_judgment.basis:
+            errors.append(f"时区证明不可核验：{timezone_error or '无绑定'}")
+
+    registration_proof, registration_error = _registration_proof_binding(
+        time_snapshot, source_for_qualification, blobs)
+    if registration_proof is not None:
+        proof_bindings["registration_time"] = registration_proof
+    elif registration_error and isinstance(outcome, QualificationOutcome) \
+            and outcome.time_judgment.verdict == VERDICT_OK:
+        errors.append(f"登记时间证明不可核验：{registration_error}")
+
+    view = {
+        "schema_version": "kth-hybrid.qualification-input-view.v1",
+        "claim": claim,
+        "claim_digest": claim_content_digest(claim),
+        "source": source,
+        "time_evidence": time_selection,
+        "same_body_sources": same_body_sources,
+        "stored_qualification": stored_qualification,
+        "stored_qualification_digest": (
+            qualification_content_digest(stored_qualification)
+            if stored_qualification else None
+        ),
+        "outcome": asdict(outcome),
+        "proof_bindings": proof_bindings,
+        "proof_errors": errors,
+    }
+    view["input_digest"] = sha256_hex(json.dumps(
+        view, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return view, outcome, errors
+
+
+def verify_qualification_input_view(saved_view: dict, case_basis: dict, case,
+                                    blobs: BlobStore) -> list[str]:
+    """按结果绑定的历史修订重建完整资格视图，返回断裂明细。"""
+    broken: list[str] = []
+    expected_digest = saved_view.get("input_digest")
+    digest_payload = {key: value for key, value in saved_view.items()
+                      if key != "input_digest"}
+    actual_digest = sha256_hex(json.dumps(
+        digest_payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    if expected_digest != actual_digest:
+        broken.append("资格输入视图摘要不一致")
+
+    saved_claim = saved_view.get("claim") or {}
+    claim_id = saved_claim.get("claim_id")
+    claim = case.fetch_one("claims", "claim_id", claim_id) if claim_id else None
+    if claim is None or claim != saved_claim \
+            or claim_content_digest(claim) != saved_view.get("claim_digest"):
+        broken.append(f"Claim {claim_id} 冻结内容不一致")
+        return broken
+
+    saved_source = saved_view.get("source") or {}
+    source_id = saved_source.get("source_id")
+    source = case.fetch_one("sources", "source_id", source_id) if source_id else None
+    if source is None or source != saved_source:
+        broken.append(f"Source {source_id} 冻结内容不一致")
+        return broken
+
+    saved_time = saved_view.get("time_evidence") or {}
+    revision = saved_time.get("revision")
+    if revision is None:
+        selected_time = None
+        current_selection = _time_evidence_selection(source, case, selected_time)
+    else:
+        matches = [entry for entry in case.get_time_evidence_history(source_id)
+                   if entry.get("revision") == revision]
+        if not matches:
+            broken.append(f"时间修订 {revision} 已删除或不可读")
+            return broken
+        selected_time = matches[0]
+        current_selection = _time_evidence_selection(source, case, selected_time)
+    if current_selection != saved_time:
+        broken.append(f"时间修订 {revision} 内容与冻结值不一致")
+        return broken
+
+    qual_id = f"QUALR::{claim_id}"
+    stored_qualification = case.fetch_one("qualifications", "qual_id", qual_id)
+    try:
+        current_view, _outcome, _errors = build_qualification_input_view(
+            claim, source, stored_qualification, case_basis, case, blobs,
+            same_body_sources=int(saved_view.get("same_body_sources", 1)),
+            review_attempt=(saved_view.get("outcome") or {}).get(
+                "review_attempt", ""),
+            selected_time=selected_time,
+        )
+    except (KeyError, TypeError, ValueError, StoreIntegrityError) as exc:
+        broken.append(f"完整资格输入视图重建失败：{exc}")
+        return broken
+    if current_view != saved_view:
+        saved_proofs = saved_view.get("proof_bindings") or {}
+        current_proofs = current_view.get("proof_bindings") or {}
+        if saved_proofs.get("timezone") != current_proofs.get("timezone"):
+            broken.append("时区证明绑定断裂或变化")
+        if saved_proofs.get("document_subject") != current_proofs.get("document_subject"):
+            broken.append("第一方归属证明绑定断裂或变化")
+        if saved_proofs.get("case_basis") != current_proofs.get("case_basis"):
+            broken.append("主体或有效别名证明绑定断裂或变化")
+        if saved_proofs.get("registration_time") != current_proofs.get("registration_time"):
+            broken.append("登记时间证明绑定断裂或变化")
+        if saved_view.get("outcome") != current_view.get("outcome"):
+            broken.append("QualificationOutcome 与冻结重核结果不一致")
+        if saved_view.get("stored_qualification_digest") != \
+                current_view.get("stored_qualification_digest"):
+            broken.append("Qualification存储记录与冻结内容不一致")
+        if not broken:
+            broken.append("完整资格输入视图与冻结值不一致")
+    return broken
 
 
 # ---- 日期解析（严格；不做字符串比较） ----

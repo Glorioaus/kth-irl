@@ -744,25 +744,21 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
     return report
 
 
-def trace_crl_dimension(case: CaseStore, blobs: BlobStore, result_id: str) -> dict:
-    """重核R2-A不可变维度结果及其全部实际消费边。"""
-    from .contracts import claim_content_digest, qualification_content_digest
-    from .qualification import resolve_case_basis_proof_bindings
+def validate_crl_dimension_payload(case: CaseStore, blobs: BlobStore,
+                                   result: dict) -> list[str]:
+    """发布前与读时trace共用的CRL维度完整绑定核验。"""
+    from .qualification import (
+        resolve_case_basis_proof_bindings,
+        verify_qualification_input_view,
+    )
 
-    row = case.get_crl_dimension_result_by_id(result_id)
     broken: list[str] = []
-    if row is None:
-        return {"result_id": result_id, "ok": False, "broken": ["CRL维度结果不存在"]}
-    try:
-        raw = blobs.read_bytes(row["result_blob_sha256"])
-        result = json.loads(raw.decode("utf-8"))
-    except Exception as exc:
-        return {"result_id": result_id, "ok": False,
-                "broken": [f"CRL维度结果blob不可读：{exc}"]}
     frozen = result.get("frozen_inputs") or {}
     recomputed = sha256_hex(json.dumps(frozen, ensure_ascii=False,
                                        sort_keys=True).encode("utf-8"))
-    if result.get("result_id") != result_id or recomputed != row["input_digest"]:
+    expected_result_id = f"CRLR2A::{recomputed}"
+    if result.get("input_digest") != recomputed \
+            or result.get("result_id") != expected_result_id:
         broken.append("CRL维度结果身份或冻结摘要不一致")
     version = frozen.get("case_basis_version")
     current_basis = case.get_case_basis_version(version) if version else None
@@ -778,21 +774,32 @@ def trace_crl_dimension(case: CaseStore, blobs: BlobStore, result_id: str) -> di
         review = case.get_crl_evidence_review(saved_review.get("review_id"))
         if review is None or any(review.get(key) != value for key, value in saved_review.items()):
             broken.append(f"CRL review {saved_review.get('review_id')} 断裂或变化")
-        saved_claim = binding.get("claim") or {}
-        claim = case.fetch_one("claims", "claim_id", saved_claim.get("claim_id"))
-        if claim is None or claim_content_digest(claim) != binding.get("claim_digest"):
-            broken.append(f"Claim {saved_claim.get('claim_id')} 冻结内容不一致")
+        qualification_view = binding.get("qualification_view")
+        if not isinstance(qualification_view, dict):
+            broken.append(
+                f"Claim {saved_review.get('claim_id')} 缺少完整资格输入视图")
             continue
-        source = case.fetch_one("sources", "source_id", claim["source_id"])
-        if source is None or source != binding.get("source"):
-            broken.append(f"Source {claim['source_id']} 冻结内容不一致")
-            continue
-        excerpt = _excerpt_bytes_for_claim(blobs, claim, source)
-        if excerpt is None or sha256_hex(excerpt) != claim["excerpt_sha256"]:
-            broken.append(f"Claim {claim['claim_id']} 原件/定位/摘录核验失败")
-        qual = case.fetch_one("qualifications", "qual_id", f"QUALR::{claim['claim_id']}")
-        if qual is None or qualification_content_digest(qual) != binding.get("qualification_digest"):
-            broken.append(f"Qualification {claim['claim_id']} 冻结内容不一致")
+        for problem in verify_qualification_input_view(
+                qualification_view, frozen.get("case_basis") or {}, case, blobs):
+            broken.append(f"Claim {saved_review.get('claim_id')}：{problem}")
+    return broken
+
+
+def trace_crl_dimension(case: CaseStore, blobs: BlobStore, result_id: str) -> dict:
+    """重核R2-A不可变维度结果及其全部实际消费边。"""
+    row = case.get_crl_dimension_result_by_id(result_id)
+    if row is None:
+        return {"result_id": result_id, "ok": False, "broken": ["CRL维度结果不存在"]}
+    try:
+        raw = blobs.read_bytes(row["result_blob_sha256"])
+        result = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        return {"result_id": result_id, "ok": False,
+                "broken": [f"CRL维度结果blob不可读：{exc}"]}
+    broken = validate_crl_dimension_payload(case, blobs, result)
+    if result.get("result_id") != result_id \
+            or result.get("input_digest") != row["input_digest"]:
+        broken.append("CRL维度结果记录与内容寻址对象不一致")
     return {"result_id": result_id, "ok": not broken, "broken": broken,
             "product_status": result.get("dimension", {}).get("product_status"),
             "input_digest": row["input_digest"],
