@@ -34,6 +34,7 @@ from .kernels import (
     interpret_claim_for_criterion,
 )
 from .kernels.crl import evaluate_crl_dimension
+from .kernels.frl import evaluate_frl_dimension
 from .qualification import (
     GapOutcome,
     QualificationOutcome,
@@ -297,6 +298,311 @@ def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
         destination = Path(output_path) if output_path else case_dir / "audit" / "crl-dimension-r2a.json"
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        case.new_run(input_digest=digest)
+        return {**result, "output_path": str(destination)}
+    finally:
+        case.close()
+
+
+def _resolve_reference_bundle(case: CaseStore, blobs: BlobStore,
+                              values_and_refs: list[tuple[str, object, dict]]) -> dict:
+    """解析一组必须来自同一封存逻辑记录的字段并冻结实际绑定。"""
+    bindings = {}
+    resolved = []
+    for name, expected, reference in values_and_refs:
+        value, error, binding = resolve_case_field_reference_binding(
+            reference, case, blobs, expect_value=expected)
+        if error or binding is None:
+            raise ValueError(f"{name}证明不可核验：{error or '无绑定'}")
+        bindings[name] = {**binding, "value": value}
+        resolved.append(binding)
+    relation_ok, relation_error = _same_record_relation(*resolved)
+    if not relation_ok:
+        raise ValueError(f"证明字段不属于同一记录：{relation_error}")
+    return bindings
+
+
+def _resolve_financing_entity(case: CaseStore, blobs: BlobStore,
+                              value: dict, scope: str) -> dict:
+    required = {
+        "financing_entity_id", "subject_scope", "assessment_unit_refs",
+        "entity_ref", "subject_ref", "assessment_units_ref",
+    }
+    if not isinstance(value, dict) or not required <= set(value):
+        raise ValueError("融资主体输入结构不完整")
+    if value["subject_scope"] != scope:
+        raise ValueError("融资主体subject_scope与Case主体不一致")
+    units = value["assessment_unit_refs"]
+    if not isinstance(units, list) or not units or len(units) != len(set(units)):
+        raise ValueError("融资主体评估单元必须为非空去重列表")
+    proof_bindings = _resolve_reference_bundle(case, blobs, [
+        ("entity", value["financing_entity_id"], value["entity_ref"]),
+        ("subject", scope, value["subject_ref"]),
+        ("assessment_units", units, value["assessment_units_ref"]),
+    ])
+    return {
+        "financing_entity_id": value["financing_entity_id"],
+        "subject_scope": scope,
+        "assessment_unit_refs": sorted(units),
+        "proof_bindings": proof_bindings,
+    }
+
+
+def _resolve_frl_applicability(case: CaseStore, blobs: BlobStore,
+                               policy: dict | None, *, scope: str,
+                               financing_entity_id: str) -> tuple[dict | None, str | None]:
+    if policy is None:
+        return None, None
+    required = {
+        "external_financing_planned_ref", "financing_entity_ref", "subject_ref"}
+    if not isinstance(policy, dict) or not required <= set(policy):
+        return None, "FRL受限N/A政策结构不完整"
+    try:
+        bindings = _resolve_reference_bundle(case, blobs, [
+            ("external_financing_planned", False,
+             policy["external_financing_planned_ref"]),
+            ("financing_entity_id", financing_entity_id,
+             policy["financing_entity_ref"]),
+            ("subject_scope", scope, policy["subject_ref"]),
+        ])
+    except ValueError as exc:
+        return None, str(exc)
+    return {
+        "external_financing_planned": False,
+        "financing_entity_id": financing_entity_id,
+        "subject_scope": scope,
+        "policy_binding": bindings["external_financing_planned"],
+        "proof_bindings": bindings,
+    }, None
+
+
+def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
+                           basis: dict, basis_proofs: dict,
+                           review_fields: tuple[str, ...]) -> tuple[dict, dict, str | None]:
+    """建立非CRL维度review的完整资格视图，供后续维度共同复用。"""
+    claim = case.fetch_one("claims", "claim_id", row["claim_id"])
+    qual = case.fetch_one(
+        "qualifications", "qual_id", qualification_id(row["claim_id"]))
+    source = case.fetch_one(
+        "sources", "source_id", claim["source_id"]) if claim else None
+    reason = None
+    if claim is None or qual is None or qual["status"] != "qualified" or source is None:
+        reason = "主张、来源或资格不可用"
+    try:
+        data = blobs.read_bytes(source["blob_sha256"]) if source else b""
+    except Exception as exc:
+        data, reason = b"", f"原件不可读：{exc}"
+    current_claim_digest = claim_content_digest(claim) if claim else None
+    if not reason and (len(data) != source["byte_length"]
+                       or current_claim_digest != claim.get("content_digest")):
+        reason = "来源长度或Claim冻结内容不一致"
+    if not reason:
+        from .audit import _excerpt_bytes_for_claim
+        excerpt = _excerpt_bytes_for_claim(blobs, claim, source)
+        if excerpt is None or sha256_hex(excerpt) != claim["excerpt_sha256"]:
+            reason = "定位/投影/摘录hash不符"
+    if not reason and claim["excerpt_sha256"] != row["quote_sha256"]:
+        reason = "复核引文hash与封存摘录不一致"
+    qualification_view = None
+    if not reason:
+        qualification_view, outcome, proof_errors = build_qualification_input_view(
+            claim, source, qual, basis, case, blobs,
+            same_body_sources=_same_body_occurrence_count(
+                case, source["blob_sha256"]),
+            review_attempt=f"{row['dimension_id'].lower()}-dimension-reverify",
+            case_basis_proofs=basis_proofs,
+        )
+        if not isinstance(outcome, QualificationOutcome) \
+                or outcome.status != "qualified":
+            reason = "R1资格重核不再qualified"
+        elif proof_errors:
+            reason = "完整资格证明不可核验：" + "；".join(proof_errors)
+    saved_review = {key: row.get(key) for key in review_fields}
+    binding = {
+        "review": saved_review,
+        "claim": claim,
+        "claim_digest": current_claim_digest,
+        "source": source,
+        "qualification_digest": (
+            qualification_content_digest(qual) if qual else None),
+        "qualification_view": qualification_view,
+    }
+    review = {key: row[key] for key in review_fields
+              if key not in {"quote_sha256", "subject_scope", "scope_id",
+                             "dimension_id"}}
+    review["financing_entity_id"] = row["scope_id"]
+    return review, binding, reason
+
+
+def run_frl_dimension_slice(
+        case_dir: Path | str, *, catalog: dict, case_basis: dict, scope: str,
+        financing_entity: dict, applicability_policy: dict | None = None,
+        output_path: Path | str | None = None) -> dict:
+    """R2-B候选：按融资主体运行FRL，并复用完整资格视图与不可变发布。"""
+    case_dir = Path(case_dir)
+    blobs = BlobStore(case_dir / "blobs")
+    case = CaseStore(case_dir / "records.sqlite3")
+    try:
+        basis, version = _effective_case_basis(case, case_basis)
+        if scope != basis["subject_legal_name"]:
+            raise ValueError("FRL维度scope必须等于冻结Case主体")
+        if not isinstance(financing_entity, dict) \
+                or financing_entity.get("subject_scope") != scope:
+            raise ValueError("融资主体subject_scope与Case主体不一致")
+        raw_units = financing_entity.get("assessment_unit_refs")
+        if not isinstance(raw_units, list) or not raw_units \
+                or len(raw_units) != len(set(raw_units)):
+            raise ValueError("融资主体评估单元必须为非空去重列表")
+        with case.immediate_transaction():
+            basis_proofs, basis_error = resolve_case_basis_proof_bindings(
+                basis, case, blobs)
+            reviews, rejected, evidence_bindings = [], [], []
+            if basis_error or basis_proofs is None:
+                rejected.append({
+                    "review_id": "__case_basis__",
+                    "reason": f"CaseBasis证明不可核验：{basis_error or '无绑定'}",
+                })
+                basis_proofs = None
+            try:
+                entity = _resolve_financing_entity(
+                    case, blobs, financing_entity, scope)
+                entity_error = None
+            except ValueError as exc:
+                entity_error = str(exc)
+                entity = {
+                    "financing_entity_id": financing_entity.get(
+                        "financing_entity_id") or "__invalid__",
+                    "subject_scope": scope,
+                    "assessment_unit_refs": sorted(raw_units),
+                    "proof_bindings": {},
+                }
+                rejected.append({
+                    "review_id": "__financing_entity__",
+                    "reason": f"融资主体证明不可核验：{entity_error}",
+                })
+            applicability, applicability_error = _resolve_frl_applicability(
+                case, blobs, applicability_policy, scope=scope,
+                financing_entity_id=entity["financing_entity_id"])
+            criteria = [dict(row) for row in
+                        catalog["dimensions"]["FRL"]["registry"]["criteria"]]
+            criterion_ids = {row["criterion_id"] for row in criteria}
+            review_fields = (
+                "review_id", "dimension_id", "criterion_id", "claim_id",
+                "quote_sha256", "decision", "evidence_class", "findings",
+                "subject_scope", "scope_id", "support_scope", "reviewer",
+                "review_basis",
+            )
+            if applicability_error:
+                rejected.append({
+                    "review_id": "__frl_applicability__",
+                    "reason": applicability_error,
+                })
+            rows = case.fetch_dimension_evidence_reviews(
+                "FRL", version, entity["financing_entity_id"])
+            for row in rows:
+                reason = None
+                if basis_proofs is None:
+                    reason = "CaseBasis证明不可核验"
+                elif entity_error:
+                    reason = "融资主体证明不可核验"
+                elif row["subject_scope"] != scope:
+                    reason = "FRL复核subject_scope与维度scope不一致"
+                elif row["scope_id"] != entity["financing_entity_id"]:
+                    reason = "FRL复核融资主体不一致"
+                elif row["criterion_id"] not in criterion_ids:
+                    reason = "FRL复核指向未登记/非FRL准则"
+                if reason:
+                    review = {key: row.get(key) for key in review_fields}
+                    binding = {"review": review, "qualification_view": None}
+                else:
+                    review, binding, bind_reason = _bind_dimension_review(
+                        case, blobs, row, basis, basis_proofs, review_fields)
+                    reason = bind_reason
+                if reason:
+                    rejected.append({
+                        "review_id": row["review_id"], "reason": reason,
+                        "evidence_binding": binding,
+                    })
+                else:
+                    reviews.append(review)
+                    evidence_bindings.append(binding)
+            dimension = evaluate_frl_dimension(
+                criteria, reviews, scope=scope, financing_entity=entity,
+                applicability=applicability)
+            if rejected:
+                for item in dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None, execution_errors=rejected)
+            frozen = {
+                "dimension_id": "FRL",
+                "case_basis": basis,
+                "case_basis_version": version,
+                "case_basis_proofs": basis_proofs,
+                "catalog_sha256": catalog.get("wheel_sha256"),
+                "criteria": criteria,
+                "reviews": reviews,
+                "rejected_reviews": rejected,
+                "evidence_bindings": evidence_bindings,
+                "scope": scope,
+                "scope_id": entity["financing_entity_id"],
+                "financing_entity": entity,
+                "applicability": applicability,
+                "rule_version": dimension["rule_version"],
+            }
+            digest = sha256_hex(json.dumps(
+                frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+            result_id_value = f"DIMR2::FRL::{digest}"
+            result = {
+                "schema_version": "kth-hybrid.dimension-result.v1",
+                "result_id": result_id_value,
+                "input_digest": digest,
+                "dimension": dimension,
+                "frozen_inputs": frozen,
+                "traceability": {
+                    "review_refs": [row["review_id"] for row in reviews],
+                    "claim_refs": sorted({row["claim_id"] for row in reviews}),
+                    "assessment_unit_refs": entity["assessment_unit_refs"],
+                },
+            }
+            from .audit import validate_dimension_payload
+            publish_errors = validate_dimension_payload(case, blobs, result)
+            if publish_errors and dimension["product_status"] != "execution_failed":
+                for item in dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None,
+                    execution_errors=[{
+                        "review_id": "__publish_validation__",
+                        "reason": "发布前完整维度绑定核验失败",
+                        "broken": publish_errors,
+                    }],
+                )
+                frozen["publish_validation_errors"] = publish_errors
+                digest = sha256_hex(json.dumps(
+                    frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+                result_id_value = f"DIMR2::FRL::{digest}"
+                result.update(result_id=result_id_value, input_digest=digest)
+            result_bytes = json.dumps(
+                result, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            result_ref = blobs.put_bytes(result_bytes)
+            existing = case.get_dimension_result(digest)
+            if existing is None:
+                case.add_dimension_result_in_transaction(
+                    result_id_value, dimension_id="FRL", input_digest=digest,
+                    case_basis_version=version, scope=scope,
+                    scope_id=entity["financing_entity_id"],
+                    product_status=dimension["product_status"],
+                    result_blob_sha256=result_ref.sha256)
+        destination = (Path(output_path) if output_path else
+                       case_dir / "audit" / "frl-dimension-r2b.json")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         case.new_run(input_digest=digest)
         return {**result, "output_path": str(destination)}
     finally:

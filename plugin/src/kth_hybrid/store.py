@@ -85,6 +85,38 @@ CREATE TABLE IF NOT EXISTS crl_dimension_results (
     result_blob_sha256 TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE TABLE IF NOT EXISTS dimension_evidence_reviews (
+    review_id TEXT PRIMARY KEY,
+    dimension_id TEXT NOT NULL,
+    case_basis_version INTEGER NOT NULL,
+    claim_id TEXT NOT NULL,
+    criterion_id TEXT NOT NULL,
+    quote_sha256 TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('supports','does_not_support')),
+    evidence_class TEXT NOT NULL,
+    findings_json TEXT NOT NULL,
+    subject_scope TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    support_scope TEXT NOT NULL,
+    reviewer TEXT NOT NULL,
+    review_basis TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dimension_reviews
+    ON dimension_evidence_reviews(dimension_id, case_basis_version, scope_id);
+CREATE TABLE IF NOT EXISTS dimension_results (
+    result_id TEXT PRIMARY KEY,
+    dimension_id TEXT NOT NULL,
+    input_digest TEXT NOT NULL UNIQUE,
+    case_basis_version INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    product_status TEXT NOT NULL,
+    result_blob_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dimension_results_dimension
+    ON dimension_results(dimension_id, scope_id);
 CREATE TABLE IF NOT EXISTS source_time_evidence (
     revision INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id TEXT NOT NULL,
@@ -397,6 +429,38 @@ class CaseStore:
                 result_blob_sha256 TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
+            CREATE TABLE IF NOT EXISTS dimension_evidence_reviews (
+                review_id TEXT PRIMARY KEY,
+                dimension_id TEXT NOT NULL,
+                case_basis_version INTEGER NOT NULL,
+                claim_id TEXT NOT NULL,
+                criterion_id TEXT NOT NULL,
+                quote_sha256 TEXT NOT NULL,
+                decision TEXT NOT NULL CHECK (decision IN ('supports','does_not_support')),
+                evidence_class TEXT NOT NULL,
+                findings_json TEXT NOT NULL,
+                subject_scope TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                support_scope TEXT NOT NULL,
+                reviewer TEXT NOT NULL,
+                review_basis TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_dimension_reviews
+                ON dimension_evidence_reviews(dimension_id, case_basis_version, scope_id);
+            CREATE TABLE IF NOT EXISTS dimension_results (
+                result_id TEXT PRIMARY KEY,
+                dimension_id TEXT NOT NULL,
+                input_digest TEXT NOT NULL UNIQUE,
+                case_basis_version INTEGER NOT NULL,
+                scope TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                product_status TEXT NOT NULL,
+                result_blob_sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_dimension_results_dimension
+                ON dimension_results(dimension_id, scope_id);
         """)
         columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(sources)").fetchall()}
@@ -727,6 +791,100 @@ class CaseStore:
 
     def count_crl_dimension_results(self) -> int:
         return int(self._conn.execute("SELECT COUNT(*) FROM crl_dimension_results").fetchone()[0])
+
+    def add_dimension_evidence_review(
+            self, review_id: str, *, dimension_id: str, case_basis_version: int,
+            claim_id: str, criterion_id: str, quote_sha256: str, decision: str,
+            evidence_class: str, findings: dict, subject_scope: str,
+            scope_id: str, support_scope: str, reviewer: str,
+            review_basis: str) -> None:
+        """登记非CRL维度的受控、准则绑定复核记录。"""
+        text_fields = (
+            review_id, dimension_id, claim_id, criterion_id, quote_sha256,
+            evidence_class, subject_scope, scope_id, support_scope, reviewer,
+            review_basis,
+        )
+        if decision not in {"supports", "does_not_support"} \
+                or not isinstance(findings, dict) \
+                or not all(isinstance(value, str) and value.strip()
+                           for value in text_fields):
+            raise ValueError("维度复核记录的身份、decision、证据类别或findings非法")
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO dimension_evidence_reviews("
+                "review_id,dimension_id,case_basis_version,claim_id,criterion_id,"
+                "quote_sha256,decision,evidence_class,findings_json,subject_scope,"
+                "scope_id,support_scope,reviewer,review_basis) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (review_id, dimension_id, case_basis_version, claim_id,
+                 criterion_id, quote_sha256, decision, evidence_class,
+                 json.dumps(findings, ensure_ascii=False, sort_keys=True),
+                 subject_scope, scope_id, support_scope, reviewer, review_basis),
+            )
+
+    def fetch_dimension_evidence_reviews(
+            self, dimension_id: str, case_basis_version: int,
+            scope_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM dimension_evidence_reviews WHERE dimension_id=? "
+            "AND case_basis_version=? AND scope_id=? ORDER BY review_id",
+            (dimension_id, case_basis_version, scope_id),
+        ).fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            item["findings"] = json.loads(item.pop("findings_json"))
+            out.append(item)
+        return out
+
+    def get_dimension_evidence_review(self, review_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM dimension_evidence_reviews WHERE review_id=?",
+            (review_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["findings"] = json.loads(item.pop("findings_json"))
+        return item
+
+    def get_dimension_result(self, input_digest: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM dimension_results WHERE input_digest=?",
+            (input_digest,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_dimension_result_by_id(self, result_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM dimension_results WHERE result_id=?", (result_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def add_dimension_result_in_transaction(
+            self, result_id: str, *, dimension_id: str, input_digest: str,
+            case_basis_version: int, scope: str, scope_id: str,
+            product_status: str, result_blob_sha256: str) -> None:
+        if not self._conn.in_transaction:
+            raise RuntimeError("维度结果发布必须位于显式事务内")
+        self._conn.execute(
+            "INSERT INTO dimension_results("
+            "result_id,dimension_id,input_digest,case_basis_version,scope,scope_id,"
+            "product_status,result_blob_sha256) VALUES (?,?,?,?,?,?,?,?)",
+            (result_id, dimension_id, input_digest, case_basis_version, scope,
+             scope_id, product_status, result_blob_sha256),
+        )
+
+    def count_dimension_results(self, dimension_id: str | None = None) -> int:
+        if dimension_id is None:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM dimension_results").fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM dimension_results WHERE dimension_id=?",
+                (dimension_id,),
+            ).fetchone()
+        return int(row[0])
 
     # ---- 记录写入（事务）----
 

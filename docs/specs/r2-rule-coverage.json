@@ -2172,10 +2172,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL1-OPTIONS",
@@ -2187,10 +2187,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL1-STATUS",
@@ -2202,10 +2202,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL1-PITCH",
@@ -2217,10 +2217,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL2-NEED",
@@ -2232,10 +2232,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL2-OPTIONS",
@@ -2247,10 +2247,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL2-STATUS",
@@ -2262,10 +2262,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL2-PITCH",
@@ -2277,10 +2277,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL3-NEED",
@@ -2292,10 +2292,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL3-OPTIONS",
@@ -2307,10 +2307,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL3-STATUS",
@@ -2322,10 +2322,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL3-PITCH",
@@ -2337,10 +2337,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL4-NEED",
@@ -2352,10 +2352,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL4-OPTIONS",
@@ -2367,10 +2367,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL4-STATUS",
@@ -2382,10 +2382,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL4-PITCH",
@@ -2397,10 +2397,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL5-NEED",
@@ -2412,10 +2412,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL5-OPTIONS",
@@ -2427,10 +2427,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL5-STATUS",
@@ -2442,10 +2442,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL5-PITCH",
@@ -2457,10 +2457,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL6-NEED",
@@ -2472,10 +2472,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL6-OPTIONS",
@@ -2487,10 +2487,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL6-STATUS",
@@ -2502,10 +2502,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL6-PITCH",
@@ -2517,10 +2517,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL7-NEED",
@@ -2532,10 +2532,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL7-OPTIONS",
@@ -2547,10 +2547,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL7-STATUS",
@@ -2562,10 +2562,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL7-PITCH",
@@ -2577,10 +2577,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL8-NEED",
@@ -2592,10 +2592,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL8-OPTIONS",
@@ -2607,10 +2607,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL8-STATUS",
@@ -2622,10 +2622,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL8-PITCH",
@@ -2637,10 +2637,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL9-NEED",
@@ -2652,10 +2652,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL9-OPTIONS",
@@ -2667,10 +2667,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL9-STATUS",
@@ -2682,10 +2682,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     },
     {
       "criterion_id": "FRL9-PITCH",
@@ -2697,10 +2697,10 @@
       "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
       "test_pointer": null,
       "test_pointer_status": "未机械定位",
-      "implementation_status": "后续未实现",
-      "implementation_pointer": null,
-      "method_difference": "非本批范围",
-      "new_test_pointer": null
+      "implementation_status": "r2b_candidate_implemented",
+      "implementation_pointer": "plugin/src/kth_hybrid/kernels/frl.py",
+      "method_difference": "复用批准wheel F/2025证据类别、受限N/A与累计门；由新线受控review和完整资格视图提供处置输入，候选实现待独立审核",
+      "new_test_pointer": "plugin/tests/test_r2b_frl.py::test_each_frl_rule_has_distinct_positive_and_missing_evidence_behavior"
     }
   ]
 }

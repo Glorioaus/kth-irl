@@ -806,6 +806,117 @@ def trace_crl_dimension(case: CaseStore, blobs: BlobStore, result_id: str) -> di
             "result_blob_sha256": row["result_blob_sha256"]}
 
 
+def _verify_reference_bundle(case: CaseStore, blobs: BlobStore,
+                             saved: dict, label: str) -> list[str]:
+    from .qualification import (
+        _same_record_relation,
+        resolve_case_field_reference_binding,
+    )
+
+    broken = []
+    current_bindings = []
+    for name, binding in (saved or {}).items():
+        if not isinstance(binding, dict) or not binding.get("path"):
+            broken.append(f"{label}.{name}缺少封存字段绑定")
+            continue
+        value, error, current = resolve_case_field_reference_binding(
+            {"kind": "field_reference", "path": binding["path"]},
+            case, blobs, expect_value=binding.get("value"))
+        expected = {key: item for key, item in binding.items() if key != "value"}
+        if error or current != expected:
+            broken.append(f"{label}.{name}断裂或变化：{error or '绑定变化'}")
+            continue
+        current_bindings.append(current)
+    if current_bindings:
+        relation_ok, relation_error = _same_record_relation(*current_bindings)
+        if not relation_ok:
+            broken.append(f"{label}关系断裂：{relation_error}")
+    return broken
+
+
+def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
+                               result: dict) -> list[str]:
+    """非CRL维度发布前与读时trace共用的完整绑定核验。"""
+    from .qualification import (
+        resolve_case_basis_proof_bindings,
+        verify_qualification_input_view,
+    )
+
+    broken: list[str] = []
+    frozen = result.get("frozen_inputs") or {}
+    digest = sha256_hex(json.dumps(
+        frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    dimension_id = frozen.get("dimension_id")
+    if result.get("input_digest") != digest \
+            or result.get("result_id") != f"DIMR2::{dimension_id}::{digest}":
+        broken.append("维度结果身份或冻结摘要不一致")
+    version = frozen.get("case_basis_version")
+    current_basis = case.get_case_basis_version(version) if version else None
+    if current_basis is None or {
+            key: value for key, value in current_basis.items() if key != "version"
+    } != frozen.get("case_basis"):
+        broken.append("维度CaseBasis版本与冻结值不一致")
+    else:
+        current_proofs, error = resolve_case_basis_proof_bindings(
+            frozen["case_basis"], case, blobs)
+        if error or current_proofs != frozen.get("case_basis_proofs"):
+            broken.append(f"维度CaseBasis证明断裂：{error or '绑定变化'}")
+    entity = frozen.get("financing_entity") or {}
+    broken.extend(_verify_reference_bundle(
+        case, blobs, entity.get("proof_bindings") or {}, "融资主体证明"))
+    applicability = frozen.get("applicability")
+    if isinstance(applicability, dict):
+        broken.extend(_verify_reference_bundle(
+            case, blobs, applicability.get("proof_bindings") or {},
+            "FRL受限N/A政策"))
+    for binding in frozen.get("evidence_bindings") or []:
+        saved_review = binding.get("review") or {}
+        review = case.get_dimension_evidence_review(saved_review.get("review_id"))
+        if review is None or any(
+                review.get(key) != value for key, value in saved_review.items()):
+            broken.append(
+                f"维度review {saved_review.get('review_id')} 断裂或变化")
+        view = binding.get("qualification_view")
+        if not isinstance(view, dict):
+            broken.append(
+                f"Claim {saved_review.get('claim_id')} 缺少完整资格输入视图")
+            continue
+        for problem in verify_qualification_input_view(
+                view, frozen.get("case_basis") or {}, case, blobs):
+            broken.append(f"Claim {saved_review.get('claim_id')}：{problem}")
+    return broken
+
+
+def trace_dimension_result(case: CaseStore, blobs: BlobStore,
+                           result_id: str) -> dict:
+    """读取并重核非CRL不可变维度结果。"""
+    row = case.get_dimension_result_by_id(result_id)
+    if row is None:
+        return {"result_id": result_id, "ok": False,
+                "broken": ["维度结果不存在"]}
+    try:
+        raw = blobs.read_bytes(row["result_blob_sha256"])
+        result = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        return {"result_id": result_id, "ok": False,
+                "broken": [f"维度结果blob不可读：{exc}"]}
+    broken = validate_dimension_payload(case, blobs, result)
+    if result.get("result_id") != result_id \
+            or result.get("input_digest") != row["input_digest"] \
+            or (result.get("frozen_inputs") or {}).get("dimension_id") \
+            != row["dimension_id"]:
+        broken.append("维度结果记录与内容寻址对象不一致")
+    return {
+        "result_id": result_id,
+        "dimension_id": row["dimension_id"],
+        "ok": not broken,
+        "broken": broken,
+        "product_status": result.get("dimension", {}).get("product_status"),
+        "input_digest": row["input_digest"],
+        "result_blob_sha256": row["result_blob_sha256"],
+    }
+
+
 def _first_claim_id(qual_refs: list, case: CaseStore) -> str | None:
     for qual_id in qual_refs:
         qual = case.fetch_one("qualifications", "qual_id", qual_id)
