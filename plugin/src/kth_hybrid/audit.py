@@ -747,6 +747,8 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
 def validate_crl_dimension_payload(case: CaseStore, blobs: BlobStore,
                                    result: dict) -> list[str]:
     """发布前与读时trace共用的CRL维度完整绑定核验。"""
+    from .catalog import APPROVED_WHEEL_SHA256, build_catalog_from_wheel
+    from .kernels.crl import RULE_VERSION as CRL_RULE_VERSION, evaluate_crl_dimension
     from .qualification import (
         resolve_case_basis_proof_bindings,
         verify_qualification_input_view,
@@ -754,12 +756,62 @@ def validate_crl_dimension_payload(case: CaseStore, blobs: BlobStore,
 
     broken: list[str] = []
     frozen = result.get("frozen_inputs") or {}
+    if result.get("schema_version") not in {
+            "kth-hybrid.r2a-crl-dimension.v2",
+            "kth-hybrid.r2a-crl-dimension.v3"}:
+        broken.append("CRL维度结果schema_version不受支持")
     recomputed = sha256_hex(json.dumps(frozen, ensure_ascii=False,
                                        sort_keys=True).encode("utf-8"))
     expected_result_id = f"CRLR2A::{recomputed}"
     if result.get("input_digest") != recomputed \
             or result.get("result_id") != expected_result_id:
         broken.append("CRL维度结果身份或冻结摘要不一致")
+    if frozen.get("catalog_sha256") != APPROVED_WHEEL_SHA256:
+        broken.append("CRL维度catalog SHA256与批准wheel不一致")
+    else:
+        try:
+            expected_criteria = build_catalog_from_wheel()["dimensions"][
+                "CRL"]["registry"]["criteria"]
+        except Exception as exc:
+            broken.append(f"CRL批准catalog无法重建：{exc}")
+        else:
+            if frozen.get("criteria") != expected_criteria:
+                broken.append("CRL criteria集合或排序与批准catalog不一致")
+    saved_dimension = result.get("dimension") or {}
+    if frozen.get("rule_version") != CRL_RULE_VERSION \
+            or saved_dimension.get("rule_version") != CRL_RULE_VERSION:
+        broken.append("CRL rule_version与当前批准实现不一致")
+    else:
+        try:
+            rebuilt_dimension = evaluate_crl_dimension(
+                frozen.get("criteria") or [], frozen.get("reviews") or [],
+                scope=frozen.get("scope"))
+            rejected = frozen.get("rejected_reviews") or []
+            if rejected:
+                for item in rebuilt_dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                rebuilt_dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None, execution_errors=rejected)
+            publish_errors = frozen.get("publish_validation_errors")
+            if publish_errors and not rejected:
+                for item in rebuilt_dimension["criteria"]:
+                    item["native_disposition"] = None
+                    item["product_status"] = "execution_failed"
+                rebuilt_dimension.update(
+                    product_status="execution_failed", attained_level=None,
+                    first_unmet_level=None,
+                    execution_errors=[{
+                        "review_id": "__publish_validation__",
+                        "reason": "发布前完整资格视图核验失败",
+                        "broken": publish_errors,
+                    }])
+        except Exception as exc:
+            broken.append(f"CRL冻结输入重新求值失败：{type(exc).__name__}: {exc}")
+        else:
+            if rebuilt_dimension != saved_dimension:
+                broken.append("CRL完整求值输出与冻结输入重算结果不一致")
     version = frozen.get("case_basis_version")
     current_basis = case.get_case_basis_version(version) if version else None
     if current_basis is None or {k: v for k, v in current_basis.items() if k != "version"} != frozen.get("case_basis"):
@@ -797,8 +849,13 @@ def trace_crl_dimension(case: CaseStore, blobs: BlobStore, result_id: str) -> di
         return {"result_id": result_id, "ok": False,
                 "broken": [f"CRL维度结果blob不可读：{exc}"]}
     broken = validate_crl_dimension_payload(case, blobs, result)
+    frozen = result.get("frozen_inputs") or {}
+    dimension = result.get("dimension") or {}
     if result.get("result_id") != result_id \
-            or result.get("input_digest") != row["input_digest"]:
+            or result.get("input_digest") != row["input_digest"] \
+            or frozen.get("case_basis_version") != row["case_basis_version"] \
+            or frozen.get("scope") != row["scope"] \
+            or dimension.get("product_status") != row["product_status"]:
         broken.append("CRL维度结果记录与内容寻址对象不一致")
     return {"result_id": result_id, "ok": not broken, "broken": broken,
             "product_status": result.get("dimension", {}).get("product_status"),
@@ -879,6 +936,11 @@ def _recompute_dimension_from_frozen(frozen: dict) -> tuple[dict | None, str | N
                 criteria, reviews, scope=scope,
                 financing_entity=frozen.get("financing_entity") or {},
                 applicability=frozen.get("applicability"))
+        elif dimension_id == "TMRL":
+            dimension = evaluator(
+                criteria, reviews, scope=scope,
+                assessment_unit=frozen.get("assessment_scope") or {},
+                identity_overlays=frozen.get("tmrl_identity_overlays") or {})
         else:
             dimension = evaluator(
                 criteria, reviews, scope=scope,
@@ -969,6 +1031,23 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
         broken.extend(_verify_reference_bundle(
             case, blobs, applicability.get("proof_bindings") or {},
             "FRL受限N/A政策"))
+    if dimension_id == "TMRL":
+        overlays = frozen.get("tmrl_identity_overlays")
+        if not isinstance(overlays, dict):
+            broken.append("TMRL结果缺少冻结身份overlay")
+        else:
+            for subject_id, overlay in overlays.items():
+                record = overlay.get("record") if isinstance(overlay, dict) else None
+                if not isinstance(record, dict) \
+                        or record.get("subject_id") != subject_id:
+                    broken.append(f"TMRL身份overlay {subject_id} 结构非法")
+                    continue
+                current = case.get_tmrl_identity_overlay(record.get("overlay_id"))
+                if current != record:
+                    broken.append(f"TMRL身份overlay {subject_id} 记录断裂或变化")
+                broken.extend(_verify_reference_bundle(
+                    case, blobs, overlay.get("proof_bindings") or {},
+                    f"TMRL身份overlay {subject_id}"))
     for binding in frozen.get("evidence_bindings") or []:
         saved_review = binding.get("review") or {}
         review = case.get_dimension_evidence_review(saved_review.get("review_id"))

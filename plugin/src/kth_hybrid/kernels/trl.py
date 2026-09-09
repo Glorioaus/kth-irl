@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 
-RULE_VERSION = "kth-hybrid.trl.night.v2"
+RULE_VERSION = "kth-hybrid.trl.night.v3"
 RULE_REQUIREMENTS = {
     "TRL1-C1": "research_application_identified", "TRL1-C2": "initial_technology_idea",
     "TRL2-C1": "technology_concept_defined", "TRL2-C2": "applications_speculative",
@@ -106,7 +106,7 @@ def _support(criterion: dict[str, Any], review: dict[str, Any]) -> bool:
     if criterion_id == "TRL8-C4" \
             and findings.get("day_to_day_operation") is not True:
         return False
-    if evidence_class == "longitudinal_operation":
+    if criterion_id == "TRL9-C1":
         users = {item for item in findings.get("independent_user_ids", [])
                  if isinstance(item, str) and item.strip()}
         if len(users) < 2 or not _nonempty(findings, "longitudinal_period"):

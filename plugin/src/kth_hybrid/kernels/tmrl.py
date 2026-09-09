@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-RULE_VERSION = "kth-hybrid.tmrl.night.v2"
+RULE_VERSION = "kth-hybrid.tmrl.night.v3"
 RULE_REQUIREMENTS = {
     "TMRL1-C1": "key_competency_gap_state_recorded",
     "TMRL1-C2": "competency_resource_uncertainty_recorded",
@@ -54,6 +54,7 @@ _OPERATING_CLASSES = {"accountability_operating_record",
                       "organization_performance_record", "team_operating_record"}
 _OPERATING_STATUSES = {"measured_operating_record", "operational_record",
                        "verified_operating_record"}
+_SUPPORTED_IDENTITY_STATUSES = {"verified", "probable", "ok"}
 
 
 def _unit(value, scope):
@@ -83,14 +84,45 @@ def _texts(findings, key):
         isinstance(value, str) and value.strip() for value in values)
 
 
-def _support(criterion, review):
+def _identity_overlay_supports(subject_id, scope_id, identity_overlays):
+    if not isinstance(identity_overlays, dict):
+        return False
+    overlay = identity_overlays.get(subject_id)
+    if not isinstance(overlay, dict):
+        return False
+    record = overlay.get("record")
+    bindings = overlay.get("proof_bindings")
+    if not isinstance(record, dict) or not isinstance(bindings, dict) \
+            or record.get("subject_id") != subject_id \
+            or record.get("scope_id") != scope_id \
+            or record.get("resolution_status") not in _SUPPORTED_IDENTITY_STATUSES:
+        return False
+    expected_values = {
+        "subject": subject_id,
+        "status": record["resolution_status"],
+        "scope": scope_id,
+    }
+    return all(isinstance(bindings.get(name), dict)
+               and bindings[name].get("value") == value
+               for name, value in expected_values.items())
+
+
+def _support(criterion, review, identity_overlays):
     findings = review["findings"]
     criterion_id = criterion["criterion_id"]
     evidence_class = review["evidence_class"]
     subjects = findings.get("subject_ids")
+    normalized_subjects = [subject.strip() for subject in subjects] \
+        if isinstance(subjects, list) \
+        and all(isinstance(subject, str) and subject.strip()
+                for subject in subjects) else []
     if findings.get(RULE_REQUIREMENTS[criterion_id]) is not True \
             or findings.get("team_specific") is not True \
-            or not isinstance(subjects, list) or not subjects \
+            or not normalized_subjects \
+            or len(normalized_subjects) != len(set(normalized_subjects)) \
+            or any(not _identity_overlay_supports(
+                subject, review.get("scope_id"), identity_overlays)
+                   for subject in normalized_subjects) \
             or not isinstance(findings.get("current_period"), str) \
             or not findings["current_period"].strip():
         return False
@@ -177,10 +209,11 @@ def _support(criterion, review):
     return False
 
 
-def _criterion_result(criterion, reviews, scope_id):
+def _criterion_result(criterion, reviews, scope_id, identity_overlays):
     valid = [review for review in reviews if _valid(review, criterion, scope_id)]
     supports = [review for review in valid
-                if review["decision"] == "supports" and _support(criterion, review)]
+                if review["decision"] == "supports"
+                and _support(criterion, review, identity_overlays)]
     negatives = [review for review in valid
                  if review["decision"] == "does_not_support"]
     if supports and negatives:
@@ -199,7 +232,8 @@ def _criterion_result(criterion, reviews, scope_id):
             "rationale": rationale, "rule_version": RULE_VERSION}
 
 
-def evaluate_tmrl_dimension(criteria, reviews, *, scope, assessment_unit):
+def evaluate_tmrl_dimension(criteria, reviews, *, scope, assessment_unit,
+                            identity_overlays=None):
     if {criterion.get("criterion_id") for criterion in criteria} != set(RULE_REQUIREMENTS):
         raise ValueError("TMRL准则集合不完整")
     unit = _unit(assessment_unit, scope)
@@ -208,7 +242,7 @@ def evaluate_tmrl_dimension(criteria, reviews, *, scope, assessment_unit):
         if isinstance(review, dict) and review.get("criterion_id") in RULE_REQUIREMENTS:
             grouped[review["criterion_id"]].append(review)
     rows = [_criterion_result(criterion, grouped[criterion["criterion_id"]],
-                              unit["scope_id"])
+                              unit["scope_id"], identity_overlays or {})
             for criterion in sorted(criteria, key=lambda item: (
                 item["level"], item["criterion_id"]))]
     by_id = {row["criterion_id"]: row for row in rows}
@@ -226,4 +260,4 @@ def evaluate_tmrl_dimension(criteria, reviews, *, scope, assessment_unit):
             "product_status": ("succeeded" if all(
                 row["product_status"] == "succeeded" for row in rows)
                 else "insufficient"), "rule_version": RULE_VERSION,
-            "method_boundary": "身份overlay不得设定成熟度；协议与运行类必须达到canonical记录强度。"}
+            "method_boundary": "受控身份overlay只决定证据可用性，不设定成熟度；协议与运行类必须达到canonical记录强度。"}

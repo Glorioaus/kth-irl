@@ -9,6 +9,22 @@ from .contracts import sha256_hex
 EXPECTED_DIMENSIONS = {"CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}
 MANIFEST_SCHEMA = "kth-hybrid.aggregation-manifest.v1"
 VIEW_SCHEMA = "kth-hybrid.offline-six-dimension-view.v2"
+_VIEW_FIELDS = {
+    "schema_version", "status", "manifest_id", "manifest_digest",
+    "case_basis_version", "scope", "dimensions", "evidence_licenses",
+    "limitations", "view_id", "input_digest",
+}
+_DIMENSION_ENTRY_FIELDS = {
+    "dimension_id", "result_id", "input_digest", "case_basis_version",
+    "scope", "scope_id", "product_status", "attained_level",
+    "catalog_sha256", "rule_version", "result_schema_version",
+    "assessment_scope", "financing_entity", "trace_ok",
+}
+_LICENSE_FIELDS = {
+    "license_id", "dimension_id", "result_id", "claim_id", "quote_sha256",
+    "evidence_class", "subject_scope", "scope_id",
+    "qualification_view_digest", "allowed_uses", "support_scope",
+}
 
 
 def _payload(blobs, row):
@@ -153,6 +169,77 @@ def _validate_manifest_identity(manifest):
         raise ValueError("aggregation manifest身份摘要不一致")
 
 
+def _is_sha256(value):
+    return isinstance(value, str) and len(value) == 64 \
+        and all(character in "0123456789abcdef" for character in value)
+
+
+def validate_offline_dimension_view(view):
+    """严格重核view正文、六维结果引用及每条内容寻址证据许可。"""
+    if not isinstance(view, dict) or set(view) != _VIEW_FIELDS \
+            or view.get("schema_version") != VIEW_SCHEMA \
+            or view.get("status") != "offline_candidate":
+        raise ValueError("六维视图schema或字段集合非法")
+    body = {key: value for key, value in view.items()
+            if key not in {"view_id", "input_digest"}}
+    digest = sha256_hex(json.dumps(
+        body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    if view.get("input_digest") != digest \
+            or view.get("view_id") != f"OFFLINE6::{digest}":
+        raise ValueError("六维视图正文摘要或view_id不一致")
+    manifest_digest = view.get("manifest_digest")
+    if not _is_sha256(manifest_digest) \
+            or view.get("manifest_id") != f"AGGMAN::{manifest_digest}":
+        raise ValueError("六维视图manifest ID/digest绑定非法")
+    dimensions = view.get("dimensions")
+    if not isinstance(dimensions, dict) or set(dimensions) != EXPECTED_DIMENSIONS:
+        raise ValueError("六维视图结果集合不完整")
+    for dimension, entry in dimensions.items():
+        if not isinstance(entry, dict) or set(entry) != _DIMENSION_ENTRY_FIELDS \
+                or entry.get("dimension_id") != dimension \
+                or entry.get("case_basis_version") != view.get("case_basis_version") \
+                or entry.get("scope") != view.get("scope") \
+                or not isinstance(entry.get("result_id"), str) \
+                or not isinstance(entry.get("input_digest"), str) \
+                or entry.get("trace_ok") is not True:
+            raise ValueError(f"六维视图{dimension}结果引用结构非法")
+    licenses = view.get("evidence_licenses")
+    if not isinstance(licenses, dict):
+        raise ValueError("六维视图evidence licenses结构非法")
+    for license_id, license_value in licenses.items():
+        if not isinstance(license_value, dict) \
+                or set(license_value) != _LICENSE_FIELDS:
+            raise ValueError("六维视图evidence license字段集合非法")
+        license_body = {key: value for key, value in license_value.items()
+                        if key != "license_id"}
+        license_digest = sha256_hex(json.dumps(
+            license_body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        if license_value.get("license_id") != license_id \
+                or license_id != f"EVIDUSE::{license_digest}":
+            raise ValueError("六维视图evidence license正文摘要或ID不一致")
+        dimension = license_value.get("dimension_id")
+        entry = dimensions.get(dimension)
+        if entry is None \
+                or license_value.get("result_id") != entry.get("result_id") \
+                or license_value.get("subject_scope") != view.get("scope") \
+                or license_value.get("scope_id") != entry.get("scope_id") \
+                or not isinstance(license_value.get("claim_id"), str) \
+                or not license_value["claim_id"].strip() \
+                or not _is_sha256(license_value.get("quote_sha256")) \
+                or not _is_sha256(license_value.get("qualification_view_digest")) \
+                or not isinstance(license_value.get("allowed_uses"), list) \
+                or not isinstance(license_value.get("support_scope"), str) \
+                or not license_value["support_scope"].strip():
+            raise ValueError("六维视图evidence license结果、主张或scope绑定非法")
+        evidence_class = license_value.get("evidence_class")
+        if dimension == "CRL":
+            if evidence_class is not None:
+                raise ValueError("CRL evidence license不应伪造非CRL证据类别")
+        elif not isinstance(evidence_class, str) or not evidence_class.strip():
+            raise ValueError("非CRL evidence license缺少证据类别")
+    return view
+
+
 def _evidence_licenses(payloads):
     licenses = {}
     for dimension, payload in payloads.items():
@@ -213,4 +300,6 @@ def build_offline_dimension_view(case, blobs, manifest):
     }
     digest = sha256_hex(json.dumps(
         body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    return {**body, "view_id": f"OFFLINE6::{digest}", "input_digest": digest}
+    view = {**body, "view_id": f"OFFLINE6::{digest}", "input_digest": digest}
+    validate_offline_dimension_view(view)
+    return view

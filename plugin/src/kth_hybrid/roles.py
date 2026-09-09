@@ -30,10 +30,13 @@ _CONFIRMATION_FIELDS = {
     "case_basis_version", "decision", "reviewer", "review_basis",
     "evidence_refs", *_REVIEW_TARGET_FIELDS,
 }
-_AUTHORITY_PATTERNS = (
-    re.compile(r"(?:达到|提升为|判为|定为)\s*(?:CRL|BRL|TRL|IPRL|TMRL|FRL)?\s*[1-9]", re.I),
-    re.compile(r"(?:最终)?投资决定\s*(?:为|[:：]|给出)?\s*(?:YES|NO|是|否)", re.I),
-    re.compile(r"(?:final[_ ]?decision|investment[_ ]?recommendation)\s*[:=]?\s*(?:YES|NO)", re.I),
+_FORBIDDEN_COUNSEL_AUTHORITY = re.compile(
+    r"(?:\b(?:CRL|TRL|BRL|IPRL|TMRL|FRL)\s*(?:为|达到|=|:|：)\s*[1-9]\b|"
+    r"(?:达到|评为|定为)\s*\b(?:CRL|TRL|BRL|IPRL|TMRL|FRL)\s*[1-9]\b|"
+    r"(?:成熟度|当前等级|定级|评级).{0,10}[一二三四五六七八九1-9]\s*级|"
+    r"(?:达到|评为|定为)[一二三四五六七八九1-9]\s*级|"
+    r"值得投资|不值得投资|批准立项|拒绝立项|可投资|(?-i:\bYES\b|\bNO\b))",
+    re.IGNORECASE,
 )
 
 
@@ -59,11 +62,14 @@ def _scan_authority(value, path="root"):
         for index, item in enumerate(value):
             _scan_authority(item, f"{path}[{index}]")
     elif isinstance(value, str):
-        if any(pattern.search(value) for pattern in _AUTHORITY_PATTERNS):
+        if _FORBIDDEN_COUNSEL_AUTHORITY.search(value):
             raise ValueError(f"角色越权文本 {path}：不得赋值成熟度或投资决定")
 
 
 def _view_licenses(view):
+    from .aggregate import validate_offline_dimension_view
+
+    validate_offline_dimension_view(view)
     licenses = view.get("evidence_licenses")
     if not isinstance(licenses, dict):
         raise ValueError("冻结视图缺少内容绑定evidence-use licenses")
@@ -92,6 +98,9 @@ def _validate_review_target(target, licenses, evidence_refs, view):
 
 
 def validate_role_attempt(attempt: dict, view: dict) -> dict:
+    from .aggregate import validate_offline_dimension_view
+
+    validate_offline_dimension_view(view)
     if not isinstance(attempt, dict):
         raise ValueError("角色候选必须是完整对象")
     _scan_authority(attempt)
@@ -120,7 +129,8 @@ def validate_role_attempt(attempt: dict, view: dict) -> dict:
         raise ValueError("角色limitations必须为非空列表")
     evidence_refs = attempt["evidence_refs"]
     licenses = _view_licenses(view)
-    if not isinstance(evidence_refs, list) or len(evidence_refs) != len(set(evidence_refs)) \
+    if not isinstance(evidence_refs, list) or not evidence_refs \
+            or len(evidence_refs) != len(set(evidence_refs)) \
             or any(ref not in licenses for ref in evidence_refs):
         raise ValueError("角色证据引用不在冻结视图许可中")
     if "review_target" in attempt:

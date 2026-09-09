@@ -23,6 +23,16 @@ from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
 _SCHEMA_VERSION = "kth-hybrid.store.v2"
 
+
+def _strict_json_dumps(value, *, label: str) -> str:
+    """按标准JSON拒绝NaN/Infinity，避免非有限数进入冻结业务输入。"""
+    try:
+        return json.dumps(
+            value, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label}含非标准JSON值或非有限数值：{exc}") from exc
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS case_basis (
@@ -104,6 +114,21 @@ CREATE TABLE IF NOT EXISTS dimension_evidence_reviews (
 );
 CREATE INDEX IF NOT EXISTS idx_dimension_reviews
     ON dimension_evidence_reviews(dimension_id, case_basis_version, scope_id);
+CREATE TABLE IF NOT EXISTS tmrl_identity_overlays (
+    overlay_id TEXT PRIMARY KEY,
+    case_basis_version INTEGER NOT NULL,
+    scope_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    resolution_status TEXT NOT NULL CHECK (resolution_status IN
+        ('verified','probable','ok','unverified','ambiguous','same_name_only')),
+    subject_ref_json TEXT NOT NULL,
+    status_ref_json TEXT NOT NULL,
+    scope_ref_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(case_basis_version, scope_id, subject_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tmrl_identity_overlays
+    ON tmrl_identity_overlays(case_basis_version, scope_id, subject_id);
 CREATE TABLE IF NOT EXISTS dimension_results (
     result_id TEXT PRIMARY KEY,
     dimension_id TEXT NOT NULL,
@@ -448,6 +473,21 @@ class CaseStore:
             );
             CREATE INDEX IF NOT EXISTS idx_dimension_reviews
                 ON dimension_evidence_reviews(dimension_id, case_basis_version, scope_id);
+            CREATE TABLE IF NOT EXISTS tmrl_identity_overlays (
+                overlay_id TEXT PRIMARY KEY,
+                case_basis_version INTEGER NOT NULL,
+                scope_id TEXT NOT NULL,
+                subject_id TEXT NOT NULL,
+                resolution_status TEXT NOT NULL CHECK (resolution_status IN
+                    ('verified','probable','ok','unverified','ambiguous','same_name_only')),
+                subject_ref_json TEXT NOT NULL,
+                status_ref_json TEXT NOT NULL,
+                scope_ref_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(case_basis_version, scope_id, subject_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tmrl_identity_overlays
+                ON tmrl_identity_overlays(case_basis_version, scope_id, subject_id);
             CREATE TABLE IF NOT EXISTS dimension_results (
                 result_id TEXT PRIMARY KEY,
                 dimension_id TEXT NOT NULL,
@@ -809,6 +849,7 @@ class CaseStore:
                 or not all(isinstance(value, str) and value.strip()
                            for value in text_fields):
             raise ValueError("维度复核记录的身份、decision、证据类别或findings非法")
+        findings_json = _strict_json_dumps(findings, label="维度复核findings")
         with self._conn:
             self._conn.execute(
                 "INSERT INTO dimension_evidence_reviews("
@@ -818,7 +859,7 @@ class CaseStore:
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (review_id, dimension_id, case_basis_version, claim_id,
                  criterion_id, quote_sha256, decision, evidence_class,
-                 json.dumps(findings, ensure_ascii=False, sort_keys=True),
+                 findings_json,
                  subject_scope, scope_id, support_scope, reviewer, review_basis),
             )
 
@@ -847,6 +888,67 @@ class CaseStore:
         item = dict(row)
         item["findings"] = json.loads(item.pop("findings_json"))
         return item
+
+    def add_tmrl_identity_overlay(
+            self, overlay_id: str, *, case_basis_version: int, scope_id: str,
+            subject_id: str, resolution_status: str, subject_ref: dict,
+            status_ref: dict, scope_ref: dict) -> None:
+        """登记逐人员/团队、内容绑定且不可覆盖的TMRL身份解析记录。"""
+        text_fields = (overlay_id, scope_id, subject_id)
+        allowed_statuses = {
+            "verified", "probable", "ok", "unverified", "ambiguous",
+            "same_name_only",
+        }
+        if not isinstance(case_basis_version, int) or case_basis_version <= 0 \
+                or not all(isinstance(value, str) and value.strip()
+                           for value in text_fields) \
+                or resolution_status not in allowed_statuses \
+                or not all(isinstance(value, dict)
+                           for value in (subject_ref, status_ref, scope_ref)):
+            raise ValueError("TMRL身份overlay身份、状态或证明引用非法")
+        refs = {
+            "subject_ref_json": _strict_json_dumps(
+                subject_ref, label="TMRL身份subject_ref"),
+            "status_ref_json": _strict_json_dumps(
+                status_ref, label="TMRL身份status_ref"),
+            "scope_ref_json": _strict_json_dumps(
+                scope_ref, label="TMRL身份scope_ref"),
+        }
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO tmrl_identity_overlays("
+                "overlay_id,case_basis_version,scope_id,subject_id,"
+                "resolution_status,subject_ref_json,status_ref_json,scope_ref_json) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (overlay_id, case_basis_version, scope_id, subject_id,
+                 resolution_status, refs["subject_ref_json"],
+                 refs["status_ref_json"], refs["scope_ref_json"]),
+            )
+
+    @staticmethod
+    def _decode_tmrl_identity_overlay(row) -> dict | None:
+        if row is None:
+            return None
+        item = dict(row)
+        for key in ("subject_ref", "status_ref", "scope_ref"):
+            item[key] = json.loads(item.pop(f"{key}_json"))
+        return item
+
+    def fetch_tmrl_identity_overlays(
+            self, case_basis_version: int, scope_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM tmrl_identity_overlays WHERE case_basis_version=? "
+            "AND scope_id=? ORDER BY subject_id",
+            (case_basis_version, scope_id),
+        ).fetchall()
+        return [self._decode_tmrl_identity_overlay(row) for row in rows]
+
+    def get_tmrl_identity_overlay(self, overlay_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM tmrl_identity_overlays WHERE overlay_id=?",
+            (overlay_id,),
+        ).fetchone()
+        return self._decode_tmrl_identity_overlay(row)
 
     def get_dimension_result(self, input_digest: str) -> dict | None:
         row = self._conn.execute(

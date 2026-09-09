@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import math
 from typing import Any
 
 
-RULE_VERSION = "kth-hybrid.brl.night.v2"
+RULE_VERSION = "kth-hybrid.brl.night.v3"
 RULE_REQUIREMENTS: dict[str, str] = {
     "BRL1-BM": "business_idea_or_model_stated",
     "BRL1-MO": "market_hypothesis_stated",
@@ -137,8 +138,10 @@ def _support_satisfies(criterion_id: str, review: dict[str, Any]) -> bool:
         if not isinstance(actual, dict) or not isinstance(target, dict) \
                 or any(not isinstance(actual.get(key), (int, float))
                        or isinstance(actual.get(key), bool)
+                       or not math.isfinite(actual[key])
                        or not isinstance(target.get(key), (int, float))
                        or isinstance(target.get(key), bool)
+                       or not math.isfinite(target[key])
                        or actual[key] < target[key] for key in metrics):
             return False
     return True

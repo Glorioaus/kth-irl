@@ -640,6 +640,38 @@ def _resolve_assessment_unit(case: CaseStore, blobs: BlobStore,
     }
 
 
+def _resolve_tmrl_identity_overlays(
+        case: CaseStore, blobs: BlobStore, *, case_basis_version: int,
+        scope_id: str, subject_ids) -> dict:
+    """逐一解析TMRL人员/团队身份记录，并冻结同一记录内的三字段证明。"""
+    if not isinstance(subject_ids, list) or not subject_ids \
+            or any(not isinstance(subject_id, str) or not subject_id.strip()
+                   for subject_id in subject_ids):
+        raise ValueError("subject_ids必须为非空字符串列表")
+    normalized = [subject_id.strip() for subject_id in subject_ids]
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("subject_ids必须去重")
+    indexed = {
+        row["subject_id"]: row for row in case.fetch_tmrl_identity_overlays(
+            case_basis_version, scope_id)
+    }
+    resolved = {}
+    for subject_id in normalized:
+        record = indexed.get(subject_id)
+        if record is None:
+            raise ValueError(f"人员/团队 {subject_id} 缺少受控身份overlay")
+        proof_bindings = _resolve_reference_bundle(case, blobs, [
+            ("subject", subject_id, record["subject_ref"]),
+            ("status", record["resolution_status"], record["status_ref"]),
+            ("scope", scope_id, record["scope_ref"]),
+        ])
+        resolved[subject_id] = {
+            "record": record,
+            "proof_bindings": proof_bindings,
+        }
+    return resolved
+
+
 def _run_assessment_unit_dimension_slice(
         case_dir: Path | str, *, catalog: dict, case_basis: dict, scope: str,
         assessment_unit: dict, dimension_id: str, evaluator,
@@ -659,6 +691,7 @@ def _run_assessment_unit_dimension_slice(
             raise ValueError("评估单元scope_id不能为空")
         with case.immediate_transaction():
             reviews, rejected, evidence_bindings = [], [], []
+            tmrl_identity_overlays = {}
             basis_proofs, basis_error = resolve_case_basis_proof_bindings(
                 basis, case, blobs)
             if basis_error or basis_proofs is None:
@@ -711,6 +744,23 @@ def _run_assessment_unit_dimension_slice(
                 else:
                     review, binding, reason = _bind_dimension_review(
                         case, blobs, row, basis, basis_proofs, review_fields)
+                    if not reason and dimension_id == "TMRL":
+                        try:
+                            current_overlays = _resolve_tmrl_identity_overlays(
+                                case, blobs, case_basis_version=version,
+                                scope_id=raw_scope_id,
+                                subject_ids=(review.get("findings") or {}).get(
+                                    "subject_ids"))
+                        except ValueError as exc:
+                            reason = f"TMRL身份overlay不可核验：{exc}"
+                        else:
+                            for subject_id, overlay in current_overlays.items():
+                                existing = tmrl_identity_overlays.get(subject_id)
+                                if existing is not None and existing != overlay:
+                                    reason = (
+                                        f"TMRL人员/团队 {subject_id} 身份overlay冲突")
+                                    break
+                                tmrl_identity_overlays[subject_id] = overlay
                 if reason:
                     rejected.append({
                         "review_id": row["review_id"], "reason": reason,
@@ -719,8 +769,13 @@ def _run_assessment_unit_dimension_slice(
                 else:
                     reviews.append(review)
                     evidence_bindings.append(binding)
-            dimension = evaluator(
-                criteria, reviews, scope=scope, assessment_unit=unit)
+            evaluator_kwargs = {
+                "scope": scope,
+                "assessment_unit": unit,
+            }
+            if dimension_id == "TMRL":
+                evaluator_kwargs["identity_overlays"] = tmrl_identity_overlays
+            dimension = evaluator(criteria, reviews, **evaluator_kwargs)
             if rejected:
                 for item in dimension["criteria"]:
                     item["native_disposition"] = None
@@ -744,6 +799,8 @@ def _run_assessment_unit_dimension_slice(
                 "assessment_scope": unit,
                 "rule_version": dimension["rule_version"],
             }
+            if dimension_id == "TMRL":
+                frozen["tmrl_identity_overlays"] = tmrl_identity_overlays
             digest = sha256_hex(json.dumps(
                 frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"DIMR2::{dimension_id}::{digest}"
