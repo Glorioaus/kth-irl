@@ -150,24 +150,45 @@ def test_tmrl_unsigned_ownership_agreement_is_not_met():
 
 
 def _license():
-    return {"license_id": "EVID-LIC-1", "dimension_id": "BRL",
-            "result_id": "BRL-R", "claim_id": "CLAIM-1",
-            "quote_sha256": "a" * 64, "evidence_class": "business_concept",
-            "subject_scope": SCOPE, "scope_id": "UNIT-A",
-            "qualification_view_digest": "b" * 64}
+    body = {"dimension_id": "BRL", "result_id": "BRL-R",
+            "claim_id": "CLAIM-1", "quote_sha256": "a" * 64,
+            "evidence_class": "business_concept", "subject_scope": SCOPE,
+            "scope_id": "UNIT-A", "qualification_view_digest": "b" * 64,
+            "allowed_uses": ["maturity_assessment"],
+            "support_scope": "仅支持BRL1-BM"}
+    digest = sha256_hex(json.dumps(
+        body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return {"license_id": f"EVIDUSE::{digest}", **body}
 
 
 def _view():
-    dimensions = {dimension: {"result_id": f"{dimension}-R", "scope_id": "UNIT-A"}
+    dimensions = {dimension: {
+                      "dimension_id": dimension,
+                      "result_id": f"{dimension}-R",
+                      "input_digest": sha256_hex(dimension.encode("utf-8")),
+                      "case_basis_version": 1, "scope": SCOPE,
+                      "scope_id": "UNIT-A", "product_status": "succeeded",
+                      "attained_level": 0, "catalog_sha256": "c" * 64,
+                      "rule_version": "rule-v1",
+                      "result_schema_version": "result-v2",
+                      "assessment_scope": "material_unit",
+                      "financing_entity": None, "trace_ok": True}
                   for dimension in ("CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL")}
-    return {"schema_version": "kth-hybrid.offline-six-dimension-view.v2",
-            "view_id": "OFFLINE6::view", "input_digest": "view",
-            "scope": SCOPE, "case_basis_version": 1, "dimensions": dimensions,
-            "evidence_licenses": {"EVID-LIC-1": _license()}}
+    license_value = _license()
+    body = {"schema_version": "kth-hybrid.offline-six-dimension-view.v2",
+            "status": "offline_candidate", "manifest_id": "AGGMAN::" + "d" * 64,
+            "manifest_digest": "d" * 64, "scope": SCOPE,
+            "case_basis_version": 1, "dimensions": dimensions,
+            "evidence_licenses": {license_value["license_id"]: license_value},
+            "limitations": ["非正式KTH评估"]}
+    digest = sha256_hex(json.dumps(
+        body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return {**body, "view_id": f"OFFLINE6::{digest}", "input_digest": digest}
 
 
 def _attempt(**changes):
     view = _view()
+    license_id = next(iter(view["evidence_licenses"]))
     attempt = {"schema_version": "kth-hybrid.offline-role-attempt.v2",
                "role": "PRO", "producer_id": "P", "context_id": "CTX-P",
                "simulated": True, "input_view_id": view["view_id"],
@@ -175,7 +196,7 @@ def _attempt(**changes):
                "dimension_result_refs": {d: r["result_id"]
                                          for d, r in view["dimensions"].items()},
                "candidate_id": "PRO-C1", "statement": "仅陈述证据边界。",
-               "evidence_refs": ["EVID-LIC-1"], "limitations": ["离线模拟"],
+               "evidence_refs": [license_id], "limitations": ["离线模拟"],
                "review_target": {"dimension_id": "BRL", "criterion_id": "BRL1-BM",
                                  "claim_id": "CLAIM-1", "quote_sha256": "a" * 64,
                                  "evidence_class": "business_concept",

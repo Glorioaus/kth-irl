@@ -1,19 +1,41 @@
 """夜间离线角色v2合同。"""
+import json
+
 import pytest
+from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.roles import (assemble_offline_deliberation,
                               confirm_role_candidate, role_candidate_digest,
                               validate_role_attempt)
 
-LICENSE={"license_id":"LIC-1","dimension_id":"BRL","result_id":"BRL-R",
-         "claim_id":"CLAIM-1","quote_sha256":"a"*64,
-         "evidence_class":"business_concept","subject_scope":"Company-A",
-         "scope_id":"UNIT-A","qualification_view_digest":"b"*64}
-VIEW={"schema_version":"kth-hybrid.offline-six-dimension-view.v2",
-      "view_id":"OFFLINE6::abc","input_digest":"abc","scope":"Company-A",
-      "case_basis_version":1,
-      "dimensions":{d:{"result_id":d+"-R","scope_id":"UNIT-A"}
-                    for d in ("CRL","BRL","TRL","IPRL","TMRL","FRL")},
-      "evidence_licenses":{"LIC-1":LICENSE}}
+def _content_digest(value):
+ return sha256_hex(json.dumps(
+     value, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+DIMENSIONS={d:{"dimension_id":d,"result_id":d+"-R","input_digest":d.lower()*32,
+               "case_basis_version":1,"scope":"Company-A","scope_id":"UNIT-A",
+               "product_status":"succeeded","attained_level":0,
+               "catalog_sha256":"c"*64,"rule_version":"rule-v1",
+               "result_schema_version":"result-v2","assessment_scope":"material_unit",
+               "financing_entity":None,"trace_ok":True}
+            for d in ("CRL","BRL","TRL","IPRL","TMRL","FRL")}
+LICENSE_BODY={"dimension_id":"BRL","result_id":"BRL-R",
+              "claim_id":"CLAIM-1","quote_sha256":"a"*64,
+              "evidence_class":"business_concept","subject_scope":"Company-A",
+              "scope_id":"UNIT-A","qualification_view_digest":"b"*64,
+              "allowed_uses":["maturity_assessment"],
+              "support_scope":"仅支持BRL1-BM"}
+LICENSE_ID="EVIDUSE::"+_content_digest(LICENSE_BODY)
+LICENSE={"license_id":LICENSE_ID,**LICENSE_BODY}
+VIEW_BODY={"schema_version":"kth-hybrid.offline-six-dimension-view.v2",
+           "status":"offline_candidate","manifest_id":"AGGMAN::"+"d"*64,
+           "manifest_digest":"d"*64,"scope":"Company-A",
+           "case_basis_version":1,"dimensions":DIMENSIONS,
+           "evidence_licenses":{LICENSE_ID:LICENSE},
+           "limitations":["非正式KTH评估"]}
+VIEW_DIGEST=_content_digest(VIEW_BODY)
+VIEW={**VIEW_BODY,"view_id":"OFFLINE6::"+VIEW_DIGEST,
+      "input_digest":VIEW_DIGEST}
 
 def attempt(role,producer,context,target=False):
  value={"schema_version":"kth-hybrid.offline-role-attempt.v2","role":role,
@@ -21,7 +43,7 @@ def attempt(role,producer,context,target=False):
         "input_view_id":VIEW["view_id"],"input_digest":VIEW["input_digest"],
         "scope":VIEW["scope"],"dimension_result_refs":{d:r["result_id"] for d,r in VIEW["dimensions"].items()},
         "candidate_id":role+"-C1","statement":"仅陈述证据边界。",
-        "evidence_refs":["LIC-1"],"limitations":["离线模拟"]}
+        "evidence_refs":[LICENSE_ID],"limitations":["离线模拟"]}
  if target:
   value["review_target"]={"dimension_id":"BRL","criterion_id":"BRL1-BM",
                            "claim_id":"CLAIM-1","quote_sha256":"a"*64,
@@ -60,7 +82,7 @@ def test_candidate_requires_controlled_confirmation_before_review_adapter():
                "input_view_id":VIEW["view_id"],"input_digest":VIEW["input_digest"],
                "producer_id":"P","role":"PRO","case_basis_version":1,
                "decision":"supports","reviewer":"human","review_basis":"受控复核",
-               "evidence_refs":["LIC-1"],**target}
+               "evidence_refs":[LICENSE_ID],**target}
  review=confirm_role_candidate(candidate,confirmation,dimension_id="BRL",view=VIEW)
  assert review["decision"]=="supports" and "native_disposition" not in review
  with pytest.raises(ValueError):confirm_role_candidate(candidate,{**confirmation,"candidate_id":"OTHER"},dimension_id="BRL",view=VIEW)

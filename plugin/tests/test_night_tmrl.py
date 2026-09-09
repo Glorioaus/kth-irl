@@ -88,8 +88,38 @@ def review(criterion, findings=None, evidence_class=None, decision="supports", s
 
 
 def evaluate(reviews):
+    subjects = {
+        subject.strip()
+        for review_value in reviews
+        for subject in (review_value.get("findings") or {}).get("subject_ids", [])
+        if isinstance(subject, str) and subject.strip()
+    }
+    identity_overlays = {
+        subject: {
+            "record": {
+                "overlay_id": f"OVERLAY-{subject}",
+                "case_basis_version": 1,
+                "scope_id": "UNIT-A",
+                "subject_id": subject,
+                "resolution_status": "verified",
+                "subject_ref": {"kind": "field_reference",
+                                "path": f"case:team.json#/{subject}/subject"},
+                "status_ref": {"kind": "field_reference",
+                               "path": f"case:team.json#/{subject}/status"},
+                "scope_ref": {"kind": "field_reference",
+                              "path": f"case:team.json#/{subject}/scope"},
+            },
+            "proof_bindings": {
+                "subject": {"value": subject},
+                "status": {"value": "verified"},
+                "scope": {"value": "UNIT-A"},
+            },
+        }
+        for subject in subjects
+    }
     return evaluate_tmrl_dimension(CRITERIA, reviews, scope=SCOPE,
-                                   assessment_unit=UNIT)
+                                   assessment_unit=UNIT,
+                                   identity_overlays=identity_overlays)
 
 
 def row(result, criterion_id):
