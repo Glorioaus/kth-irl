@@ -891,6 +891,56 @@ def _verify_reference_bundle(case: CaseStore, blobs: BlobStore,
     return broken
 
 
+def _verify_tmrl_identity_overlay(
+        case: CaseStore, blobs: BlobStore, subject_id: str, saved: dict, *,
+        case_basis_version: int, scope_id: str) -> list[str]:
+    """从live overlay记录的refs重建证明，并与冻结overlay整体比较。"""
+    from .qualification import (
+        _same_record_relation,
+        resolve_case_field_reference_binding,
+    )
+
+    label = f"TMRL身份overlay {subject_id}"
+    if not isinstance(saved, dict) or set(saved) != {"record", "proof_bindings"}:
+        return [f"{label}结构非法"]
+    record = saved.get("record")
+    if not isinstance(record, dict) \
+            or record.get("subject_id") != subject_id \
+            or record.get("case_basis_version") != case_basis_version \
+            or record.get("scope_id") != scope_id:
+        return [f"{label}与结果CaseBasis、scope或subject关系不一致"]
+    current = case.get_tmrl_identity_overlay(record.get("overlay_id"))
+    if current != record:
+        return [f"{label}记录断裂或变化"]
+    expected = {
+        "subject": (subject_id, "subject_ref"),
+        "status": (record.get("resolution_status"), "status_ref"),
+        "scope": (scope_id, "scope_ref"),
+    }
+    rebuilt_bindings = {}
+    relation_bindings = []
+    broken = []
+    for name, (expected_value, ref_field) in expected.items():
+        reference = record.get(ref_field)
+        value, error, binding = resolve_case_field_reference_binding(
+            reference, case, blobs, expect_value=expected_value)
+        if error or binding is None:
+            broken.append(
+                f"{label}.{name}未能按live record引用重建：{error or '无绑定'}")
+            continue
+        rebuilt_bindings[name] = {**binding, "value": value}
+        relation_bindings.append(binding)
+    if broken:
+        return broken
+    relation_ok, relation_error = _same_record_relation(*relation_bindings)
+    if not relation_ok:
+        return [f"{label}live record引用关系断裂：{relation_error}"]
+    rebuilt = {"record": current, "proof_bindings": rebuilt_bindings}
+    if rebuilt != saved:
+        return [f"{label}冻结证明与live record引用完整重建结果不一致"]
+    return []
+
+
 def _dimension_evaluator(dimension_id: str, rule_version: str):
     """按冻结方法版本选择确定性求值器；禁止用latest猜测未知版本。"""
     from .kernels.brl import RULE_VERSION as BRL_VERSION, evaluate_brl_dimension
@@ -1037,17 +1087,10 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
             broken.append("TMRL结果缺少冻结身份overlay")
         else:
             for subject_id, overlay in overlays.items():
-                record = overlay.get("record") if isinstance(overlay, dict) else None
-                if not isinstance(record, dict) \
-                        or record.get("subject_id") != subject_id:
-                    broken.append(f"TMRL身份overlay {subject_id} 结构非法")
-                    continue
-                current = case.get_tmrl_identity_overlay(record.get("overlay_id"))
-                if current != record:
-                    broken.append(f"TMRL身份overlay {subject_id} 记录断裂或变化")
-                broken.extend(_verify_reference_bundle(
-                    case, blobs, overlay.get("proof_bindings") or {},
-                    f"TMRL身份overlay {subject_id}"))
+                broken.extend(_verify_tmrl_identity_overlay(
+                    case, blobs, subject_id, overlay,
+                    case_basis_version=version,
+                    scope_id=frozen.get("scope_id")))
     for binding in frozen.get("evidence_bindings") or []:
         saved_review = binding.get("review") or {}
         review = case.get_dimension_evidence_review(saved_review.get("review_id"))

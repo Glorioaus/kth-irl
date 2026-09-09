@@ -38,6 +38,11 @@ _FORBIDDEN_COUNSEL_AUTHORITY = re.compile(
     r"值得投资|不值得投资|批准立项|拒绝立项|可投资|(?-i:\bYES\b|\bNO\b))",
     re.IGNORECASE,
 )
+_FORBIDDEN_DECISION_ASSIGNMENT = re.compile(
+    r"(?:[\"']?\b(?:final[\s_-]*decision|investment[\s_-]*recommendation)"
+    r"\b[\"']?)\s*(?::|=)\s*(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)",
+    re.IGNORECASE,
+)
 
 
 def _json_digest(value) -> str:
@@ -62,7 +67,8 @@ def _scan_authority(value, path="root"):
         for index, item in enumerate(value):
             _scan_authority(item, f"{path}[{index}]")
     elif isinstance(value, str):
-        if _FORBIDDEN_COUNSEL_AUTHORITY.search(value):
+        if _FORBIDDEN_COUNSEL_AUTHORITY.search(value) \
+                or _FORBIDDEN_DECISION_ASSIGNMENT.search(value):
             raise ValueError(f"角色越权文本 {path}：不得赋值成熟度或投资决定")
 
 
