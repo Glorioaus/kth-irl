@@ -350,13 +350,13 @@ def test_round_and_confirmation_keep_original_text_unchanged():
 
     candidate = validate_role_attempt(_candidate("PRO", target=True), VIEW)
     basis = "逐字保留ＦＩＮＡＬ＿ＤＥＣＩＳＩＯＮ字段说明。"
-    review = confirm_role_candidate(
-        candidate,
-        _confirmation(candidate, review_basis=basis),
-        dimension_id="BRL",
-        view=VIEW,
-    )
-    assert review["review_basis"] == basis
+    with pytest.raises(ValueError, match="legacy_restricted"):
+        confirm_role_candidate(
+            candidate,
+            _confirmation(candidate, review_basis=basis),
+            dimension_id="BRL",
+            view=VIEW,
+        )
 
 
 def test_text_length_limit_accepts_65536_and_rejects_65537():

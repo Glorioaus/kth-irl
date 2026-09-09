@@ -15,6 +15,7 @@ from kth_hybrid.aggregate import (
     validate_offline_dimension_view,
 )
 from kth_hybrid.audit import trace_dimension_result
+from kth_hybrid.evidence_permissions import build_permission_binding
 from kth_hybrid.roles import (
     confirm_role_candidate,
     role_candidate_digest,
@@ -262,6 +263,24 @@ def test_candidate_and_confirmation_agreement_cannot_replace_original_license(
             candidate, confirmation, dimension_id="BRL", view=view)
 
 
+def test_permission_binding_revalidates_original_license(real_permission_case):
+    _root, _basis, _catalog, view = real_permission_case
+    license_value = _brl_licenses(view)[0]
+    candidate = _candidate(
+        view, license_value, requested_use="maturity_assessment",
+        support_scope="支持BRL全部准则")
+    candidate["candidate_digest"] = role_candidate_digest(candidate)
+    confirmation = _confirmation(view, candidate)
+    with pytest.raises(ValueError, match="requested_use|用途|support_scope|许可"):
+        build_permission_binding(
+            review_id=confirmation["confirmation_id"],
+            license_value=license_value,
+            requested_use=candidate["review_target"]["requested_use"],
+            candidate=candidate,
+            confirmation=confirmation,
+        )
+
+
 def test_legacy_v2_view_is_readable_but_target_is_legacy_restricted():
     assert validate_offline_dimension_view(LEGACY_VIEW) == LEGACY_VIEW
     assert validate_role_attempt(
@@ -302,6 +321,7 @@ def test_runner_freezes_permission_sidecar_and_trace_rejects_change(
     confirmation = _confirmation(view, candidate)
     review = confirm_role_candidate(
         candidate, confirmation, dimension_id="BRL", view=view)
+    assert review["review_basis"] == confirmation["review_basis"]
 
     case = CaseStore(root / "records.sqlite3")
     try:
@@ -352,3 +372,16 @@ def test_runner_freezes_permission_sidecar_and_trace_rejects_change(
     assert not traced["ok"]
     assert any("许可" in problem or "permission" in problem
                for problem in traced["broken"])
+
+    rerun = runner.run_brl_dimension_slice(
+        root, catalog=catalog, case_basis=basis, scope=SUBJECT,
+        assessment_unit=_unit_input())
+    rerun_row = next(
+        row for row in rerun["dimension"]["criteria"]
+        if row["criterion_id"] == review["criterion_id"])
+    assert rerun_row["native_disposition"] != "met"
+    assert any(
+        item.get("review_id") == review["review_id"]
+        and ("许可" in item.get("reason", "")
+             or "permission" in item.get("reason", ""))
+        for item in rerun["frozen_inputs"]["rejected_reviews"])
