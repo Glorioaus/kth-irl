@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import re
+import unicodedata
 
 EXPECTED_DIMENSIONS = {"CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}
 ATTEMPT_SCHEMA = "kth-hybrid.offline-role-attempt.v2"
@@ -29,6 +30,11 @@ _CONFIRMATION_FIELDS = {
     "input_view_id", "input_digest", "producer_id", "role",
     "case_basis_version", "decision", "reviewer", "review_basis",
     "evidence_refs", *_REVIEW_TARGET_FIELDS,
+}
+_MAX_AUTHORITY_TEXT_LENGTH = 65536
+_MAX_AUTHORITY_STRUCTURE_DEPTH = 16
+_FORBIDDEN_DECISION_KEY_TOKENS = {
+    "finaldecision", "investmentrecommendation",
 }
 _FORBIDDEN_COUNSEL_AUTHORITY = re.compile(
     r"(?:\b(?:CRL|TRL|BRL|IPRL|TMRL|FRL)\s*(?:为|达到|=|:|：)\s*[1-9]\b|"
@@ -56,20 +62,60 @@ def role_candidate_digest(attempt: dict) -> str:
                          if key != "candidate_digest"})
 
 
+def _canonical_authority_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"[\s_-]+", "", normalized)
+
+
 def _scan_authority(value, path="root"):
-    if isinstance(value, dict):
-        forbidden = FORBIDDEN_OUTPUT_KEYS & set(value)
-        if forbidden:
-            raise ValueError(f"角色越权字段 {path}: {sorted(forbidden)}")
-        for key, item in value.items():
-            _scan_authority(item, f"{path}.{key}")
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            _scan_authority(item, f"{path}[{index}]")
-    elif isinstance(value, str):
-        if _FORBIDDEN_COUNSEL_AUTHORITY.search(value) \
-                or _FORBIDDEN_DECISION_ASSIGNMENT.search(value):
-            raise ValueError(f"角色越权文本 {path}：不得赋值成熟度或投资决定")
+    stack = [(value, path, 1)]
+    while stack:
+        item, item_path, depth = stack.pop()
+        if isinstance(item, dict):
+            if depth > _MAX_AUTHORITY_STRUCTURE_DEPTH:
+                raise ValueError(
+                    "角色验证结构深度超过16层，拒绝继续扫描")
+            forbidden = FORBIDDEN_OUTPUT_KEYS & set(item)
+            canonical_forbidden = {
+                key for key in item if isinstance(key, str)
+                and _canonical_authority_key(key)
+                in _FORBIDDEN_DECISION_KEY_TOKENS
+            }
+            forbidden.update(canonical_forbidden)
+            if forbidden:
+                raise ValueError(
+                    f"角色越权字段 {item_path}: {sorted(forbidden)}")
+            for key, nested in item.items():
+                stack.append((nested, f"{item_path}.{key}", depth + 1))
+        elif isinstance(item, list):
+            if depth > _MAX_AUTHORITY_STRUCTURE_DEPTH:
+                raise ValueError(
+                    "角色验证结构深度超过16层，拒绝继续扫描")
+            for index, nested in enumerate(item):
+                stack.append((nested, f"{item_path}[{index}]", depth + 1))
+        elif isinstance(item, str):
+            if len(item) > _MAX_AUTHORITY_TEXT_LENGTH:
+                raise ValueError(
+                    "角色验证文本长度超过65536字符，拒绝继续扫描")
+            normalized = unicodedata.normalize("NFKC", item)
+            if _FORBIDDEN_COUNSEL_AUTHORITY.search(normalized) \
+                    or _FORBIDDEN_DECISION_ASSIGNMENT.search(normalized):
+                raise ValueError(
+                    f"角色越权文本 {item_path}：不得赋值成熟度或投资决定")
+            stripped = normalized.strip()
+            is_json_container = (
+                stripped.startswith("{") and stripped.endswith("}")) \
+                or (stripped.startswith("[") and stripped.endswith("]"))
+            if is_json_container:
+                try:
+                    decoded = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                except RecursionError as exc:
+                    raise ValueError(
+                        "角色验证结构深度超过16层，拒绝继续扫描") from exc
+                if isinstance(decoded, (dict, list)):
+                    stack.append((decoded, f"{item_path}<json>", 1))
 
 
 def _view_licenses(view):
