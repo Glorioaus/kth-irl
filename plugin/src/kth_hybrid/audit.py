@@ -1098,6 +1098,25 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
                 review.get(key) != value for key, value in saved_review.items()):
             broken.append(
                 f"维度review {saved_review.get('review_id')} 断裂或变化")
+        saved_permission = binding.get("permission_binding")
+        if saved_permission is not None:
+            current_permission = case.get_dimension_review_permission(
+                saved_review.get("review_id"))
+            if current_permission != saved_permission:
+                broken.append(
+                    f"维度review {saved_review.get('review_id')} 用途许可sidecar"
+                    "已删除或改写")
+            else:
+                try:
+                    from .evidence_permissions import validate_permission_binding
+
+                    validate_permission_binding(
+                        current_permission,
+                        review_id=saved_review.get("review_id"))
+                except ValueError as exc:
+                    broken.append(
+                        f"维度review {saved_review.get('review_id')} "
+                        f"用途许可sidecar不可核验：{exc}")
         view = binding.get("qualification_view")
         if not isinstance(view, dict):
             broken.append(

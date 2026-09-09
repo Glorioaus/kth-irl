@@ -421,6 +421,32 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
             reason = "R1资格重核不再qualified"
         elif proof_errors:
             reason = "完整资格证明不可核验：" + "；".join(proof_errors)
+    permission_binding = case.get_dimension_review_permission(row["review_id"])
+    if not reason and permission_binding is not None:
+        try:
+            from .evidence_permissions import validate_permission_binding
+
+            permission_binding = validate_permission_binding(
+                permission_binding, review_id=row["review_id"])
+        except ValueError as exc:
+            reason = f"用途许可sidecar不可核验：{exc}"
+        else:
+            target = permission_binding["candidate"]["review_target"]
+            expected = {
+                "dimension_id": row["dimension_id"],
+                "criterion_id": row["criterion_id"],
+                "claim_id": row["claim_id"],
+                "quote_sha256": row["quote_sha256"],
+                "evidence_class": row["evidence_class"],
+                "subject_scope": row["subject_scope"],
+                "scope_id": row["scope_id"],
+                "support_scope": row["support_scope"],
+            }
+            if any(target.get(field) != value
+                   for field, value in expected.items()) \
+                    or permission_binding["confirmation"].get("decision") != \
+                    row["decision"]:
+                reason = "用途许可sidecar与维度review字段不一致"
     saved_review = {key: row.get(key) for key in review_fields}
     binding = {
         "review": saved_review,
@@ -431,6 +457,8 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
             qualification_content_digest(qual) if qual else None),
         "qualification_view": qualification_view,
     }
+    if permission_binding is not None:
+        binding["permission_binding"] = permission_binding
     review = {key: row[key] for key in review_fields
               if key not in {"quote_sha256", "subject_scope", "scope_id",
                              "dimension_id"}}

@@ -5,10 +5,16 @@ import json
 
 from .audit import trace_crl_dimension, trace_dimension_result
 from .contracts import sha256_hex
+from .evidence_permissions import (
+    LEGACY_LICENSE_FIELDS,
+    build_evidence_use_license,
+    validate_evidence_use_license,
+)
 
 EXPECTED_DIMENSIONS = {"CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}
 MANIFEST_SCHEMA = "kth-hybrid.aggregation-manifest.v1"
-VIEW_SCHEMA = "kth-hybrid.offline-six-dimension-view.v2"
+VIEW_SCHEMA = "kth-hybrid.offline-six-dimension-view.v3"
+LEGACY_VIEW_SCHEMA = "kth-hybrid.offline-six-dimension-view.v2"
 _VIEW_FIELDS = {
     "schema_version", "status", "manifest_id", "manifest_digest",
     "case_basis_version", "scope", "dimensions", "evidence_licenses",
@@ -20,13 +26,6 @@ _DIMENSION_ENTRY_FIELDS = {
     "catalog_sha256", "rule_version", "result_schema_version",
     "assessment_scope", "financing_entity", "trace_ok",
 }
-_LICENSE_FIELDS = {
-    "license_id", "dimension_id", "result_id", "claim_id", "quote_sha256",
-    "evidence_class", "subject_scope", "scope_id",
-    "qualification_view_digest", "allowed_uses", "support_scope",
-}
-
-
 def _payload(blobs, row):
     return json.loads(blobs.read_bytes(row["result_blob_sha256"]).decode("utf-8"))
 
@@ -177,7 +176,7 @@ def _is_sha256(value):
 def validate_offline_dimension_view(view):
     """严格重核view正文、六维结果引用及每条内容寻址证据许可。"""
     if not isinstance(view, dict) or set(view) != _VIEW_FIELDS \
-            or view.get("schema_version") != VIEW_SCHEMA \
+            or view.get("schema_version") not in {VIEW_SCHEMA, LEGACY_VIEW_SCHEMA} \
             or view.get("status") != "offline_candidate":
         raise ValueError("六维视图schema或字段集合非法")
     body = {key: value for key, value in view.items()
@@ -207,16 +206,13 @@ def validate_offline_dimension_view(view):
     if not isinstance(licenses, dict):
         raise ValueError("六维视图evidence licenses结构非法")
     for license_id, license_value in licenses.items():
-        if not isinstance(license_value, dict) \
-                or set(license_value) != _LICENSE_FIELDS:
-            raise ValueError("六维视图evidence license字段集合非法")
-        license_body = {key: value for key, value in license_value.items()
-                        if key != "license_id"}
-        license_digest = sha256_hex(json.dumps(
-            license_body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-        if license_value.get("license_id") != license_id \
-                or license_id != f"EVIDUSE::{license_digest}":
-            raise ValueError("六维视图evidence license正文摘要或ID不一致")
+        version = validate_evidence_use_license(
+            license_id, license_value, view=view)
+        if view.get("schema_version") == VIEW_SCHEMA and version != "v2":
+            raise ValueError("v3六维视图不得生成旧evidence license")
+        if view.get("schema_version") == LEGACY_VIEW_SCHEMA \
+                and set(license_value) != LEGACY_LICENSE_FIELDS:
+            raise ValueError("v2六维视图只接受旧许可合同")
         dimension = license_value.get("dimension_id")
         entry = dimensions.get(dimension)
         if entry is None \
@@ -244,26 +240,24 @@ def _evidence_licenses(payloads):
     licenses = {}
     for dimension, payload in payloads.items():
         frozen = payload.get("frozen_inputs") or {}
+        criteria = {
+            criterion.get("criterion_id"): criterion
+            for criterion in frozen.get("criteria") or []
+            if isinstance(criterion, dict)
+        }
         for binding in frozen.get("evidence_bindings") or []:
             review = binding.get("review") or {}
-            view = binding.get("qualification_view") or {}
-            claim = view.get("claim") or binding.get("claim") or {}
-            body = {
-                "dimension_id": dimension,
-                "result_id": payload.get("result_id"),
-                "claim_id": review.get("claim_id") or claim.get("claim_id"),
-                "quote_sha256": review.get("quote_sha256") or claim.get("excerpt_sha256"),
-                "evidence_class": review.get("evidence_class"),
-                "subject_scope": claim.get("subject_scope"),
-                "scope_id": frozen.get("scope_id"),
-                "qualification_view_digest": view.get("input_digest"),
-                "allowed_uses": (view.get("outcome") or {}).get("allowed_uses") or [],
-                "support_scope": review.get("support_scope"),
-            }
-            digest = sha256_hex(json.dumps(
-                body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-            license_id = f"EVIDUSE::{digest}"
-            licenses[license_id] = {"license_id": license_id, **body}
+            criterion = criteria.get(review.get("criterion_id"))
+            if criterion is None:
+                raise ValueError("冻结review缺少对应criterion正文")
+            license_value = build_evidence_use_license(
+                dimension_id=dimension,
+                result_id=payload.get("result_id"),
+                binding=binding,
+                criterion=criterion,
+                scope_id=frozen.get("scope_id"),
+            )
+            licenses[license_value["license_id"]] = license_value
     return licenses
 
 

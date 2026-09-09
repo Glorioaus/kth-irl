@@ -7,9 +7,17 @@ import json
 import re
 import unicodedata
 
+from .evidence_permissions import (
+    PERMISSION_TARGET_FIELDS,
+    build_permission_binding,
+    validate_evidence_use_license,
+    validate_permission_target,
+)
+
 EXPECTED_DIMENSIONS = {"CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}
-ATTEMPT_SCHEMA = "kth-hybrid.offline-role-attempt.v2"
-CONFIRMATION_SCHEMA = "kth-hybrid.role-confirmation.v2"
+ATTEMPT_SCHEMA = "kth-hybrid.offline-role-attempt.v3"
+LEGACY_ATTEMPT_SCHEMA = "kth-hybrid.offline-role-attempt.v2"
+CONFIRMATION_SCHEMA = "kth-hybrid.role-confirmation.v3"
 FORBIDDEN_OUTPUT_KEYS = {
     "attained_level", "current_level", "readiness_level", "frl_level",
     "native_disposition", "final_decision", "investment_recommendation",
@@ -29,7 +37,7 @@ _CONFIRMATION_FIELDS = {
     "schema_version", "confirmation_id", "candidate_id", "candidate_digest",
     "input_view_id", "input_digest", "producer_id", "role",
     "case_basis_version", "decision", "reviewer", "review_basis",
-    "evidence_refs", *_REVIEW_TARGET_FIELDS,
+    "evidence_refs", *PERMISSION_TARGET_FIELDS,
 }
 _MAX_AUTHORITY_TEXT_LENGTH = 65536
 _MAX_AUTHORITY_STRUCTURE_DEPTH = 16
@@ -205,21 +213,13 @@ def _view_licenses(view):
 
 
 def _validate_review_target(target, licenses, evidence_refs, view):
-    if not isinstance(target, dict) or set(target) != _REVIEW_TARGET_FIELDS:
-        raise ValueError("角色候选review_target结构非法")
+    if not isinstance(target, dict) or set(target) != PERMISSION_TARGET_FIELDS:
+        raise ValueError("角色候选review_target v3结构非法")
     if target["dimension_id"] not in EXPECTED_DIMENSIONS - {"CRL"} \
             or target["subject_scope"] != view.get("scope") \
             or not isinstance(target["findings"], dict):
         raise ValueError("角色候选review_target维度、主体或findings非法")
-    matching = [licenses[ref] for ref in evidence_refs if ref in licenses and
-                licenses[ref].get("dimension_id") == target["dimension_id"] and
-                licenses[ref].get("claim_id") == target["claim_id"] and
-                licenses[ref].get("quote_sha256") == target["quote_sha256"] and
-                licenses[ref].get("evidence_class") == target["evidence_class"] and
-                licenses[ref].get("subject_scope") == target["subject_scope"] and
-                licenses[ref].get("scope_id") == target["scope_id"]]
-    if not matching:
-        raise ValueError("角色候选目标没有匹配的内容绑定证据许可")
+    return validate_permission_target(target, licenses, evidence_refs)
 
 
 def validate_role_attempt(attempt: dict, view: dict) -> dict:
@@ -229,13 +229,19 @@ def validate_role_attempt(attempt: dict, view: dict) -> dict:
     if not isinstance(attempt, dict):
         raise ValueError("角色候选必须是完整对象")
     _scan_authority(attempt)
-    allowed = _BASE_ATTEMPT_FIELDS | ({"review_target"} if "review_target" in attempt else set())
+    allowed = _BASE_ATTEMPT_FIELDS | (
+        {"review_target"} if "review_target" in attempt else set())
     if set(attempt) != allowed:
         raise ValueError("角色候选schema字段不精确或含额外字段")
-    if attempt["schema_version"] != ATTEMPT_SCHEMA \
+    schema = attempt["schema_version"]
+    if schema not in {ATTEMPT_SCHEMA, LEGACY_ATTEMPT_SCHEMA} \
             or attempt["role"] not in {"PRO", "CON", "CHAIR"} \
             or attempt["simulated"] is not True:
-        raise ValueError("仅接受v2且明确标记的离线模拟角色候选")
+        raise ValueError("仅接受v2/v3且明确标记的离线模拟角色候选")
+    if schema == ATTEMPT_SCHEMA \
+            and view.get("schema_version") != \
+            "kth-hybrid.offline-six-dimension-view.v3":
+        raise ValueError("v3角色候选必须绑定v3六维视图")
     if attempt["input_view_id"] != view.get("view_id") \
             or attempt["input_digest"] != view.get("input_digest") \
             or attempt["scope"] != view.get("scope"):
@@ -259,8 +265,13 @@ def validate_role_attempt(attempt: dict, view: dict) -> dict:
             or any(ref not in licenses for ref in evidence_refs):
         raise ValueError("角色证据引用不在冻结视图许可中")
     if "review_target" in attempt:
-        _validate_review_target(attempt["review_target"], licenses,
-                                evidence_refs, view)
+        if schema == LEGACY_ATTEMPT_SCHEMA:
+            # 旧候选允许只读核验；生成新 review 时在 confirmation 入口
+            # 明确进入 legacy_restricted，不能静默补齐许可字段。
+            pass
+        else:
+            _validate_review_target(attempt["review_target"], licenses,
+                                    evidence_refs, view)
     return copy.deepcopy(attempt)
 
 
@@ -316,10 +327,17 @@ def confirm_role_candidate(candidate: dict, confirmation: dict, *,
     validated = validate_role_attempt(candidate, view)
     if "review_target" not in validated:
         raise ValueError("角色候选没有可确认的准则目标")
-    if not isinstance(confirmation, dict) or set(confirmation) != _CONFIRMATION_FIELDS \
-            or confirmation.get("schema_version") != CONFIRMATION_SCHEMA:
+    if not isinstance(confirmation, dict):
         raise ValueError("角色confirmation schema不精确")
     _scan_authority(confirmation)
+    if validated.get("schema_version") == LEGACY_ATTEMPT_SCHEMA \
+            or view.get("schema_version") != \
+            "kth-hybrid.offline-six-dimension-view.v3":
+        raise ValueError(
+            "legacy_restricted：v2角色目标或旧许可不能生成新review")
+    if set(confirmation) != _CONFIRMATION_FIELDS \
+            or confirmation.get("schema_version") != CONFIRMATION_SCHEMA:
+        raise ValueError("角色confirmation schema不精确")
     target = validated["review_target"]
     identity_matches = (
         confirmation["candidate_id"] == validated["candidate_id"]
@@ -332,7 +350,7 @@ def confirm_role_candidate(candidate: dict, confirmation: dict, *,
         and confirmation["evidence_refs"] == validated["evidence_refs"]
         and dimension_id == target["dimension_id"]
         and all(confirmation[field] == target[field]
-                for field in _REVIEW_TARGET_FIELDS)
+                for field in PERMISSION_TARGET_FIELDS)
     )
     if not identity_matches:
         raise ValueError("角色候选、view、生产者或确认目标绑定不一致")
@@ -340,6 +358,14 @@ def confirm_role_candidate(candidate: dict, confirmation: dict, *,
         raise ValueError("人工复核拒绝该角色候选，不生成review")
     if confirmation["decision"] not in {"supports", "does_not_support"}:
         raise ValueError("人工确认decision非法")
+    license_value = view["evidence_licenses"][target["license_id"]]
+    permission_binding = build_permission_binding(
+        review_id=confirmation["confirmation_id"],
+        license_value=license_value,
+        requested_use=target["requested_use"],
+        candidate=validated,
+        confirmation=confirmation,
+    )
     return {"review_id": confirmation["confirmation_id"],
             "dimension_id": dimension_id,
             "case_basis_version": view["case_basis_version"],
@@ -356,4 +382,7 @@ def confirm_role_candidate(candidate: dict, confirmation: dict, *,
             "review_basis": confirmation["review_basis"],
             "candidate_ref": validated["candidate_id"],
             "candidate_digest": validated["candidate_digest"],
-            "evidence_refs": copy.deepcopy(validated["evidence_refs"])}
+            "evidence_refs": copy.deepcopy(validated["evidence_refs"]),
+            "license_id": target["license_id"],
+            "requested_use": target["requested_use"],
+            "permission_binding": permission_binding}

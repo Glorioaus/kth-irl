@@ -21,7 +21,7 @@ from threading import RLock
 
 from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
-_SCHEMA_VERSION = "kth-hybrid.store.v2"
+_SCHEMA_VERSION = "kth-hybrid.store.v3"
 
 
 def _strict_json_dumps(value, *, label: str) -> str:
@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS dimension_evidence_reviews (
 );
 CREATE INDEX IF NOT EXISTS idx_dimension_reviews
     ON dimension_evidence_reviews(dimension_id, case_basis_version, scope_id);
+CREATE TABLE IF NOT EXISTS dimension_review_permissions (
+    review_id TEXT PRIMARY KEY REFERENCES dimension_evidence_reviews(review_id),
+    license_id TEXT NOT NULL,
+    requested_use TEXT NOT NULL,
+    candidate_json TEXT NOT NULL,
+    candidate_digest TEXT NOT NULL,
+    confirmation_json TEXT NOT NULL,
+    confirmation_digest TEXT NOT NULL,
+    license_json TEXT NOT NULL,
+    binding_digest TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 CREATE TABLE IF NOT EXISTS tmrl_identity_overlays (
     overlay_id TEXT PRIMARY KEY,
     case_basis_version INTEGER NOT NULL,
@@ -473,6 +485,18 @@ class CaseStore:
             );
             CREATE INDEX IF NOT EXISTS idx_dimension_reviews
                 ON dimension_evidence_reviews(dimension_id, case_basis_version, scope_id);
+            CREATE TABLE IF NOT EXISTS dimension_review_permissions (
+                review_id TEXT PRIMARY KEY REFERENCES dimension_evidence_reviews(review_id),
+                license_id TEXT NOT NULL,
+                requested_use TEXT NOT NULL,
+                candidate_json TEXT NOT NULL,
+                candidate_digest TEXT NOT NULL,
+                confirmation_json TEXT NOT NULL,
+                confirmation_digest TEXT NOT NULL,
+                license_json TEXT NOT NULL,
+                binding_digest TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
             CREATE TABLE IF NOT EXISTS tmrl_identity_overlays (
                 overlay_id TEXT PRIMARY KEY,
                 case_basis_version INTEGER NOT NULL,
@@ -837,7 +861,7 @@ class CaseStore:
             claim_id: str, criterion_id: str, quote_sha256: str, decision: str,
             evidence_class: str, findings: dict, subject_scope: str,
             scope_id: str, support_scope: str, reviewer: str,
-            review_basis: str) -> None:
+            review_basis: str, permission_binding: dict | None = None) -> None:
         """登记非CRL维度的受控、准则绑定复核记录。"""
         text_fields = (
             review_id, dimension_id, claim_id, criterion_id, quote_sha256,
@@ -850,6 +874,11 @@ class CaseStore:
                            for value in text_fields):
             raise ValueError("维度复核记录的身份、decision、证据类别或findings非法")
         findings_json = _strict_json_dumps(findings, label="维度复核findings")
+        if permission_binding is not None:
+            from .evidence_permissions import validate_permission_binding
+
+            permission_binding = validate_permission_binding(
+                permission_binding, review_id=review_id)
         with self._conn:
             self._conn.execute(
                 "INSERT INTO dimension_evidence_reviews("
@@ -862,6 +891,30 @@ class CaseStore:
                  findings_json,
                  subject_scope, scope_id, support_scope, reviewer, review_basis),
             )
+            if permission_binding is not None:
+                self._conn.execute(
+                    "INSERT INTO dimension_review_permissions("
+                    "review_id,license_id,requested_use,candidate_json,"
+                    "candidate_digest,confirmation_json,confirmation_digest,"
+                    "license_json,binding_digest) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (
+                        review_id,
+                        permission_binding["license_id"],
+                        permission_binding["requested_use"],
+                        _strict_json_dumps(
+                            permission_binding["candidate"],
+                            label="permission candidate"),
+                        permission_binding["candidate_digest"],
+                        _strict_json_dumps(
+                            permission_binding["confirmation"],
+                            label="permission confirmation"),
+                        permission_binding["confirmation_digest"],
+                        _strict_json_dumps(
+                            permission_binding["license"],
+                            label="permission license"),
+                        permission_binding["binding_digest"],
+                    ),
+                )
 
     def fetch_dimension_evidence_reviews(
             self, dimension_id: str, case_basis_version: int,
@@ -887,6 +940,22 @@ class CaseStore:
             return None
         item = dict(row)
         item["findings"] = json.loads(item.pop("findings_json"))
+        return item
+
+    def get_dimension_review_permission(self, review_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM dimension_review_permissions WHERE review_id=?",
+            (review_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item.pop("created_at", None)
+        item["schema_version"] = \
+            "kth-hybrid.dimension-review-permission-binding.v1"
+        item["candidate"] = json.loads(item.pop("candidate_json"))
+        item["confirmation"] = json.loads(item.pop("confirmation_json"))
+        item["license"] = json.loads(item.pop("license_json"))
         return item
 
     def add_tmrl_identity_overlay(
