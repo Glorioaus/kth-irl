@@ -83,6 +83,5 @@ def test_candidate_requires_controlled_confirmation_before_review_adapter():
                "producer_id":"P","role":"PRO","case_basis_version":1,
                "decision":"supports","reviewer":"human","review_basis":"受控复核",
                "evidence_refs":[LICENSE_ID],**target}
- review=confirm_role_candidate(candidate,confirmation,dimension_id="BRL",view=VIEW)
- assert review["decision"]=="supports" and "native_disposition" not in review
- with pytest.raises(ValueError):confirm_role_candidate(candidate,{**confirmation,"candidate_id":"OTHER"},dimension_id="BRL",view=VIEW)
+ with pytest.raises(ValueError,match="legacy_restricted"):
+  confirm_role_candidate(candidate,confirmation,dimension_id="BRL",view=VIEW)

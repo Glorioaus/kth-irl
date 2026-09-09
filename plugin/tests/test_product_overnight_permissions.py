@@ -267,9 +267,28 @@ def test_legacy_v2_view_is_readable_but_target_is_legacy_restricted():
     assert validate_role_attempt(
         legacy_attempt("PRO", "P", "CTX-P"), LEGACY_VIEW)["candidate_id"] \
         == "PRO-C1"
+    candidate = validate_role_attempt(
+        legacy_attempt("PRO", "P", "CTX-P", target=True), LEGACY_VIEW)
+    target = candidate["review_target"]
+    confirmation = {
+        "schema_version": "kth-hybrid.role-confirmation.v2",
+        "confirmation_id": "LEGACY-CONF-1",
+        "candidate_id": candidate["candidate_id"],
+        "candidate_digest": candidate["candidate_digest"],
+        "input_view_id": LEGACY_VIEW["view_id"],
+        "input_digest": LEGACY_VIEW["input_digest"],
+        "producer_id": candidate["producer_id"],
+        "role": candidate["role"],
+        "case_basis_version": LEGACY_VIEW["case_basis_version"],
+        "decision": "supports",
+        "reviewer": "legacy-human",
+        "review_basis": "旧合同只读探针",
+        "evidence_refs": candidate["evidence_refs"],
+        **target,
+    }
     with pytest.raises(ValueError, match="legacy_restricted"):
-        validate_role_attempt(
-            legacy_attempt("PRO", "P", "CTX-P", target=True), LEGACY_VIEW)
+        confirm_role_candidate(
+            candidate, confirmation, dimension_id="BRL", view=LEGACY_VIEW)
 
 
 @pytest.mark.parametrize("tamper", ["delete", "rewrite"])
