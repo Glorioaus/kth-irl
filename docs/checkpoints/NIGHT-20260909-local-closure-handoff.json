@@ -1,0 +1,50 @@
+{
+  "schema_version": "kth-hybrid.night-local-closure-handoff.v1",
+  "date": "2026-09-09",
+  "status": "执行方局部闭环候选完成；独立复验待进行",
+  "authorization": "D:/t/kth-night-fix2-astra-final-review-20260909/给Owner与执行层的NIGHT局部闭环修复输入.md",
+  "git": {
+    "branch": "codex/runtime-rebuild",
+    "start_head": "ba9f47d2a2bac1b34a0d8c4c8af8bac77c2daa0f",
+    "test_commit": "d8d95bd",
+    "last_green_code_commit": "7400af1"
+  },
+  "fixes": {
+    "trl9": "规范化后去重；两class统一；rule v4",
+    "tmrl": "live record refs重建并与冻结overlay整体比较，绑定CaseBasis/scope/subject",
+    "roles": "拒绝明确决定字段文本赋值，保留中性字段名提及"
+  },
+  "tests": {
+    "before": {"passed": 11, "failed": 24, "log_sha256": "68d9e2e59ed3546d9605f6b71ef4e75eb6c58208dd4157724b522de120489c15"},
+    "after": {"passed": 35, "failed": 0, "log_sha256": "912c688be126e5a9330fd57cd338448c43c11e51ddab081d9dd2d371725f9f36"},
+    "night_gate": {"passed": 241, "skipped": 0, "log_sha256": "59c5338be96e8c43b61c5f65cf3c4aa636b39062a719c4fb859468df0f89a375"},
+    "full_suite": {"passed": 561, "skipped": 0, "warnings": 1, "log_sha256": "edbb0f9b0b9e7a85d1d08a9c31aa34f4fc97ea24dc6697f3a46a7ee18091026e"},
+    "review_role": {"passed": 12, "log_sha256": "d2ee64990bfe89dcb6b17a54b1d94cf02c222bd198c6b7cd5afad6181e674d86"},
+    "review_trl": {"passed": 6, "log_sha256": "a104e60ae0651994565b0178b54880953a8a6a328eeefe59364bed8c1304e7a1"},
+    "review_tmrl_exact": {"rejected_cases": 2, "log_sha256": "a5d5abcc291170f6d738fe4e6ac806d57454b3cd45bdff019458b9eeea0ee90d"}
+  },
+  "candidate": {
+    "path": "D:/t/kth-night-local-closure-final-cases-20260909/night-fix3",
+    "source": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2",
+    "copy_file_count": 1874,
+    "copy_tree_sha256": "5df62a42d42f44f8b9e9d4aa7091f8fb73725901e0fd92e2cb9031410932002e",
+    "records_sha256": "7db82213a9f3f27880a7215d056a201c0f55cd734fd0281e55f692ea991a95a4",
+    "manifest_id": "AGGMAN::3f15f459093d2cadfe5e3a9b0967e2a88b252c5f784eb81768bf0b8015dbeb56",
+    "view_id": "OFFLINE6::cb3c545099acf81feb5f7ddefe7b07280ca1fb5d6cef7807995f398cfa75b602",
+    "trl_result_id": "DIMR2::TRL::e0891c3e3adc3176d297c90ea9bdb16827c646ce26d43b454b22ce02310155a9",
+    "all_traces_ok": true,
+    "rebuild_equal": true,
+    "non_crl_review_count": 0,
+    "tmrl_overlay_count": 0
+  },
+  "artifacts": {
+    "manifest_sha256": "d0cd6b5ce80f03361998e67c9f4245e6d15d9e3a06328498815ba9b5f1d33704",
+    "view_sha256": "7d9bd5a9bff399650ea1717e0e836ffd4c7a666bbf7544188ec03f3193a9246a",
+    "role_sha256": "6991f19db3ae8adb14dd4c779ccd0d39447b37e1911e14152437edee4854eb60",
+    "trl_sha256": "dcf1c399e24621860a0c5f50cae85c4ebf9291350860d085ee7fd565332b62ae"
+  },
+  "protection": {"all_unchanged": true},
+  "p2_unresolved": ["角色support_scope/criterion/allowed_uses执行", "命名aggregation profile"],
+  "limits": ["本地自检不是独立验收", "无网络/真实Provider/D1/D2/报告/投资决定/发布", "不进入新Gate"],
+  "stop_condition": "完成局部闭环交接后停止"
+}
