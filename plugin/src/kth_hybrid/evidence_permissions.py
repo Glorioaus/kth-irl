@@ -201,8 +201,14 @@ def validate_permission_target(target: dict, licenses: dict,
 def build_permission_binding(*, review_id: str, license_value: dict,
                              requested_use: str, candidate: dict,
                              confirmation: dict) -> dict:
-    validate_evidence_use_license(
-        license_value.get("license_id"), license_value)
+    license_id = license_value.get("license_id")
+    validate_evidence_use_license(license_id, license_value)
+    matched = validate_permission_target(
+        candidate.get("review_target"), {license_id: license_value},
+        candidate.get("evidence_refs"))
+    if matched != license_value \
+            or requested_use != candidate["review_target"]["requested_use"]:
+        raise ValueError("permission sidecar候选用途与原许可不一致")
     body = {
         "schema_version": PERMISSION_BINDING_SCHEMA,
         "review_id": review_id,
@@ -240,7 +246,11 @@ def validate_permission_binding(binding: dict, *, review_id: str) -> dict:
                 binding.get("license_id"), license_value) != "v2":
         raise ValueError("permission sidecar许可不一致")
     target = candidate.get("review_target") or {}
-    if target.get("license_id") != binding.get("license_id") \
+    matched = validate_permission_target(
+        target, {binding.get("license_id"): license_value},
+        candidate.get("evidence_refs"))
+    if matched != license_value \
+            or target.get("license_id") != binding.get("license_id") \
             or target.get("requested_use") != binding.get("requested_use") \
             or any(confirmation.get(field) != target.get(field)
                    for field in PERMISSION_TARGET_FIELDS):

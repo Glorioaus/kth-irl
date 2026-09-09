@@ -422,6 +422,13 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
         elif proof_errors:
             reason = "完整资格证明不可核验：" + "；".join(proof_errors)
     permission_binding = case.get_dimension_review_permission(row["review_id"])
+    permission_mode = row.get("permission_mode", "legacy_unbound")
+    if not reason and permission_mode == "license_v2" \
+            and permission_binding is None:
+        reason = "用途许可sidecar缺失"
+    elif not reason and permission_mode == "legacy_unbound" \
+            and permission_binding is not None:
+        reason = "旧review意外附带用途许可sidecar"
     if not reason and permission_binding is not None:
         try:
             from .evidence_permissions import validate_permission_binding
@@ -523,7 +530,7 @@ def run_frl_dimension_slice(
                 "review_id", "dimension_id", "criterion_id", "claim_id",
                 "quote_sha256", "decision", "evidence_class", "findings",
                 "subject_scope", "scope_id", "support_scope", "reviewer",
-                "review_basis",
+                "review_basis", "permission_mode",
             )
             if applicability_error:
                 rejected.append({
@@ -752,7 +759,7 @@ def _run_assessment_unit_dimension_slice(
                 "review_id", "dimension_id", "criterion_id", "claim_id",
                 "quote_sha256", "decision", "evidence_class", "findings",
                 "subject_scope", "scope_id", "support_scope", "reviewer",
-                "review_basis",
+                "review_basis", "permission_mode",
             )
             rows = case.fetch_dimension_evidence_reviews(
                 dimension_id, version, raw_scope_id)

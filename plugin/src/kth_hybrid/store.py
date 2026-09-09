@@ -110,6 +110,8 @@ CREATE TABLE IF NOT EXISTS dimension_evidence_reviews (
     support_scope TEXT NOT NULL,
     reviewer TEXT NOT NULL,
     review_basis TEXT NOT NULL,
+    permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'
+        CHECK (permission_mode IN ('legacy_unbound','license_v2')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_dimension_reviews
@@ -481,6 +483,8 @@ class CaseStore:
                 support_scope TEXT NOT NULL,
                 reviewer TEXT NOT NULL,
                 review_basis TEXT NOT NULL,
+                permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'
+                    CHECK (permission_mode IN ('legacy_unbound','license_v2')),
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
             CREATE INDEX IF NOT EXISTS idx_dimension_reviews
@@ -548,6 +552,12 @@ class CaseStore:
             "PRAGMA table_info(crl_evidence_reviews)").fetchall()}
         if "subject_scope" not in crl_review_columns:
             self._conn.execute("ALTER TABLE crl_evidence_reviews ADD COLUMN subject_scope TEXT")
+        dimension_review_columns = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(dimension_evidence_reviews)").fetchall()}
+        if "permission_mode" not in dimension_review_columns:
+            self._conn.execute(
+                "ALTER TABLE dimension_evidence_reviews ADD COLUMN "
+                "permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'")
         self._conn.commit()
 
     # ---- 阶段与运行 ----
@@ -879,17 +889,20 @@ class CaseStore:
 
             permission_binding = validate_permission_binding(
                 permission_binding, review_id=review_id)
+        permission_mode = (
+            "license_v2" if permission_binding is not None else "legacy_unbound")
         with self._conn:
             self._conn.execute(
                 "INSERT INTO dimension_evidence_reviews("
                 "review_id,dimension_id,case_basis_version,claim_id,criterion_id,"
                 "quote_sha256,decision,evidence_class,findings_json,subject_scope,"
-                "scope_id,support_scope,reviewer,review_basis) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "scope_id,support_scope,reviewer,review_basis,permission_mode) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (review_id, dimension_id, case_basis_version, claim_id,
                  criterion_id, quote_sha256, decision, evidence_class,
                  findings_json,
-                 subject_scope, scope_id, support_scope, reviewer, review_basis),
+                 subject_scope, scope_id, support_scope, reviewer, review_basis,
+                 permission_mode),
             )
             if permission_binding is not None:
                 self._conn.execute(
