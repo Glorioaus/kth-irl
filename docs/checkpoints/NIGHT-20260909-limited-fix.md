@@ -1,7 +1,13 @@
 # NIGHT-20260909 限定整改检查点
 
-日期：2026-09-09。状态：执行方限定整改候选已完成，等待fresh-context独立复验。
+日期：2026-09-09。状态：第一轮执行方限定整改候选已完成；后续fresh-context复验发现仍有P1，
+不能把本文件解释为完整闭环结论。
 本文件不声称独立验收通过，不授权网络、真实模型/Provider、正式D1/D2、报告、投资决定或发布。
+
+> 后续复验更正：下文`500 passed`、`180 passed`及当时生成的结果、manifest、view、角色工件均为
+> 真实历史事实；但这些测试当时没有覆盖CRL准则正文重算、view/license正文摘要、完整canonical
+> 权限、BRL非有限数、TRL9准则级纵向门和TMRL逐主体受控身份overlay，因此不得据此声称相关
+> 能力已完整关闭。
 
 ## 基线与提交
 
@@ -54,6 +60,8 @@
 - candidate digest覆盖完整候选；confirmation重新核对view、生产者、角色、证据许可、CaseBasis、
   dimension/criterion/claim/quote/subject/scope和findings。
 - 人工decision保留`supports/does_not_support/rejected`，不再把`confirmed`硬编码为supports。
+- 上述为当时实现与测试覆盖；后续独立复验证明view/license正文可保留旧ID改写，权限正则也遗漏
+  `值得投资`、`批准立项`及独立`NO`等canonical语义，故不能表述为角色权限与内容绑定已完整关闭。
 
 ## 反例与验证
 
@@ -73,7 +81,9 @@
 - 六维视图：`OFFLINE6::16c6a732c5f7f5ae14d23ac73a7ba943ad04fa87adb251147909a8005c0113b5`。
 - 新v2结果：BRL `2557c46a...04fcc`、TRL `dc82650b...f2c74`、IPRL
   `60d2c21a...e7322`、TMRL `4b5ee8b2...6812c`；FRL新结果`c0eb24fc...bb0b6`。
-- 六维trace全部通过；0条非CRL review下，五个非CRL维度仍诚实为insufficient/0级。
+- 按当时trace实现，六维均返回通过；后续独立复验证明CRL trace没有重算每条准则正文，故不能
+  表述为六维全部结果trace已完整闭合。0条非CRL review下，五个非CRL维度仍诚实为
+  insufficient/0级。
 - 角色工件schema为`kth-hybrid.offline-deliberation.v2`，实际证据许可1条；仍是离线模拟。
 
 最终副本数据库SHA256：`357735471514db88d7ae1c27a297ca8e1a7e5b799fca126e02a8c50607c6ff69`。
@@ -85,3 +95,12 @@
 未调用真实模型/Provider，未merge/push/tag/release。整改包完成后停止，交fresh-context复验。
 
 快照生成前两次因日志路径假设错误失败，失败JSON/log保留；run03成功，未隐藏失败。
+
+## 后续整改承接
+
+上述剩余P1由`NIGHT-20260909二次限定整改`承接，见：
+
+- `docs/checkpoints/NIGHT-20260909-second-limited-fix.md`
+- `docs/checkpoints/NIGHT-20260909-second-limited-fix-handoff.json`
+
+本更正不覆盖第一轮结果或日志，只收窄其结论边界。
