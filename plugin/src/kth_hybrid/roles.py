@@ -33,6 +33,7 @@ _CONFIRMATION_FIELDS = {
 }
 _MAX_AUTHORITY_TEXT_LENGTH = 65536
 _MAX_AUTHORITY_STRUCTURE_DEPTH = 16
+_MAX_JSON_DECODE_LAYERS = 16
 _FORBIDDEN_DECISION_KEY_TOKENS = {
     "finaldecision", "investmentrecommendation",
 }
@@ -68,9 +69,9 @@ def _canonical_authority_key(value: str) -> str:
 
 
 def _scan_authority(value, path="root"):
-    stack = [(value, path, 1)]
+    stack = [(value, path, 1, 0)]
     while stack:
-        item, item_path, depth = stack.pop()
+        item, item_path, depth, json_layers = stack.pop()
         if isinstance(item, dict):
             if depth > _MAX_AUTHORITY_STRUCTURE_DEPTH:
                 raise ValueError(
@@ -86,13 +87,15 @@ def _scan_authority(value, path="root"):
                 raise ValueError(
                     f"角色越权字段 {item_path}: {sorted(forbidden)}")
             for key, nested in item.items():
-                stack.append((nested, f"{item_path}.{key}", depth + 1))
-        elif isinstance(item, list):
+                stack.append((nested, f"{item_path}.{key}", depth + 1,
+                              json_layers))
+        elif isinstance(item, (list, tuple)):
             if depth > _MAX_AUTHORITY_STRUCTURE_DEPTH:
                 raise ValueError(
                     "角色验证结构深度超过16层，拒绝继续扫描")
             for index, nested in enumerate(item):
-                stack.append((nested, f"{item_path}[{index}]", depth + 1))
+                stack.append((nested, f"{item_path}[{index}]", depth + 1,
+                              json_layers))
         elif isinstance(item, str):
             if len(item) > _MAX_AUTHORITY_TEXT_LENGTH:
                 raise ValueError(
@@ -106,7 +109,8 @@ def _scan_authority(value, path="root"):
             is_json_container = (
                 stripped.startswith("{") and stripped.endswith("}")) \
                 or (stripped.startswith("[") and stripped.endswith("]"))
-            if is_json_container:
+            is_json_string = stripped.startswith('"') and stripped.endswith('"')
+            if is_json_container or is_json_string:
                 try:
                     decoded = json.loads(stripped)
                 except json.JSONDecodeError:
@@ -114,8 +118,18 @@ def _scan_authority(value, path="root"):
                 except RecursionError as exc:
                     raise ValueError(
                         "角色验证结构深度超过16层，拒绝继续扫描") from exc
+                if json_layers >= _MAX_JSON_DECODE_LAYERS:
+                    raise ValueError(
+                        "角色验证JSON解码层数超过16层，拒绝继续扫描")
                 if isinstance(decoded, (dict, list)):
-                    stack.append((decoded, f"{item_path}<json>", 1))
+                    stack.append((decoded, f"{item_path}<json>", depth,
+                                  json_layers + 1))
+                elif isinstance(decoded, str):
+                    if depth >= _MAX_AUTHORITY_STRUCTURE_DEPTH:
+                        raise ValueError(
+                            "角色验证结构深度超过16层，拒绝继续扫描")
+                    stack.append((decoded, f"{item_path}<json-string>",
+                                  depth + 1, json_layers + 1))
 
 
 def _view_licenses(view):
