@@ -98,6 +98,12 @@ def _json_encode_layers(value, layers):
     return value
 
 
+def _json_escape_layers(value, layers):
+    for _ in range(layers - 1):
+        value = value.replace("\\", "\\\\")
+    return value
+
+
 def _fullwidth_ascii(value):
     return "".join(
         chr(ord(char) + 0xFEE0) if "!" <= char <= "~" else char
@@ -252,6 +258,38 @@ def test_escaped_neutral_mention_is_allowed_and_kept_verbatim():
     text = r"前缀 final\u005fdecision 只是字段名，后缀"
     returned = validate_role_attempt(_candidate("PRO", statement=text), VIEW)
     assert returned["statement"] == text
+
+
+@pytest.mark.parametrize("key", [
+    r"final\u005fdecision",
+    r"attained\u005flevel",
+])
+def test_dict_keys_decode_json_escapes_before_canonical_check(key):
+    candidate = _candidate("PRO", target=True)
+    candidate["review_target"]["findings"] = {key: "forbidden"}
+    candidate["candidate_digest"] = role_candidate_digest(candidate)
+    with pytest.raises(ValueError, match="越权"):
+        validate_role_attempt(candidate, VIEW)
+
+
+def test_four_json_escape_rounds_are_allowed_for_neutral_text():
+    text = _json_escape_layers(
+        r"final\u005fdecision 只是字段名，不在此处赋值。", 4)
+    returned = validate_role_attempt(_candidate("PRO", statement=text), VIEW)
+    assert returned["statement"] == text
+
+
+@pytest.mark.parametrize("location", ["text", "dict_key"])
+def test_fifth_json_escape_round_fails_closed(location):
+    escaped = _json_escape_layers(r"neutral\u005fmention", 5)
+    if location == "text":
+        candidate = _candidate("PRO", statement=escaped)
+    else:
+        candidate = _candidate("PRO", target=True)
+        candidate["review_target"]["findings"] = {escaped: "neutral"}
+        candidate["candidate_digest"] = role_candidate_digest(candidate)
+    with pytest.raises(ValueError, match="JSON转义.*4"):
+        validate_role_attempt(candidate, VIEW)
 
 
 def test_dict_key_length_budget_accepts_256_and_rejects_257():
