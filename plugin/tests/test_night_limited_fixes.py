@@ -361,5 +361,30 @@ def test_explicit_manifest_freezes_exact_results_units_and_versions(case_copy):
         forged["dimensions"]["BRL"]["scope_id"] = "FORGED"
         with pytest.raises(ValueError, match="单元|scope|manifest"):
             build_offline_dimension_view(case, blobs, forged)
+        second_scope = {
+            "unit": {"scope_id": "UNIT-SECOND", "subject": manifest["scope"],
+                     "kind": "material_business_unit", "label": "Second-Unit"}}
+        second_ref = blobs.put_bytes(json.dumps(
+            second_scope, ensure_ascii=False, sort_keys=True).encode())
+        case.add_import_record(
+            "case_provenance", "case:assessment-unit-second.json",
+            second_ref.sha256, "限定修复manifest版本配对测试")
+        basis = case.get_case_basis()
+        second_result = runner.run_brl_dimension_slice(
+            case_copy, catalog=CATALOG, case_basis=basis,
+            scope=manifest["scope"], assessment_unit={
+                "scope_id": "UNIT-SECOND", "subject_scope": manifest["scope"],
+                "unit_kind": "material_business_unit", "unit_label": "Second-Unit",
+                "scope_id_ref": {"kind": "field_reference",
+                                 "path": "case:assessment-unit-second.json#/unit/scope_id"},
+                "subject_ref": {"kind": "field_reference",
+                                "path": "case:assessment-unit-second.json#/unit/subject"},
+                "unit_kind_ref": {"kind": "field_reference",
+                                  "path": "case:assessment-unit-second.json#/unit/kind"},
+                "unit_label_ref": {"kind": "field_reference",
+                                   "path": "case:assessment-unit-second.json#/unit/label"}})
+        assert second_result["result_id"] != result_ids["BRL"]
+        replay = build_offline_dimension_view(case, blobs, manifest)
+        assert replay["dimensions"]["BRL"]["result_id"] == result_ids["BRL"]
     finally:
         case.close()
