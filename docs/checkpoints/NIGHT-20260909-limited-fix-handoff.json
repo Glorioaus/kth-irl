@@ -1,0 +1,108 @@
+{
+  "schema_version": "kth-hybrid.night-limited-fix-handoff.v1",
+  "generated_at": "2026-09-09T13:07:17+08:00",
+  "status": "执行方限定整改候选完成；fresh-context独立复验待进行",
+  "authorization": "D:/t/kth-night-review-20260909/给执行层的NIGHT限定修复输入.md",
+  "baseline": {
+    "branch": "codex/runtime-rebuild",
+    "start_head": "28f335eb834c9a472832fd89d2a660adb418610f",
+    "implementation_commit": "fc1f8d72785afc64715c643ffc78774355d58f0d",
+    "manifest_test_commit": "8f5354efa885d377c131792077c5ef640e3dfa41",
+    "documentation_commit": "ad8378288dc94a4606172d584b9465f03caa4535",
+    "last_green_code_head": "8f5354efa885d377c131792077c5ef640e3dfa41"
+  },
+  "versions": {
+    "result_contract": "kth-hybrid.dimension-result.v2",
+    "aggregation_manifest": "kth-hybrid.aggregation-manifest.v1",
+    "six_dimension_view": "kth-hybrid.offline-six-dimension-view.v2",
+    "brl": "kth-hybrid.brl.night.v2",
+    "trl": "kth-hybrid.trl.night.v2",
+    "iprl": "kth-hybrid.iprl.night.v2",
+    "tmrl": "kth-hybrid.tmrl.night.v2",
+    "frl_rule_retained": "kth-hybrid.frl.r2b.v1",
+    "role_attempt": "kth-hybrid.offline-role-attempt.v2",
+    "role_confirmation": "kth-hybrid.role-confirmation.v2",
+    "role_deliberation": "kth-hybrid.offline-deliberation.v2"
+  },
+  "counterexamples": {
+    "independent_before": {
+      "failed_assertions": 10,
+      "log": "D:/t/kth-night-review-20260909/runs/independent-adversarial-run03.log",
+      "sha256": "4812b005dad16214dea8680f9c9488f3bdc645fab1fe830dfeecad55cb53c3af"
+    },
+    "current_repo_before": {"failed": 14, "passed": 2},
+    "after": {"limited_fix_tests_passed": 16, "failed": 0}
+  },
+  "canonical_probe": {
+    "codes": [
+      "BRL_WEAK_COMMITMENT_FOR_LEVEL",
+      "IPRL_RIGHT_STATUS_NOT_VERIFIED",
+      "TMRL_EXECUTED_AGREEMENT_REQUIRED"
+    ],
+    "log": "D:/t/kth-night-fix-final-cases-20260909/night-fix/audit/canonical-contract-probe.log",
+    "sha256": "e181f9e4fd95a43cc089ea5d0e8f63d9c2e3ec89c3d56f248e1d1d3018ccad10"
+  },
+  "test_runs": [
+    {
+      "name": "最终NIGHT限定真实门控",
+      "passed": 180,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-fix-final-cases-20260909/night-fix/audit/night-limited-real-gate-final.log",
+      "sha256": "107c89f36980e019d6835fce6283de83b5f5b355910ec6263fbb8867f1eea682"
+    },
+    {
+      "name": "最终全套",
+      "passed": 500,
+      "failed": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-fix-final-cases-20260909/night-fix/audit/full-suite-night-limited-fix-final.log",
+      "sha256": "af15634b61948bd5a51f1254d223b0061fcf08187edca4f73fddcc5069e7242b"
+    }
+  ],
+  "real_candidate": {
+    "case": "D:/t/kth-night-fix-final-cases-20260909/night-fix",
+    "records_sha256": "357735471514db88d7ae1c27a297ca8e1a7e5b799fca126e02a8c50607c6ff69",
+    "manifest_id": "AGGMAN::2e90f9c4411f886c9f5d420adef4a6c7c169a3e5f6d0f3101bcae5c68b69ea82",
+    "manifest_sha256": "b21af47c830b6282a18e533b97e6f23e4ca181e07e2e100ccffa38adc457dd7d",
+    "view_id": "OFFLINE6::16c6a732c5f7f5ae14d23ac73a7ba943ad04fa87adb251147909a8005c0113b5",
+    "view_sha256": "eefb07fb59b7a2561ae7b3b7bf026fd701d9f08b0b12ac0915a65f805c1c08d5",
+    "role_sha256": "3e3f1fb736c2bbfc0e961f9eb94d1f4a5eb1c02f0cb62389e0eb83847c13cfca",
+    "evidence_license_count": 1,
+    "all_traces_ok": true,
+    "non_crl_review_count": 0,
+    "business_result": "五个非CRL维度保持insufficient/0级；CRL已验收结果不变"
+  },
+  "result_ids": {
+    "FRL": "DIMR2::FRL::c0eb24fc6f33d9f6e1c659da0fb2228f38b19a6a88204d69d6f009b7c3bbb0b6",
+    "BRL": "DIMR2::BRL::2557c46a6a9ef0f88164fb2bea3a638f2df58f7b4e53cbbf1113fd0057b04fcc",
+    "TRL": "DIMR2::TRL::dc82650b6c2e668ea2676a6d0a7d384e4783371f2530d452a1c7b0d7485f2c74",
+    "IPRL": "DIMR2::IPRL::60d2c21a7c6a293d9f2cea68cc69b64155b8e3b1fc2df526f668a4f6ba5e7322",
+    "TMRL": "DIMR2::TMRL::4b5ee8b2b3783ea6d7b783a7dc5fd8e2ef2d43f33d117319b1696f61d506812c"
+  },
+  "snapshot": {
+    "path": "D:/t/kth-night-fix-final-cases-20260909/night-fix/audit/final-snapshot-night-limited-fix-run03.json",
+    "sha256": "3c7d34ef1f58b6e62fda213c746862eacf083f6327c90cf0a3b828b43d456674"
+  },
+  "coverage": {
+    "total": 180,
+    "accepted_crl": 13,
+    "frl_rule_retained_trace_fix_candidate": 36,
+    "four_dimension_limited_fix_candidate_pending_review": 131
+  },
+  "protection": {
+    "weijiu_r2b_records_sha256": "0771daaf0c5bb66b898b24c5ee95fba466d3d7bab0bc6d5d2d32ed5e4abc5b31",
+    "r2a1_records_sha256": "493deb41afabd1b6053e64f042c7afb600578770f364ce09bbe5b04146d1a302",
+    "r2a_records_sha256": "82470ac923d03c1aec22bac3bff2ea1a5715f8297d40df2f6a21d6931fe3b094",
+    "r1_6_records_sha256": "285dc517d9975a309d83e9fad470dc6435910f41999a579e8d1a97336b425dc2",
+    "old_session_sha256": "dc3e31b086b9fdb9857a9179478b469791f458e35c1a3cf24b74776a28b49375"
+  },
+  "failed_snapshot_runs_preserved": [
+    "final-snapshot-night-limited-fix.json: 缺少最终副本180项门控日志",
+    "final-snapshot-night-limited-fix-run02.json: 缺少最终副本canonical探针日志"
+  ],
+  "stop_condition": "限定整改包完成后停止，交fresh-context独立复验；不进入下一阶段"
+}
