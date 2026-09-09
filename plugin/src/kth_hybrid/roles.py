@@ -67,15 +67,6 @@ def role_candidate_digest(attempt: dict) -> str:
                          if key != "candidate_digest"})
 
 
-def _canonical_authority_key(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    return re.sub(r"[\s_-]+", "", normalized)
-
-
-_FORBIDDEN_OUTPUT_KEY_TOKENS = frozenset(
-    _canonical_authority_key(key) for key in FORBIDDEN_OUTPUT_KEYS)
-
-
 def _decode_json_escapes_for_validation(value: str) -> str:
     simple = {
         '"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f",
@@ -93,7 +84,22 @@ def _decode_json_escapes_for_validation(value: str) -> str:
         if next_value == decoded:
             break
         decoded = next_value
+    if _JSON_COMPATIBLE_ESCAPE.search(decoded):
+        raise ValueError("角色验证JSON转义解码超过4轮，拒绝继续扫描")
     return decoded
+
+
+def _normalize_authority_text(value: str) -> str:
+    return unicodedata.normalize(
+        "NFKC", _decode_json_escapes_for_validation(value))
+
+
+def _canonical_authority_key(value: str) -> str:
+    return re.sub(r"[\s_-]+", "", _normalize_authority_text(value).casefold())
+
+
+_FORBIDDEN_OUTPUT_KEY_TOKENS = frozenset(
+    _canonical_authority_key(key) for key in FORBIDDEN_OUTPUT_KEYS)
 
 
 def _scan_authority(value, path="root"):
@@ -148,25 +154,29 @@ def _scan_authority(value, path="root"):
                 raise ValueError(
                     "角色验证累计字符串字符超过262144，拒绝继续扫描")
             normalized = unicodedata.normalize("NFKC", item)
-            assignment_view = unicodedata.normalize(
-                "NFKC", _decode_json_escapes_for_validation(item))
-            if _FORBIDDEN_COUNSEL_AUTHORITY.search(assignment_view) \
-                    or _FORBIDDEN_DECISION_ASSIGNMENT.search(assignment_view):
-                raise ValueError(
-                    f"角色越权文本 {item_path}：不得赋值成熟度或投资决定")
             stripped = normalized.strip()
             is_json_container = (
                 stripped.startswith("{") and stripped.endswith("}")) \
                 or (stripped.startswith("[") and stripped.endswith("]"))
             is_json_string = stripped.startswith('"') and stripped.endswith('"')
+            decoded = None
+            is_complete_json = False
             if is_json_container or is_json_string:
                 try:
                     decoded = json.loads(stripped)
+                    is_complete_json = isinstance(decoded, (dict, list, str))
                 except json.JSONDecodeError:
-                    continue
+                    pass
                 except RecursionError as exc:
                     raise ValueError(
                         "角色验证结构深度超过16层，拒绝继续扫描") from exc
+            assignment_view = normalized if is_complete_json \
+                else _normalize_authority_text(item)
+            if _FORBIDDEN_COUNSEL_AUTHORITY.search(assignment_view) \
+                    or _FORBIDDEN_DECISION_ASSIGNMENT.search(assignment_view):
+                raise ValueError(
+                    f"角色越权文本 {item_path}：不得赋值成熟度或投资决定")
+            if is_complete_json:
                 if json_layers >= _MAX_JSON_DECODE_LAYERS:
                     raise ValueError(
                         "角色验证JSON解码层数超过16层，拒绝继续扫描")
