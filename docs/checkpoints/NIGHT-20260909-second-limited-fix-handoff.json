@@ -185,6 +185,13 @@
     "build_log": "c9ab4f50235009186025f29ffcb6aefbdcb9f5adde3685bbcf514119409d0a61",
     "protection_json": "079117d65808cfa32c7069641b264881864d99f6f9b6fdec33315cdb38c1154a"
   },
+  "snapshot": {
+    "path": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/final-snapshot-night-second-fix.json",
+    "sha256": "523cc75477a8d75804ae45e117aa31e62087f48e84be9a5d85fe656c12b4f17a",
+    "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/final-snapshot-night-second-fix.log",
+    "log_sha256": "c0710032b67e1339f1589824e497dd6260cfc892fcebb5782df336afb4db4a1f",
+    "handoff_content_commit": "9c18aa7ab25a644584b80ebcb52f107a857ef659"
+  },
   "protection": {
     "weijiu_r2b_records_sha256": "0771daaf0c5bb66b898b24c5ee95fba466d3d7bab0bc6d5d2d32ed5e4abc5b31",
     "first_limited_final_records_sha256": "357735471514db88d7ae1c27a297ca8e1a7e5b799fca126e02a8c50607c6ff69",

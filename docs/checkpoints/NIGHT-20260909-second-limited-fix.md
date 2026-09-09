@@ -58,6 +58,9 @@ FRL规则内核和IPRL v2未修改；CRL 13条规则及已验收结果未重写�
 - view：`OFFLINE6::a8330048f05873a75f0b7e85a00da0e9c4bcf9e8baff6a41b9c494fad85c4eb3`；
   文件SHA256：`273b16640105a3f0eba3248b1cd8805319d58e2f2971937a50c56d6ea2d51f13`。
 - 角色工件SHA256：`fd8825f9206ca088c61490782c5d46718debd17b49c780bf10f6f9ab5f56fc1a`。
+- 最终快照：
+  `D:\t\kth-night-second-fix-final-cases-20260909\night-fix2\audit\final-snapshot-night-second-fix.json`；
+  SHA256：`523cc75477a8d75804ae45e117aa31e62087f48e84be9a5d85fe656c12b4f17a`。
 - 六维trace均通过；manifest/view/role源码重建的对象与字节比较全部为true。
 - BRL/TRL/TMRL新增v3结果，旧v2结果仍在数据库；IPRL v2、FRL v1、CRL v1结果ID保持。
 - 五个非CRL维度review计数均为0；TMRL身份overlay计数为0；五维继续诚实为
