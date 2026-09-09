@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 
-RULE_VERSION = "kth-hybrid.trl.night.v1"
+RULE_VERSION = "kth-hybrid.trl.night.v2"
 RULE_REQUIREMENTS = {
     "TRL1-C1": "research_application_identified", "TRL1-C2": "initial_technology_idea",
     "TRL2-C1": "technology_concept_defined", "TRL2-C2": "applications_speculative",
@@ -64,14 +64,41 @@ def _support(criterion: dict[str, Any], review: dict[str, Any]) -> bool:
             or findings.get("project_specific") is not True \
             or not _nonempty(findings, "configuration_id", "system_boundary"):
         return False
-    if criterion["level"] >= 3 and not _nonempty(
-            findings, "test_environment", "test_method", "measured_results",
-            "requirements_thresholds"):
-        return False
+    evidence_class = review["evidence_class"]
+    if evidence_class == "r_and_d_record":
+        return findings.get("activity_status") == "active"
+    if evidence_class == "requirements_record":
+        if findings.get("requirements_status") not in {"defined", "documented"}:
+            return False
+        if criterion_id == "TRL5-C4" and findings.get("user_feedback_bound") is not True:
+            return False
+        if criterion_id == "TRL7-C3" and findings.get("complete_requirements") is not True:
+            return False
+        return True
+    if evidence_class == "manufacturing_record":
+        return _nonempty(findings, "manufacturing_scope", "manufacturing_results")
+    if evidence_class == "continuous_improvement_record":
+        actions = findings.get("improvement_actions")
+        return (_nonempty(findings, "improvement_period")
+                and isinstance(actions, list) and bool(actions))
+    test_classes = {"lab_test", "test_record", "independent_test",
+                    "relevant_environment_test", "operational_demonstration",
+                    "actual_operation", "independent_operation_record",
+                    "longitudinal_operation"}
+    if evidence_class in test_classes and criterion["level"] >= 3:
+        if not _nonempty(findings, "test_environment", "test_method",
+                         "measured_results", "requirements_thresholds"):
+            return False
+        expected_environment = "laboratory" if criterion["level"] <= 4 else (
+            "relevant" if criterion["level"] <= 6 else (
+                "operational" if criterion["level"] == 7 else "actual_operation"))
+        if findings.get("environment_kind") != expected_environment:
+            return False
     if criterion["level"] >= 4 and findings.get("component_only") is True \
             and findings.get("complete_system_boundary") is not True:
         return False
-    if criterion_id in {"TRL8-C1", "TRL8-C3", "TRL8-C4"}:
+    if evidence_class in {"actual_operation", "independent_operation_record",
+                           "longitudinal_operation"}:
         users = findings.get("independent_user_ids")
         if not isinstance(users, list) or not any(
                 isinstance(item, str) and item.strip() for item in users):
@@ -79,14 +106,11 @@ def _support(criterion: dict[str, Any], review: dict[str, Any]) -> bool:
     if criterion_id == "TRL8-C4" \
             and findings.get("day_to_day_operation") is not True:
         return False
-    if criterion_id == "TRL9-C1":
+    if evidence_class == "longitudinal_operation":
         users = {item for item in findings.get("independent_user_ids", [])
                  if isinstance(item, str) and item.strip()}
         if len(users) < 2 or not _nonempty(findings, "longitudinal_period"):
             return False
-    if criterion_id == "TRL9-C2" and not _nonempty(
-            findings, "longitudinal_period"):
-        return False
     return True
 
 

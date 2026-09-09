@@ -1,16 +1,22 @@
-"""本夜真实综合门控：六维实际结果、trace、汇总和离线角色合同。"""
+"""真实综合门控：新版本六维、显式manifest、trace与离线角色v2。"""
 import os
 from pathlib import Path
 import pytest
 from kth_hybrid import runner
-from kth_hybrid.aggregate import build_offline_dimension_view
+from kth_hybrid.aggregate import build_offline_dimension_view,freeze_aggregation_manifest
 from kth_hybrid.audit import trace_crl_dimension,trace_dimension_result
 from kth_hybrid.catalog import build_catalog_from_wheel
-from kth_hybrid.roles import assemble_offline_deliberation
+from kth_hybrid.roles import assemble_offline_deliberation,role_candidate_digest
 from kth_hybrid.store import BlobStore,CaseStore
 ROOT=os.environ.get("KTH_REAL_CASE_DIR_NIGHT")
 def _attempt(view,role,producer,context):
- return {"schema_version":"kth-hybrid.offline-role-attempt.v1","role":role,"producer_id":producer,"context_id":context,"simulated":True,"input_view_id":view["view_id"],"input_digest":view["input_digest"],"scope":view["scope"],"dimension_result_refs":{d:r["result_id"] for d,r in view["dimensions"].items()},"candidate_id":role+"-NIGHT-C1","statement":"基于冻结六维不足状态的离线候选，不形成决定。","evidence_refs":["OFFLINE-SIX-DIMENSION-VIEW"],"limitations":["未调用真实模型"]}
+ value={"schema_version":"kth-hybrid.offline-role-attempt.v2","role":role,
+        "producer_id":producer,"context_id":context,"simulated":True,
+        "input_view_id":view["view_id"],"input_digest":view["input_digest"],
+        "scope":view["scope"],"dimension_result_refs":{d:r["result_id"] for d,r in view["dimensions"].items()},
+        "candidate_id":role+"-NIGHT-C2","statement":"仅陈述当前冻结证据的限制。",
+        "evidence_refs":list(view["evidence_licenses"])[:1],"limitations":["未调用真实模型"]}
+ value["candidate_digest"]=role_candidate_digest(value);return value
 @pytest.mark.skipif(not ROOT,reason="未设置KTH_REAL_CASE_DIR_NIGHT")
 def test_real_six_dimension_and_offline_role_gate():
  root=Path(ROOT);case=CaseStore(root/'records.sqlite3');basis=case.get_case_basis();case.close();scope=basis['subject_legal_name'];catalog=build_catalog_from_wheel()
@@ -23,9 +29,10 @@ def test_real_six_dimension_and_offline_role_gate():
  try:
   assert trace_crl_dimension(case,blobs,results["CRL"]["result_id"])["ok"]
   assert all(trace_dimension_result(case,blobs,results[d]["result_id"])["ok"] for d in ("FRL","BRL","TRL","IPRL","TMRL"))
-  view=build_offline_dimension_view(case,blobs)
+  manifest=freeze_aggregation_manifest(case,blobs,{d:r["result_id"] for d,r in results.items()})
+  view=build_offline_dimension_view(case,blobs,manifest)
  finally:case.close()
  pro=_attempt(view,"PRO","P","CTX-P");con=_attempt(view,"CON","C","CTX-C");chair=_attempt(view,"CHAIR","H","CTX-H")
- round1={"round_number":1,"pro_response":{"producer_id":"P","observed_candidate_id":con["candidate_id"],"statement":"回应不足边界"},"con_response":{"producer_id":"C","observed_candidate_id":pro["candidate_id"],"statement":"回应不足边界"}}
+ round1={"round_number":1,"pro_response":{"producer_id":"P","observed_candidate_id":con["candidate_id"],"statement":"回应证据限制"},"con_response":{"producer_id":"C","observed_candidate_id":pro["candidate_id"],"statement":"回应证据限制"}}
  deliberation=assemble_offline_deliberation(view,pro,con,[round1],chair,owner_selected_round_count=1)
  assert deliberation["status"]=="simulated_offline_candidate" and "decision" not in deliberation

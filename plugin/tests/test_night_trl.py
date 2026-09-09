@@ -17,14 +17,36 @@ CRITERIA = build_catalog_from_wheel()["dimensions"]["TRL"]["registry"]["criteria
 def _review(criterion, *, findings=None, evidence_class=None, decision="supports",
             suffix="1"):
     level = criterion["level"]
+    evidence_class = evidence_class or criterion["eligible_evidence_classes"][0]
     default = {RULE_REQUIREMENTS[criterion["criterion_id"]]: True,
                "project_specific": True, "configuration_id": "CFG-A",
                "system_boundary": "complete System-A"}
-    if level >= 3:
+    if evidence_class == "r_and_d_record":
+        default["activity_status"] = "active"
+    if evidence_class == "requirements_record":
+        default["requirements_status"] = "documented"
+        if criterion["criterion_id"] == "TRL5-C4":
+            default["user_feedback_bound"] = True
+        if criterion["criterion_id"] == "TRL7-C3":
+            default["complete_requirements"] = True
+    if evidence_class in {"lab_test", "test_record", "independent_test",
+                          "relevant_environment_test", "operational_demonstration",
+                          "actual_operation", "independent_operation_record",
+                          "longitudinal_operation"} and level >= 3:
+        environment = "laboratory" if level <= 4 else (
+            "relevant" if level <= 6 else (
+                "operational" if level == 7 else "actual_operation"))
         default.update({"test_environment": "declared environment",
                         "test_method": "repeatable protocol",
                         "measured_results": "bounded measurements",
-                        "requirements_thresholds": "declared thresholds"})
+                        "requirements_thresholds": "declared thresholds",
+                        "environment_kind": environment})
+    if evidence_class == "manufacturing_record":
+        default.update({"manufacturing_scope": "configured system",
+                        "manufacturing_results": "producibility record"})
+    if evidence_class == "continuous_improvement_record":
+        default.update({"improvement_period": "2026-Q2 to Q3",
+                        "improvement_actions": ["ACTION-1"]})
     if level >= 4:
         default["complete_system_boundary"] = True
     if level >= 8:
@@ -37,7 +59,7 @@ def _review(criterion, *, findings=None, evidence_class=None, decision="supports
             "criterion_id": criterion["criterion_id"],
             "claim_id": f"TRL-CLAIM-{criterion['criterion_id']}-{suffix}",
             "decision": decision,
-            "evidence_class": evidence_class or criterion["eligible_evidence_classes"][0],
+            "evidence_class": evidence_class,
             "findings": default if findings is None else findings,
             "scope_id": UNIT["scope_id"], "reviewer": "night-trl",
             "review_basis": "合成离线TRL复核",

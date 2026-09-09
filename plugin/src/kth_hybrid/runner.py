@@ -543,6 +543,7 @@ def run_frl_dimension_slice(
                     first_unmet_level=None, execution_errors=rejected)
             frozen = {
                 "dimension_id": "FRL",
+                "result_contract_version": "kth-hybrid.dimension-result.v2",
                 "case_basis": basis,
                 "case_basis_version": version,
                 "case_basis_proofs": basis_proofs,
@@ -561,7 +562,7 @@ def run_frl_dimension_slice(
                 frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"DIMR2::FRL::{digest}"
             result = {
-                "schema_version": "kth-hybrid.dimension-result.v1",
+                "schema_version": "kth-hybrid.dimension-result.v2",
                 "result_id": result_id_value,
                 "input_digest": digest,
                 "dimension": dimension,
@@ -729,6 +730,7 @@ def _run_assessment_unit_dimension_slice(
                     first_unmet_level=None, execution_errors=rejected)
             frozen = {
                 "dimension_id": dimension_id,
+                "result_contract_version": "kth-hybrid.dimension-result.v2",
                 "case_basis": basis,
                 "case_basis_version": version,
                 "case_basis_proofs": basis_proofs,
@@ -746,7 +748,7 @@ def _run_assessment_unit_dimension_slice(
                 frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"DIMR2::{dimension_id}::{digest}"
             result = {
-                "schema_version": "kth-hybrid.dimension-result.v1",
+                "schema_version": "kth-hybrid.dimension-result.v2",
                 "result_id": result_id_value,
                 "input_digest": digest,
                 "dimension": dimension,

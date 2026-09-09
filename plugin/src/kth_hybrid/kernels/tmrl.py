@@ -1,38 +1,229 @@
-"""夜间TMRL候选：身份不等于当前团队执行能力。"""
+"""TMRL限定整改v2：逐条语义要求与证据类record-strength。"""
+from __future__ import annotations
+
 from collections import defaultdict
-RULE_VERSION="kth-hybrid.tmrl.night.v1"
-_IDS=["TMRL1-C1","TMRL1-C2","TMRL2-C1","TMRL2-C2","TMRL2-C3","TMRL3-C1","TMRL3-C2","TMRL3-C3","TMRL4-C1","TMRL4-C2","TMRL4-C3","TMRL4-C4","TMRL4-C5","TMRL5-C1","TMRL5-C2","TMRL5-C3","TMRL5-C4","TMRL5-C5","TMRL6-C1","TMRL6-C2","TMRL6-C3","TMRL6-C4","TMRL6-C5","TMRL7-C1","TMRL7-C2","TMRL7-C3","TMRL7-C4","TMRL7-C5","TMRL8-C1","TMRL8-C2","TMRL8-C3","TMRL8-C4","TMRL8-C5","TMRL9-C1","TMRL9-C2","TMRL9-C3","TMRL9-C4","TMRL9-C5"]
-RULE_REQUIREMENTS={cid:cid.lower().replace("-","_")+"_state" for cid in _IDS}
-def _unit(v,scope):
- if not isinstance(v,dict) or v.get("subject_scope")!=scope or not all(isinstance(v.get(k),str) and v[k].strip() for k in ("scope_id","subject_scope","unit_kind","unit_label")): raise ValueError("评估单元主体或结构不一致")
- return {k:v[k] for k in ("scope_id","subject_scope","unit_kind","unit_label")}
-def _valid(r,c,sid):
- req={"review_id","criterion_id","claim_id","decision","evidence_class","findings","scope_id","reviewer","review_basis","support_scope"}
- return isinstance(r,dict) and req<=set(r) and r["criterion_id"]==c["criterion_id"] and r["scope_id"]==sid and r["decision"] in {"supports","does_not_support"} and r["evidence_class"] in c["eligible_evidence_classes"] and isinstance(r["findings"],dict)
-def _support(c,r):
- f=r["findings"]; cid=c["criterion_id"]
- subjects={x for x in f.get("subject_ids",[]) if isinstance(x,str) and x.strip()}
- if f.get(RULE_REQUIREMENTS[cid]) is not True or f.get("team_specific") is not True or not subjects or not isinstance(f.get("current_period"),str) or not f["current_period"].strip(): return False
- if f.get("biography_only") is True or f.get("public_claim_only") is True: return False
- if c["level"]>=2 and not f.get("work_evidence_refs"): return False
- if f.get("relationship_only") is True and f.get("causal_execution_effect") is not True: return False
- if cid=="TMRL4-C2" and (f.get("commitment_evidence") is not True or f.get("capacity_evidence") is not True): return False
- if cid=="TMRL5-C1" and (not isinstance(f.get("operating_record"),str) or not f["operating_record"].strip()): return False
- return True
-def _row(c,rs,sid):
- valid=[r for r in rs if _valid(r,c,sid)]; pos=[r for r in valid if r["decision"]=="supports" and _support(c,r)]; neg=[r for r in valid if r["decision"]=="does_not_support"]
- if pos and neg:native,product,why="partial","succeeded","团队证据存在受控冲突。"
- elif neg:native,product,why="not_met","succeeded","受控复核明确不支持该团队准则。"
- elif pos:native,product,why="met","succeeded","当前团队、人员、期间与工作证据已绑定。"
- else:native,product,why="insufficient","insufficient","身份、履历、公开自述或关系本身不能证明当前团队能力。"
- return {**c,"requirements":[RULE_REQUIREMENTS[c["criterion_id"]]],"native_disposition":native,"product_status":product,"review_refs":[r["review_id"] for r in valid],"claim_refs":sorted({r["claim_id"] for r in valid}),"rationale":why,"rule_version":RULE_VERSION}
-def evaluate_tmrl_dimension(criteria,reviews,*,scope,assessment_unit):
- if {c.get("criterion_id") for c in criteria}!=set(RULE_REQUIREMENTS):raise ValueError("TMRL准则集合不完整")
- unit=_unit(assessment_unit,scope); grouped=defaultdict(list)
- for r in reviews:
-  if isinstance(r,dict) and r.get("criterion_id") in RULE_REQUIREMENTS:grouped[r["criterion_id"]].append(r)
- rows=[_row(c,grouped[c["criterion_id"]],unit["scope_id"]) for c in sorted(criteria,key=lambda x:(x["level"],x["criterion_id"]))];by={r["criterion_id"]:r for r in rows};attained=0;first=None
- for level in range(1,10):
-  if all(by[c["criterion_id"]]["native_disposition"]=="met" for c in criteria if c["level"]<=level):attained=level
-  else:first=level;break
- return {"dimension":"TMRL","scope":scope,"assessment_unit":unit,"criteria":rows,"attained_level":attained,"first_unmet_level":first,"product_status":"succeeded" if all(r["product_status"]=="succeeded" for r in rows) else "insufficient","rule_version":RULE_VERSION,"method_boundary":"身份overlay强制但不得设定成熟度；关系无因果证据不自动加减分。"}
+
+RULE_VERSION = "kth-hybrid.tmrl.night.v2"
+RULE_REQUIREMENTS = {
+    "TMRL1-C1": "key_competency_gap_state_recorded",
+    "TMRL1-C2": "competency_resource_uncertainty_recorded",
+    "TMRL2-C1": "limited_current_capability_snapshot",
+    "TMRL2-C2": "initial_competency_need_identified",
+    "TMRL2-C3": "initial_project_goal_defined",
+    "TMRL3-C1": "partial_capability_to_begin",
+    "TMRL3-C2": "competency_capacity_diversity_gaps_identified",
+    "TMRL3-C3": "near_term_competency_access_plan",
+    "TMRL4-C1": "execution_route_understood",
+    "TMRL4-C2": "committed_champion_present",
+    "TMRL4-C3": "several_competencies_present",
+    "TMRL4-C4": "competency_plan_initiated",
+    "TMRL4-C5": "role_commitment_ownership_discussions_started",
+    "TMRL5-C1": "founder_team_operating_together",
+    "TMRL5-C2": "team_alignment_and_role_commitment",
+    "TMRL5-C3": "executed_ownership_alignment_agreement",
+    "TMRL5-C4": "recruitment_execution_in_progress",
+    "TMRL5-C5": "knowledge_sharing_system_started",
+    "TMRL6-C1": "complementary_diverse_founding_team",
+    "TMRL6-C2": "key_competencies_and_ceo_present",
+    "TMRL6-C3": "team_accountability_demonstrated",
+    "TMRL6-C4": "board_advisor_recruitment_started",
+    "TMRL6-C5": "team_performance_risks_managed",
+    "TMRL7-C1": "well_functioning_team_clear_roles",
+    "TMRL7-C2": "organization_charter_documented",
+    "TMRL7-C3": "two_year_organization_growth_plan",
+    "TMRL7-C4": "learning_development_process_implemented",
+    "TMRL7-C5": "board_advisors_operating",
+    "TMRL8-C1": "professional_management_team_present",
+    "TMRL8-C2": "competent_diverse_board_operating",
+    "TMRL8-C3": "hr_policy_process_operating",
+    "TMRL8-C4": "long_term_recruitment_ongoing",
+    "TMRL8-C5": "organization_trained_and_motivated",
+    "TMRL9-C1": "organization_high_performance",
+    "TMRL9-C2": "organization_continuous_learning",
+    "TMRL9-C3": "continuous_organization_improvement",
+    "TMRL9-C4": "incentive_alignment_operating",
+    "TMRL9-C5": "management_continuity_over_time",
+}
+_AGREEMENT_CLASSES = {"executed_ownership_agreement",
+                      "executed_role_commitment_record"}
+_OPERATING_CLASSES = {"accountability_operating_record",
+                      "board_advisor_operating_record",
+                      "founder_team_operating_record",
+                      "learning_performance_record",
+                      "management_continuity_record",
+                      "organization_performance_record", "team_operating_record"}
+_OPERATING_STATUSES = {"measured_operating_record", "operational_record",
+                       "verified_operating_record"}
+
+
+def _unit(value, scope):
+    keys = ("scope_id", "subject_scope", "unit_kind", "unit_label")
+    if not isinstance(value, dict) or value.get("subject_scope") != scope \
+            or not all(isinstance(value.get(key), str) and value[key].strip()
+                       for key in keys):
+        raise ValueError("评估单元主体或结构不一致")
+    return {key: value[key] for key in keys}
+
+
+def _valid(review, criterion, scope_id):
+    required = {"review_id", "criterion_id", "claim_id", "decision",
+                "evidence_class", "findings", "scope_id", "reviewer",
+                "review_basis", "support_scope"}
+    return (isinstance(review, dict) and required <= set(review)
+            and review["criterion_id"] == criterion["criterion_id"]
+            and review["scope_id"] == scope_id
+            and review["decision"] in {"supports", "does_not_support"}
+            and review["evidence_class"] in criterion["eligible_evidence_classes"]
+            and isinstance(review["findings"], dict))
+
+
+def _texts(findings, key):
+    values = findings.get(key)
+    return isinstance(values, list) and any(
+        isinstance(value, str) and value.strip() for value in values)
+
+
+def _support(criterion, review):
+    findings = review["findings"]
+    criterion_id = criterion["criterion_id"]
+    evidence_class = review["evidence_class"]
+    subjects = findings.get("subject_ids")
+    if findings.get(RULE_REQUIREMENTS[criterion_id]) is not True \
+            or findings.get("team_specific") is not True \
+            or not isinstance(subjects, list) or not subjects \
+            or not isinstance(findings.get("current_period"), str) \
+            or not findings["current_period"].strip():
+        return False
+    if findings.get("biography_only") is True \
+            or findings.get("public_claim_only") is True \
+            or findings.get("identity_only") is True:
+        return False
+    if findings.get("relationship_only") is True \
+            and findings.get("causal_execution_effect") is not True:
+        return False
+    if evidence_class in _AGREEMENT_CLASSES:
+        return findings.get("agreement_status") == "executed_agreement"
+    if evidence_class in _OPERATING_CLASSES:
+        return (findings.get("record_status") in _OPERATING_STATUSES
+                and isinstance(findings.get("operating_period"), str)
+                and bool(findings["operating_period"].strip())
+                and _texts(findings, "actual_behaviors"))
+    if evidence_class == "team_needs_hypothesis":
+        return findings.get("hypothesis_status") == "documented"
+    if evidence_class in {"team_capability_snapshot", "team_capability_matrix"}:
+        valid = (findings.get("capability_status") == "verified_current"
+                 and _texts(findings, "work_evidence_refs"))
+        if criterion_id == "TMRL6-C2":
+            valid = valid and isinstance(findings.get("ceo_subject_id"), str) \
+                and bool(findings["ceo_subject_id"].strip())
+        return valid
+    if evidence_class == "competency_gap_record":
+        return findings.get("gap_status") == "verified_current"
+    if evidence_class == "project_goal_record":
+        return findings.get("goal_status") == "documented"
+    if evidence_class == "hiring_or_access_plan":
+        accepted = {"documented", "initiated"}
+        if criterion_id == "TMRL4-C4":
+            accepted = {"initiated"}
+        return findings.get("plan_status") in accepted
+    if evidence_class == "execution_route_record":
+        return findings.get("route_status") == "documented"
+    if evidence_class == "champion_commitment_record":
+        return (findings.get("commitment_status") == "committed"
+                and findings.get("capacity_status") == "verified_current")
+    if evidence_class == "team_alignment_record":
+        return (findings.get("alignment_status") == "documented_current"
+                and findings.get("commitment_status") == "committed")
+    if evidence_class == "recruitment_execution_record":
+        return findings.get("execution_status") == "active" \
+            and _texts(findings, "actual_actions")
+    if evidence_class == "knowledge_system_record":
+        return findings.get("system_status") == "operating" \
+            and _texts(findings, "actual_use_refs")
+    if evidence_class == "executive_role_record":
+        return findings.get("role_status") == "active" \
+            and findings.get("executive_role") == "CEO"
+    if evidence_class == "board_advisor_record":
+        return findings.get("recruitment_status") == "active" \
+            and _texts(findings, "actual_actions")
+    if evidence_class == "team_risk_management_record":
+        return findings.get("risk_process_status") == "operating" \
+            and _texts(findings, "risk_refs")
+    if evidence_class == "organization_charter":
+        return findings.get("charter_status") == "approved_current"
+    if evidence_class == "organization_growth_plan":
+        return findings.get("plan_status") == "documented" \
+            and findings.get("plan_horizon_months", 0) >= 24
+    if evidence_class in {"learning_development_process",
+                          "continuous_improvement_record"}:
+        return findings.get("process_status") == "operating" \
+            and _texts(findings, "actual_actions")
+    if evidence_class == "management_team_record":
+        roles = findings.get("executive_roles")
+        return findings.get("team_status") == "active" \
+            and isinstance(roles, list) and "CEO" in roles
+    if evidence_class == "hr_policy_process":
+        return findings.get("process_status") == "operating" \
+            and isinstance(findings.get("responsible_subject"), str) \
+            and bool(findings["responsible_subject"].strip())
+    if evidence_class == "training_motivation_record":
+        return findings.get("record_status") == "verified_current" \
+            and isinstance(findings.get("measured_population"), str) \
+            and bool(findings["measured_population"].strip())
+    if evidence_class == "incentive_alignment_record":
+        return findings.get("alignment_status") == "executed" \
+            and isinstance(findings.get("covered_population"), str) \
+            and bool(findings["covered_population"].strip())
+    return False
+
+
+def _criterion_result(criterion, reviews, scope_id):
+    valid = [review for review in reviews if _valid(review, criterion, scope_id)]
+    supports = [review for review in valid
+                if review["decision"] == "supports" and _support(criterion, review)]
+    negatives = [review for review in valid
+                 if review["decision"] == "does_not_support"]
+    if supports and negatives:
+        native, product, rationale = "partial", "succeeded", "团队证据存在受控冲突。"
+    elif negatives:
+        native, product, rationale = "not_met", "succeeded", "受控复核明确不支持该团队准则。"
+    elif supports:
+        native, product, rationale = "met", "succeeded", "准则语义与对应团队记录强度均通过。"
+    else:
+        native, product, rationale = "insufficient", "insufficient", "缺少该准则要求的当前团队记录；身份、履历或意向不替代实际能力。"
+    return {**criterion,
+            "requirements": [RULE_REQUIREMENTS[criterion["criterion_id"]]],
+            "native_disposition": native, "product_status": product,
+            "review_refs": [review["review_id"] for review in valid],
+            "claim_refs": sorted({review["claim_id"] for review in valid}),
+            "rationale": rationale, "rule_version": RULE_VERSION}
+
+
+def evaluate_tmrl_dimension(criteria, reviews, *, scope, assessment_unit):
+    if {criterion.get("criterion_id") for criterion in criteria} != set(RULE_REQUIREMENTS):
+        raise ValueError("TMRL准则集合不完整")
+    unit = _unit(assessment_unit, scope)
+    grouped = defaultdict(list)
+    for review in reviews:
+        if isinstance(review, dict) and review.get("criterion_id") in RULE_REQUIREMENTS:
+            grouped[review["criterion_id"]].append(review)
+    rows = [_criterion_result(criterion, grouped[criterion["criterion_id"]],
+                              unit["scope_id"])
+            for criterion in sorted(criteria, key=lambda item: (
+                item["level"], item["criterion_id"]))]
+    by_id = {row["criterion_id"]: row for row in rows}
+    attained, first_unmet = 0, None
+    for level in range(1, 10):
+        if all(by_id[criterion["criterion_id"]]["native_disposition"] == "met"
+               for criterion in criteria if criterion["level"] <= level):
+            attained = level
+        else:
+            first_unmet = level
+            break
+    return {"dimension": "TMRL", "scope": scope, "assessment_unit": unit,
+            "criteria": rows, "attained_level": attained,
+            "first_unmet_level": first_unmet,
+            "product_status": ("succeeded" if all(
+                row["product_status"] == "succeeded" for row in rows)
+                else "insufficient"), "rule_version": RULE_VERSION,
+            "method_boundary": "身份overlay不得设定成熟度；协议与运行类必须达到canonical记录强度。"}

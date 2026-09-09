@@ -21,13 +21,20 @@ def _review(criterion, *, decision="supports", evidence_class=None,
     if criterion_id == "BRL6-BM" and (evidence_class or criterion["eligible_evidence_classes"][0]) == "qualified_preorder":
         default.update({"amount_qualified": True, "refundability_visible": True,
                         "intended_price_bridge": True, "fulfillment_status_visible": True,
-                        "buyer_status_qualified": True, "denominator_visible": True})
+                        "buyer_status_qualified": True, "denominator_visible": True,
+                        "transaction_commitment": "paid_preorder",
+                        "refundable": False, "fulfilled": False})
     if criterion_id == "BRL7-BM":
         default.update({"commercial_terms": True, "delivered": True,
+                        "fulfilled": True, "transaction_commitment": "delivered_sale",
                         "customer_ids": ["CUSTOMER-1", "CUSTOMER-2"]})
     if criterion_id in {"BRL8-BM", "BRL9-BM"}:
         default.update({"operating_period": "2026-Q2",
-                        "metric_denominator": "all commercial orders"})
+                        "metric_denominator": "all commercial orders",
+                        "actual_metrics": {"profit": 12, "growth": 20,
+                                           "scalability": 10},
+                        "target_metrics": {"profit": 10, "growth": 15,
+                                           "scalability": 8}})
     return {
         "review_id": f"BRL-REV-{criterion_id}-{suffix}",
         "criterion_id": criterion_id,

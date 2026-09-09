@@ -8,11 +8,16 @@ UNIT={"scope_id":"UNIT-A","subject_scope":SCOPE,"unit_kind":"material_ip_unit","
 CRITERIA=build_catalog_from_wheel()["dimensions"]["IPRL"]["registry"]["criteria"]
 
 def review(c, findings=None, evidence_class=None, decision="supports", suffix="1"):
+    evidence_class=evidence_class or c["eligible_evidence_classes"][0]
     f={RULE_REQUIREMENTS[c["criterion_id"]]:True,"ip_specific":True,"asset_id":"ASSET-A"}
+    if evidence_class in {"early_filing","formal_application","office_action_record","positive_authority_response","national_regional_phase_record","granted_right","maintained_right","complementary_filing"}: f["record_type"]="official_registry_record"
+    if evidence_class in {"executed_assignment","founder_employee_contractor_agreement","license_agreement","ownership_agreement","external_ip_access_agreement"}: f["agreement_status"]="executed_agreement"
+    if evidence_class in {"professional_analysis","professional_search","professional_protectability_analysis","professional_ip_strategy","professional_response_analysis","fto_assessment"}: f["analysis_status"]="professional_analysis"
     if c["criterion_id"] in {"IPRL2-C3","IPRL5-C3","IPRL8-C2","IPRL9-C2","IPRL9-C3"}: f.update({"rightsholder":"Company-A","project_right_binding":True})
     if c["criterion_id"] in {"IPRL6-C3","IPRL7-C2"}: f.update({"product_configuration":"CFG-A","jurisdiction":"CN","as_of":"2026-08-27","professional_scope":True})
-    if c["criterion_id"]=="IPRL8-C2": f.update({"granted":True,"jurisdiction":"CN","claim_scope_recorded":True})
-    return {"review_id":f"REV-{c['criterion_id']}-{suffix}","criterion_id":c["criterion_id"],"claim_id":f"C-{c['criterion_id']}-{suffix}","decision":decision,"evidence_class":evidence_class or c["eligible_evidence_classes"][0],"findings":f if findings is None else findings,"scope_id":"UNIT-A","reviewer":"night-iprl","review_basis":"合成IP复核","support_scope":"仅支持当前IP准则"}
+    if c["criterion_id"]=="IPRL8-C2": f.update({"granted":True,"jurisdiction":"CN","claim_scope_recorded":True,"right_status":"granted_in_force"})
+    if c["criterion_id"]=="IPRL9-C2": f.update({"right_status":"maintained_in_force","jurisdictions":["CN","US"],"maintenance_verified":True})
+    return {"review_id":f"REV-{c['criterion_id']}-{suffix}","criterion_id":c["criterion_id"],"claim_id":f"C-{c['criterion_id']}-{suffix}","decision":decision,"evidence_class":evidence_class,"findings":f if findings is None else findings,"scope_id":"UNIT-A","reviewer":"night-iprl","review_basis":"合成IP复核","support_scope":"仅支持当前IP准则"}
 
 def evaluate(reviews): return evaluate_iprl_dimension(CRITERIA,reviews,scope=SCOPE,assessment_unit=UNIT)
 def row(result,cid): return next(x for x in result["criteria"] if x["criterion_id"]==cid)

@@ -1,48 +1,131 @@
-"""冻结六维视图上的离线角色合同，不调用模型或授予决定权限。"""
+"""冻结六维视图上的离线角色v2合同；角色没有成熟度或决定权限。"""
 from __future__ import annotations
+
 import copy
+import hashlib
+import json
+import re
 
 EXPECTED_DIMENSIONS = {"CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}
+ATTEMPT_SCHEMA = "kth-hybrid.offline-role-attempt.v2"
+CONFIRMATION_SCHEMA = "kth-hybrid.role-confirmation.v2"
 FORBIDDEN_OUTPUT_KEYS = {
-    "attained_level", "native_disposition", "final_decision",
-    "investment_recommendation", "yes_no", "total_score",
+    "attained_level", "current_level", "readiness_level", "frl_level",
+    "native_disposition", "final_decision", "investment_recommendation",
+    "yes_no", "total_score", "weighted_score", "aggregate_score",
 }
+_BASE_ATTEMPT_FIELDS = {
+    "schema_version", "role", "producer_id", "context_id", "simulated",
+    "input_view_id", "input_digest", "scope", "dimension_result_refs",
+    "candidate_id", "candidate_digest", "statement", "evidence_refs",
+    "limitations",
+}
+_REVIEW_TARGET_FIELDS = {
+    "dimension_id", "criterion_id", "claim_id", "quote_sha256",
+    "evidence_class", "subject_scope", "scope_id", "support_scope", "findings",
+}
+_CONFIRMATION_FIELDS = {
+    "schema_version", "confirmation_id", "candidate_id", "candidate_digest",
+    "input_view_id", "input_digest", "producer_id", "role",
+    "case_basis_version", "decision", "reviewer", "review_basis",
+    "evidence_refs", *_REVIEW_TARGET_FIELDS,
+}
+_AUTHORITY_PATTERNS = (
+    re.compile(r"(?:达到|提升为|判为|定为)\s*(?:CRL|BRL|TRL|IPRL|TMRL|FRL)?\s*[1-9]", re.I),
+    re.compile(r"(?:最终)?投资决定\s*(?:为|[:：]|给出)?\s*(?:YES|NO|是|否)", re.I),
+    re.compile(r"(?:final[_ ]?decision|investment[_ ]?recommendation)\s*[:=]?\s*(?:YES|NO)", re.I),
+)
+
+
+def _json_digest(value) -> str:
+    return hashlib.sha256(json.dumps(
+        value, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def role_candidate_digest(attempt: dict) -> str:
+    return _json_digest({key: value for key, value in attempt.items()
+                         if key != "candidate_digest"})
+
+
+def _scan_authority(value, path="root"):
+    if isinstance(value, dict):
+        forbidden = FORBIDDEN_OUTPUT_KEYS & set(value)
+        if forbidden:
+            raise ValueError(f"角色越权字段 {path}: {sorted(forbidden)}")
+        for key, item in value.items():
+            _scan_authority(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _scan_authority(item, f"{path}[{index}]")
+    elif isinstance(value, str):
+        if any(pattern.search(value) for pattern in _AUTHORITY_PATTERNS):
+            raise ValueError(f"角色越权文本 {path}：不得赋值成熟度或投资决定")
+
+
+def _view_licenses(view):
+    licenses = view.get("evidence_licenses")
+    if not isinstance(licenses, dict):
+        raise ValueError("冻结视图缺少内容绑定evidence-use licenses")
+    for license_id, value in licenses.items():
+        if not isinstance(value, dict) or value.get("license_id") != license_id:
+            raise ValueError("冻结视图evidence license身份非法")
+    return licenses
+
+
+def _validate_review_target(target, licenses, evidence_refs, view):
+    if not isinstance(target, dict) or set(target) != _REVIEW_TARGET_FIELDS:
+        raise ValueError("角色候选review_target结构非法")
+    if target["dimension_id"] not in EXPECTED_DIMENSIONS - {"CRL"} \
+            or target["subject_scope"] != view.get("scope") \
+            or not isinstance(target["findings"], dict):
+        raise ValueError("角色候选review_target维度、主体或findings非法")
+    matching = [licenses[ref] for ref in evidence_refs if ref in licenses and
+                licenses[ref].get("dimension_id") == target["dimension_id"] and
+                licenses[ref].get("claim_id") == target["claim_id"] and
+                licenses[ref].get("quote_sha256") == target["quote_sha256"] and
+                licenses[ref].get("evidence_class") == target["evidence_class"] and
+                licenses[ref].get("subject_scope") == target["subject_scope"] and
+                licenses[ref].get("scope_id") == target["scope_id"]]
+    if not matching:
+        raise ValueError("角色候选目标没有匹配的内容绑定证据许可")
 
 
 def validate_role_attempt(attempt: dict, view: dict) -> dict:
-    required = {
-        "schema_version", "role", "producer_id", "context_id", "simulated",
-        "input_view_id", "input_digest", "scope", "dimension_result_refs",
-        "candidate_id", "statement", "evidence_refs", "limitations",
-    }
-    if not isinstance(attempt, dict) or not required <= set(attempt):
-        raise ValueError("角色attempt结构不完整")
-    forbidden = FORBIDDEN_OUTPUT_KEYS & set(attempt)
-    if forbidden:
-        raise ValueError(f"角色越权字段：{sorted(forbidden)}")
-    if attempt["schema_version"] != "kth-hybrid.offline-role-attempt.v1" \
+    if not isinstance(attempt, dict):
+        raise ValueError("角色候选必须是完整对象")
+    _scan_authority(attempt)
+    allowed = _BASE_ATTEMPT_FIELDS | ({"review_target"} if "review_target" in attempt else set())
+    if set(attempt) != allowed:
+        raise ValueError("角色候选schema字段不精确或含额外字段")
+    if attempt["schema_version"] != ATTEMPT_SCHEMA \
             or attempt["role"] not in {"PRO", "CON", "CHAIR"} \
             or attempt["simulated"] is not True:
-        raise ValueError("仅接受明确标记的离线模拟角色attempt")
+        raise ValueError("仅接受v2且明确标记的离线模拟角色候选")
     if attempt["input_view_id"] != view.get("view_id") \
             or attempt["input_digest"] != view.get("input_digest") \
             or attempt["scope"] != view.get("scope"):
-        raise ValueError("角色attempt与冻结六维视图身份不一致")
-    expected_refs = {
-        dimension: row["result_id"]
-        for dimension, row in (view.get("dimensions") or {}).items()
-    }
+        raise ValueError("角色候选与冻结六维视图身份不一致")
+    expected_refs = {dimension: row["result_id"]
+                     for dimension, row in (view.get("dimensions") or {}).items()}
     if set(expected_refs) != EXPECTED_DIMENSIONS \
             or attempt["dimension_result_refs"] != expected_refs:
-        raise ValueError("角色attempt遗漏或替换维度结果引用")
+        raise ValueError("角色候选遗漏或替换维度结果引用")
+    if attempt.get("candidate_digest") != role_candidate_digest(attempt):
+        raise ValueError("角色候选完整摘要不一致")
     if not all(isinstance(attempt[key], str) and attempt[key].strip()
                for key in ("producer_id", "context_id", "candidate_id", "statement")):
         raise ValueError("角色身份或候选文本为空")
-    for key in ("evidence_refs", "limitations"):
-        if not isinstance(attempt[key], list) or not attempt[key] \
-                or any(not isinstance(item, str) or not item.strip()
-                       for item in attempt[key]):
-            raise ValueError(f"角色{key}必须为非空文本列表")
+    if not isinstance(attempt["limitations"], list) or not attempt["limitations"]:
+        raise ValueError("角色limitations必须为非空列表")
+    evidence_refs = attempt["evidence_refs"]
+    licenses = _view_licenses(view)
+    if not isinstance(evidence_refs, list) or len(evidence_refs) != len(set(evidence_refs)) \
+            or any(ref not in licenses for ref in evidence_refs):
+        raise ValueError("角色证据引用不在冻结视图许可中")
+    if "review_target" in attempt:
+        _validate_review_target(attempt["review_target"], licenses,
+                                evidence_refs, view)
     return copy.deepcopy(attempt)
 
 
@@ -52,7 +135,7 @@ def assemble_offline_deliberation(view: dict, pro: dict, con: dict,
     pro = validate_role_attempt(pro, view)
     con = validate_role_attempt(con, view)
     chair = validate_role_attempt(chair, view)
-    if pro["role"] != "PRO" or con["role"] != "CON" or chair["role"] != "CHAIR":
+    if (pro["role"], con["role"], chair["role"]) != ("PRO", "CON", "CHAIR"):
         raise ValueError("角色职责不匹配")
     if len({pro["producer_id"], con["producer_id"], chair["producer_id"]}) != 3 \
             or len({pro["context_id"], con["context_id"], chair["context_id"]}) != 3:
@@ -61,66 +144,81 @@ def assemble_offline_deliberation(view: dict, pro: dict, con: dict,
             or not isinstance(rounds, list) \
             or len(rounds) != owner_selected_round_count:
         raise ValueError("离线辩论轮次与预选数量不一致")
+    parsed_rounds = []
     for number, row in enumerate(rounds, 1):
-        if not isinstance(row, dict) or row.get("round_number") != number:
-            raise ValueError("离线辩论轮次顺序错误")
-        expected = (("pro_response", pro, con), ("con_response", con, pro))
-        for key, actor, opponent in expected:
-            response = row.get(key)
-            if not isinstance(response, dict) \
+        if not isinstance(row, dict) or set(row) != {
+                "round_number", "pro_response", "con_response"} \
+                or row.get("round_number") != number:
+            raise ValueError("离线辩论轮次结构或顺序错误")
+        _scan_authority(row, f"rounds[{number - 1}]")
+        parsed = {"round_number": number}
+        for key, actor, opponent in (("pro_response", pro, con),
+                                     ("con_response", con, pro)):
+            response = row[key]
+            if not isinstance(response, dict) or set(response) != {
+                    "producer_id", "observed_candidate_id", "statement"} \
                     or response.get("producer_id") != actor["producer_id"] \
                     or response.get("observed_candidate_id") != opponent["candidate_id"] \
                     or not isinstance(response.get("statement"), str) \
                     or not response["statement"].strip():
                 raise ValueError("离线辩论回应未绑定正确对手或生产者")
-    return {
-        "schema_version": "kth-hybrid.offline-deliberation.v1",
-        "status": "simulated_offline_candidate",
-        "input_view_id": view["view_id"],
-        "input_digest": view["input_digest"],
-        "scope": view["scope"],
-        "owner_selected_round_count": owner_selected_round_count,
-        "pro": pro,
-        "con": con,
-        "rounds": copy.deepcopy(rounds),
-        "chair": chair,
-        "limitations": [
-            "离线模拟不等于真实模型角色链",
-            "角色不能写成熟度、原生处置或投资决定",
-        ],
-    }
+            parsed[key] = copy.deepcopy(response)
+        parsed_rounds.append(parsed)
+    return {"schema_version": "kth-hybrid.offline-deliberation.v2",
+            "status": "simulated_offline_candidate",
+            "input_view_id": view["view_id"], "input_digest": view["input_digest"],
+            "scope": view["scope"],
+            "owner_selected_round_count": owner_selected_round_count,
+            "pro": pro, "con": con, "rounds": parsed_rounds, "chair": chair,
+            "limitations": ["离线模拟不等于真实模型角色链",
+                            "角色不能写成熟度、原生处置或投资决定"]}
 
 
 def confirm_role_candidate(candidate: dict, confirmation: dict, *,
-                           dimension_id: str) -> dict:
-    """将角色候选适配为待落库review；确认本身不能生成准则处置。"""
-    required = {
-        "confirmation_id", "candidate_id", "decision", "reviewer",
-        "review_basis", "criterion_id", "claim_id", "quote_sha256",
-        "evidence_class", "scope_id", "subject_scope", "support_scope",
-        "findings",
-    }
-    if not isinstance(confirmation, dict) or not required <= set(confirmation) \
-            or confirmation.get("candidate_id") != candidate.get("candidate_id") \
-            or confirmation.get("decision") != "confirmed" \
-            or dimension_id not in EXPECTED_DIMENSIONS - {"CRL"}:
-        raise ValueError("角色候选缺少匹配的受控确认")
-    if not isinstance(confirmation["findings"], dict):
-        raise ValueError("受控确认findings非法")
-    return {
-        "review_id": confirmation["confirmation_id"],
-        "dimension_id": dimension_id,
-        "case_basis_version": None,
-        "claim_id": confirmation["claim_id"],
-        "criterion_id": confirmation["criterion_id"],
-        "quote_sha256": confirmation["quote_sha256"],
-        "decision": "supports",
-        "evidence_class": confirmation["evidence_class"],
-        "findings": copy.deepcopy(confirmation["findings"]),
-        "subject_scope": confirmation["subject_scope"],
-        "scope_id": confirmation["scope_id"],
-        "support_scope": confirmation["support_scope"],
-        "reviewer": confirmation["reviewer"],
-        "review_basis": confirmation["review_basis"],
-        "candidate_ref": candidate["candidate_id"],
-    }
+                           dimension_id: str, view: dict | None = None) -> dict:
+    if view is None:
+        raise ValueError("角色候选确认缺少冻结view，无法重核候选")
+    validated = validate_role_attempt(candidate, view)
+    if "review_target" not in validated:
+        raise ValueError("角色候选没有可确认的准则目标")
+    if not isinstance(confirmation, dict) or set(confirmation) != _CONFIRMATION_FIELDS \
+            or confirmation.get("schema_version") != CONFIRMATION_SCHEMA:
+        raise ValueError("角色confirmation schema不精确")
+    _scan_authority(confirmation)
+    target = validated["review_target"]
+    identity_matches = (
+        confirmation["candidate_id"] == validated["candidate_id"]
+        and confirmation["candidate_digest"] == validated["candidate_digest"]
+        and confirmation["input_view_id"] == view["view_id"]
+        and confirmation["input_digest"] == view["input_digest"]
+        and confirmation["producer_id"] == validated["producer_id"]
+        and confirmation["role"] == validated["role"]
+        and confirmation["case_basis_version"] == view["case_basis_version"]
+        and confirmation["evidence_refs"] == validated["evidence_refs"]
+        and dimension_id == target["dimension_id"]
+        and all(confirmation[field] == target[field]
+                for field in _REVIEW_TARGET_FIELDS)
+    )
+    if not identity_matches:
+        raise ValueError("角色候选、view、生产者或确认目标绑定不一致")
+    if confirmation["decision"] == "rejected":
+        raise ValueError("人工复核拒绝该角色候选，不生成review")
+    if confirmation["decision"] not in {"supports", "does_not_support"}:
+        raise ValueError("人工确认decision非法")
+    return {"review_id": confirmation["confirmation_id"],
+            "dimension_id": dimension_id,
+            "case_basis_version": view["case_basis_version"],
+            "claim_id": confirmation["claim_id"],
+            "criterion_id": confirmation["criterion_id"],
+            "quote_sha256": confirmation["quote_sha256"],
+            "decision": confirmation["decision"],
+            "evidence_class": confirmation["evidence_class"],
+            "findings": copy.deepcopy(confirmation["findings"]),
+            "subject_scope": confirmation["subject_scope"],
+            "scope_id": confirmation["scope_id"],
+            "support_scope": confirmation["support_scope"],
+            "reviewer": confirmation["reviewer"],
+            "review_basis": confirmation["review_basis"],
+            "candidate_ref": validated["candidate_id"],
+            "candidate_digest": validated["candidate_digest"],
+            "evidence_refs": copy.deepcopy(validated["evidence_refs"])}

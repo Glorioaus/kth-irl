@@ -1,10 +1,13 @@
 """夜间IPRL候选：批准F/2022 registry的离线受控求值。"""
 from collections import defaultdict
-RULE_VERSION="kth-hybrid.iprl.night.v1"
+RULE_VERSION="kth-hybrid.iprl.night.v2"
 RULE_REQUIREMENTS={
 "IPRL1-C1":"possible_ip_hypothesized","IPRL1-C2":"ip_ideas_speculative","IPRL1-C3":"ip_documentation_state_recorded","IPRL1-C4":"rights_uncertainty_recorded","IPRL1-C5":"uniqueness_state_of_art_uncertainty_recorded","IPRL2-C1":"ip_forms_mapped","IPRL2-C2":"specific_ip_ideas_identified","IPRL2-C3":"creators_ownership_rights_clarified","IPRL2-C4":"policies_and_contract_restrictions_identified","IPRL3-C1":"key_ip_forms_prioritized","IPRL3-C2":"key_ip_described_for_protection","IPRL3-C3":"prior_art_or_state_of_art_searched","IPRL3-C4":"initial_professional_search","IPRL4-C1":"professional_protectability_confirmed","IPRL4-C2":"protection_priority_business_value_analyzed","IPRL4-C3":"early_filing_made","IPRL5-C1":"draft_ip_strategy","IPRL5-C2":"complete_formal_application_filed","IPRL5-C3":"key_ip_control_agreements","IPRL6-C1":"professional_ip_strategy","IPRL6-C2":"complementary_ip_identified","IPRL6-C3":"initial_fto_assessment","IPRL6-C4":"positive_authority_response","IPRL6-C5":"professional_response_analysis","IPRL7-C1":"national_regional_phase_entered","IPRL7-C2":"complete_fto_assessment","IPRL8-C1":"ip_strategy_and_management_implemented","IPRL8-C2":"key_right_granted","IPRL8-C3":"complementary_filings","IPRL9-C1":"ip_strategy_business_value_proven","IPRL9-C2":"rights_granted_maintained_multiple_countries","IPRL9-C3":"external_ip_access_agreements"}
 _RIGHTS={"IPRL2-C3","IPRL5-C3","IPRL8-C2","IPRL9-C2","IPRL9-C3"}
 _FTO={"IPRL6-C3","IPRL7-C2"}
+_OFFICIAL={"early_filing","formal_application","office_action_record","positive_authority_response","national_regional_phase_record","granted_right","maintained_right","complementary_filing"}
+_AGREEMENTS={"executed_assignment","founder_employee_contractor_agreement","license_agreement","ownership_agreement","external_ip_access_agreement"}
+_PROFESSIONAL={"professional_analysis","professional_search","professional_protectability_analysis","professional_ip_strategy","professional_response_analysis","fto_assessment"}
 def _unit(v,scope):
  if not isinstance(v,dict) or v.get("subject_scope")!=scope or not all(isinstance(v.get(k),str) and v[k].strip() for k in ("scope_id","subject_scope","unit_kind","unit_label")): raise ValueError("评估单元主体或结构不一致")
  return {k:v[k] for k in ("scope_id","subject_scope","unit_kind","unit_label")}
@@ -15,9 +18,17 @@ def _text(f,*ks): return all(isinstance(f.get(k),str) and f[k].strip() for k in 
 def _support(c,r,scope):
  cid=c["criterion_id"]; f=r["findings"]
  if f.get(RULE_REQUIREMENTS[cid]) is not True or f.get("ip_specific") is not True or not _text(f,"asset_id"): return False
+ evidence_class=r["evidence_class"]
+ if evidence_class in _OFFICIAL and f.get("record_type")!="official_registry_record" and f.get("record_status")!="official_registry_record": return False
+ if evidence_class in _AGREEMENTS and f.get("agreement_status")!="executed_agreement" and f.get("record_status")!="executed_agreement": return False
+ if evidence_class in _PROFESSIONAL and f.get("analysis_status")!="professional_analysis" and f.get("record_status")!="professional_analysis": return False
  if cid in _RIGHTS and (f.get("project_right_binding") is not True or f.get("rightsholder")!=scope): return False
  if cid in _FTO and (not _text(f,"product_configuration","jurisdiction","as_of") or f.get("professional_scope") is not True): return False
  if cid=="IPRL8-C2" and (f.get("granted") is not True or f.get("claim_scope_recorded") is not True or not _text(f,"jurisdiction")): return False
+ if cid in {"IPRL8-C2","IPRL9-C2"} and (f.get("right_status") or f.get("record_status")) not in {"granted_in_force","maintained_in_force"}: return False
+ if cid=="IPRL9-C2":
+  jurisdictions={item for item in f.get("jurisdictions",[]) if isinstance(item,str) and item.strip()}
+  if len(jurisdictions)<2 or f.get("maintenance_verified") is not True:return False
  return True
 def _row(c,reviews,sid,scope):
  valid=[r for r in reviews if _valid(r,c,sid)]; pos=[r for r in valid if r["decision"]=="supports" and _support(c,r,scope)]; neg=[r for r in valid if r["decision"]=="does_not_support"]

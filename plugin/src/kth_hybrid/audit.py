@@ -834,6 +834,70 @@ def _verify_reference_bundle(case: CaseStore, blobs: BlobStore,
     return broken
 
 
+def _dimension_evaluator(dimension_id: str, rule_version: str):
+    """按冻结方法版本选择确定性求值器；禁止用latest猜测未知版本。"""
+    from .kernels.brl import RULE_VERSION as BRL_VERSION, evaluate_brl_dimension
+    from .kernels.frl import RULE_VERSION as FRL_VERSION, evaluate_frl_dimension
+    from .kernels.iprl import RULE_VERSION as IPRL_VERSION, evaluate_iprl_dimension
+    from .kernels.tmrl import RULE_VERSION as TMRL_VERSION, evaluate_tmrl_dimension
+    from .kernels.trl import RULE_VERSION as TRL_VERSION, evaluate_trl_dimension
+
+    registry = {
+        ("BRL", BRL_VERSION): evaluate_brl_dimension,
+        ("FRL", FRL_VERSION): evaluate_frl_dimension,
+        ("IPRL", IPRL_VERSION): evaluate_iprl_dimension,
+        ("TMRL", TMRL_VERSION): evaluate_tmrl_dimension,
+        ("TRL", TRL_VERSION): evaluate_trl_dimension,
+    }
+    return registry.get((dimension_id, rule_version))
+
+
+def _execution_failed_dimension(dimension: dict, errors: list[dict]) -> dict:
+    """按runner现行合同重建执行失败输出。"""
+    for item in dimension["criteria"]:
+        item["native_disposition"] = None
+        item["product_status"] = "execution_failed"
+    dimension.update(product_status="execution_failed", attained_level=None,
+                     first_unmet_level=None, execution_errors=errors)
+    return dimension
+
+
+def _recompute_dimension_from_frozen(frozen: dict) -> tuple[dict | None, str | None]:
+    dimension_id = frozen.get("dimension_id")
+    rule_version = frozen.get("rule_version")
+    evaluator = _dimension_evaluator(dimension_id, rule_version)
+    if evaluator is None:
+        return None, f"维度方法版本无对应确定性evaluator：{dimension_id}/{rule_version}"
+    criteria = frozen.get("criteria")
+    reviews = frozen.get("reviews")
+    scope = frozen.get("scope")
+    if not isinstance(criteria, list) or not isinstance(reviews, list):
+        return None, "维度冻结criteria/reviews结构非法"
+    try:
+        if dimension_id == "FRL":
+            dimension = evaluator(
+                criteria, reviews, scope=scope,
+                financing_entity=frozen.get("financing_entity") or {},
+                applicability=frozen.get("applicability"))
+        else:
+            dimension = evaluator(
+                criteria, reviews, scope=scope,
+                assessment_unit=frozen.get("assessment_scope") or {})
+    except Exception as exc:
+        return None, f"冻结输入重新求值失败：{type(exc).__name__}: {exc}"
+    rejected = frozen.get("rejected_reviews") or []
+    if rejected:
+        dimension = _execution_failed_dimension(dimension, rejected)
+    publish_errors = frozen.get("publish_validation_errors")
+    if publish_errors and not rejected:
+        dimension = _execution_failed_dimension(dimension, [{
+            "review_id": "__publish_validation__",
+            "reason": "发布前完整维度绑定核验失败",
+            "broken": publish_errors,
+        }])
+    return dimension, None
+
+
 def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
                                result: dict) -> list[str]:
     """非CRL维度发布前与读时trace共用的完整绑定核验。"""
@@ -844,12 +908,44 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
 
     broken: list[str] = []
     frozen = result.get("frozen_inputs") or {}
+    if result.get("schema_version") not in {
+            "kth-hybrid.dimension-result.v1",
+            "kth-hybrid.dimension-result.v2"}:
+        broken.append("维度结果schema_version不受支持")
+    if result.get("schema_version") == "kth-hybrid.dimension-result.v2" \
+            and frozen.get("result_contract_version") != result.get("schema_version"):
+        broken.append("维度结果合同版本未进入冻结输入")
     digest = sha256_hex(json.dumps(
         frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     dimension_id = frozen.get("dimension_id")
     if result.get("input_digest") != digest \
             or result.get("result_id") != f"DIMR2::{dimension_id}::{digest}":
         broken.append("维度结果身份或冻结摘要不一致")
+    from .catalog import APPROVED_WHEEL_SHA256, build_catalog_from_wheel
+    if frozen.get("catalog_sha256") != APPROVED_WHEEL_SHA256:
+        broken.append("维度catalog SHA256与批准wheel不一致")
+    else:
+        try:
+            expected_criteria = build_catalog_from_wheel()["dimensions"][
+                dimension_id]["registry"]["criteria"]
+        except Exception as exc:
+            broken.append(f"维度catalog无法重建：{exc}")
+        else:
+            if frozen.get("criteria") != expected_criteria:
+                broken.append("维度criteria集合或排序与批准catalog不一致")
+    saved_dimension = result.get("dimension") or {}
+    if saved_dimension.get("dimension") != dimension_id \
+            or saved_dimension.get("scope") != frozen.get("scope") \
+            or saved_dimension.get("rule_version") != frozen.get("rule_version"):
+        broken.append("维度输出身份、scope或rule_version与冻结输入不一致")
+    if any(item.get("rule_version") != frozen.get("rule_version")
+           for item in saved_dimension.get("criteria") or []):
+        broken.append("准则结果rule_version与冻结方法版本不一致")
+    recomputed_dimension, recompute_error = _recompute_dimension_from_frozen(frozen)
+    if recompute_error:
+        broken.append(recompute_error)
+    elif recomputed_dimension != saved_dimension:
+        broken.append("维度完整求值输出与冻结输入重算结果不一致")
     version = frozen.get("case_basis_version")
     current_basis = case.get_case_basis_version(version) if version else None
     if current_basis is None or {
@@ -905,10 +1001,15 @@ def trace_dimension_result(case: CaseStore, blobs: BlobStore,
         return {"result_id": result_id, "ok": False,
                 "broken": [f"维度结果blob不可读：{exc}"]}
     broken = validate_dimension_payload(case, blobs, result)
+    frozen = result.get("frozen_inputs") or {}
+    dimension = result.get("dimension") or {}
     if result.get("result_id") != result_id \
             or result.get("input_digest") != row["input_digest"] \
-            or (result.get("frozen_inputs") or {}).get("dimension_id") \
-            != row["dimension_id"]:
+            or frozen.get("dimension_id") != row["dimension_id"] \
+            or frozen.get("case_basis_version") != row["case_basis_version"] \
+            or frozen.get("scope") != row["scope"] \
+            or frozen.get("scope_id") != row["scope_id"] \
+            or dimension.get("product_status") != row["product_status"]:
         broken.append("维度结果记录与内容寻址对象不一致")
     return {
         "result_id": result_id,

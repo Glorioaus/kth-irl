@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 
-RULE_VERSION = "kth-hybrid.brl.night.v1"
+RULE_VERSION = "kth-hybrid.brl.night.v2"
 RULE_REQUIREMENTS: dict[str, str] = {
     "BRL1-BM": "business_idea_or_model_stated",
     "BRL1-MO": "market_hypothesis_stated",
@@ -88,17 +88,39 @@ def _support_satisfies(criterion_id: str, review: dict[str, Any]) -> bool:
     findings = review["findings"]
     if findings.get(RULE_REQUIREMENTS[criterion_id]) is not True:
         return False
+    criterion_level = int(criterion_id[3])
+    transaction_classes = {
+        "qualified_pricing_test", "qualified_preorder",
+        "pilot_or_test_sale", "commercial_sale"}
+    if criterion_id.endswith("-BM") and criterion_level >= 5 \
+            and review["evidence_class"] in transaction_classes:
+        allowed = {
+            "incentive_compatible_price_test", "non_refundable_deposit",
+            "paid_preorder", "delivered_sale", "repeat_sale"}
+        if criterion_level >= 6:
+            allowed = {"non_refundable_deposit", "paid_preorder",
+                       "delivered_sale", "repeat_sale"}
+        if criterion_level >= 7:
+            allowed = {"delivered_sale", "repeat_sale"}
+        if findings.get("transaction_commitment") not in allowed:
+            return False
     if criterion_id == "BRL6-BM" \
             and review["evidence_class"] == "qualified_preorder":
         required = ("amount_qualified", "refundability_visible",
                     "intended_price_bridge", "fulfillment_status_visible",
                     "buyer_status_qualified", "denominator_visible")
-        if not all(findings.get(key) is True for key in required):
+        if not all(findings.get(key) is True for key in required) \
+                or findings.get("refundable") is not False:
             return False
+    if criterion_id == "BRL6-BM" \
+            and review["evidence_class"] in {"pilot_or_test_sale", "commercial_sale"} \
+            and findings.get("fulfilled") is not True:
+        return False
     if criterion_id == "BRL7-BM":
         customers = findings.get("customer_ids")
         if findings.get("commercial_terms") is not True \
                 or findings.get("delivered") is not True \
+                or findings.get("fulfilled") is not True \
                 or not isinstance(customers, list) \
                 or len({item for item in customers
                         if isinstance(item, str) and item.strip()}) < 2:
@@ -107,6 +129,17 @@ def _support_satisfies(criterion_id: str, review: dict[str, Any]) -> bool:
         if not all(isinstance(findings.get(key), str)
                    and findings[key].strip()
                    for key in ("operating_period", "metric_denominator")):
+            return False
+        actual = findings.get("actual_metrics")
+        target = findings.get("target_metrics")
+        metrics = ("profit", "growth") if criterion_id == "BRL8-BM" \
+            else ("profit", "growth", "scalability")
+        if not isinstance(actual, dict) or not isinstance(target, dict) \
+                or any(not isinstance(actual.get(key), (int, float))
+                       or isinstance(actual.get(key), bool)
+                       or not isinstance(target.get(key), (int, float))
+                       or isinstance(target.get(key), bool)
+                       or actual[key] < target[key] for key in metrics):
             return False
     return True
 
