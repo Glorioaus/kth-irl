@@ -34,9 +34,13 @@ _CONFIRMATION_FIELDS = {
 _MAX_AUTHORITY_TEXT_LENGTH = 65536
 _MAX_AUTHORITY_STRUCTURE_DEPTH = 16
 _MAX_JSON_DECODE_LAYERS = 16
-_FORBIDDEN_DECISION_KEY_TOKENS = {
-    "finaldecision", "investmentrecommendation",
-}
+_MAX_AUTHORITY_KEY_LENGTH = 256
+_MAX_AUTHORITY_TOTAL_STRING_CHARS = 262144
+_MAX_AUTHORITY_NODES = 4096
+_MAX_AUTHORITY_CONTAINER_WIDTH = 1024
+_MAX_JSON_ESCAPE_DECODE_PASSES = 4
+_JSON_COMPATIBLE_ESCAPE = re.compile(
+    r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})')
 _FORBIDDEN_COUNSEL_AUTHORITY = re.compile(
     r"(?:\b(?:CRL|TRL|BRL|IPRL|TMRL|FRL)\s*(?:为|达到|=|:|：)\s*[1-9]\b|"
     r"(?:达到|评为|定为)\s*\b(?:CRL|TRL|BRL|IPRL|TMRL|FRL)\s*[1-9]\b|"
@@ -68,21 +72,58 @@ def _canonical_authority_key(value: str) -> str:
     return re.sub(r"[\s_-]+", "", normalized)
 
 
+_FORBIDDEN_OUTPUT_KEY_TOKENS = frozenset(
+    _canonical_authority_key(key) for key in FORBIDDEN_OUTPUT_KEYS)
+
+
+def _decode_json_escapes_for_validation(value: str) -> str:
+    simple = {
+        '"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f",
+        "n": "\n", "r": "\r", "t": "\t",
+    }
+    decoded = value
+    for _ in range(_MAX_JSON_ESCAPE_DECODE_PASSES):
+        def replace(match):
+            escape = match.group(0)[1:]
+            if escape.startswith("u"):
+                return chr(int(escape[1:], 16))
+            return simple[escape]
+
+        next_value = _JSON_COMPATIBLE_ESCAPE.sub(replace, decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded
+
+
 def _scan_authority(value, path="root"):
     stack = [(value, path, 1, 0)]
+    node_count = 0
+    total_string_chars = 0
     while stack:
         item, item_path, depth, json_layers = stack.pop()
+        node_count += 1
+        if node_count > _MAX_AUTHORITY_NODES:
+            raise ValueError("角色验证节点数超过4096，拒绝继续扫描")
         if isinstance(item, dict):
             if depth > _MAX_AUTHORITY_STRUCTURE_DEPTH:
                 raise ValueError(
                     "角色验证结构深度超过16层，拒绝继续扫描")
-            forbidden = FORBIDDEN_OUTPUT_KEYS & set(item)
-            canonical_forbidden = {
-                key for key in item if isinstance(key, str)
-                and _canonical_authority_key(key)
-                in _FORBIDDEN_DECISION_KEY_TOKENS
-            }
-            forbidden.update(canonical_forbidden)
+            if len(item) > _MAX_AUTHORITY_CONTAINER_WIDTH:
+                raise ValueError("角色验证容器宽度超过1024项，拒绝继续扫描")
+            forbidden = set()
+            for key in item:
+                if not isinstance(key, str):
+                    continue
+                if len(key) > _MAX_AUTHORITY_KEY_LENGTH:
+                    raise ValueError("角色验证dict键长度超过256字符")
+                total_string_chars += len(key)
+                if total_string_chars > _MAX_AUTHORITY_TOTAL_STRING_CHARS:
+                    raise ValueError(
+                        "角色验证累计字符串字符超过262144，拒绝继续扫描")
+                if _canonical_authority_key(key) \
+                        in _FORBIDDEN_OUTPUT_KEY_TOKENS:
+                    forbidden.add(key)
             if forbidden:
                 raise ValueError(
                     f"角色越权字段 {item_path}: {sorted(forbidden)}")
@@ -93,6 +134,8 @@ def _scan_authority(value, path="root"):
             if depth > _MAX_AUTHORITY_STRUCTURE_DEPTH:
                 raise ValueError(
                     "角色验证结构深度超过16层，拒绝继续扫描")
+            if len(item) > _MAX_AUTHORITY_CONTAINER_WIDTH:
+                raise ValueError("角色验证容器宽度超过1024项，拒绝继续扫描")
             for index, nested in enumerate(item):
                 stack.append((nested, f"{item_path}[{index}]", depth + 1,
                               json_layers))
@@ -100,9 +143,15 @@ def _scan_authority(value, path="root"):
             if len(item) > _MAX_AUTHORITY_TEXT_LENGTH:
                 raise ValueError(
                     "角色验证文本长度超过65536字符，拒绝继续扫描")
+            total_string_chars += len(item)
+            if total_string_chars > _MAX_AUTHORITY_TOTAL_STRING_CHARS:
+                raise ValueError(
+                    "角色验证累计字符串字符超过262144，拒绝继续扫描")
             normalized = unicodedata.normalize("NFKC", item)
-            if _FORBIDDEN_COUNSEL_AUTHORITY.search(normalized) \
-                    or _FORBIDDEN_DECISION_ASSIGNMENT.search(normalized):
+            assignment_view = unicodedata.normalize(
+                "NFKC", _decode_json_escapes_for_validation(item))
+            if _FORBIDDEN_COUNSEL_AUTHORITY.search(assignment_view) \
+                    or _FORBIDDEN_DECISION_ASSIGNMENT.search(assignment_view):
                 raise ValueError(
                     f"角色越权文本 {item_path}：不得赋值成熟度或投资决定")
             stripped = normalized.strip()
