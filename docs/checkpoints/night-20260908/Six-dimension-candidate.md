@@ -1,6 +1,6 @@
 # 六维离线候选汇总
 
-状态：执行方本地自检候选，独立审核待进行；不是正式评估、报告或投资决定。
+状态：原索引独立验收未通过；显式manifest v1与六维视图v2为限定整改候选，等待复验。
 
 `aggregate.build_offline_dimension_view`只读取同一CaseBasis版本和主体scope下实际存在且trace通过的
 CRL、BRL、TRL、IPRL、TMRL、FRL结果；缺维、错scope、错版本、重复维度或断链均拒绝汇总。
