@@ -194,6 +194,51 @@ def test_validate_dimension_index_accepts_iterable_rows_and_exact_version_map():
     assert set(indexed) == EXPECTED_DIMENSIONS
 
 
+@pytest.mark.parametrize("dimension,field,value,match", [
+    ("BRL", "rule_version", [], "rule_version|字符串"),
+    ("BRL", "assessment_scope", [], "assessment_scope|字典"),
+    ("BRL", "assessment_scope", ["not-a-dict"], "assessment_scope|字典"),
+    ("FRL", "financing_entity", [], "financing_entity|字典"),
+    ("FRL", "financing_entity", ["not-a-dict"], "financing_entity|字典"),
+])
+def test_validate_dimension_index_rejects_nested_json_type_pollution(
+        dimension, field, value, match):
+    rows = _synthetic_index_rows()
+    target = next(row for row in rows if row["dimension_id"] == dimension)
+    target[field] = value
+    with pytest.raises(ValueError, match=match):
+        validate_dimension_index(rows, scope=SUBJECT, case_basis_version=1)
+
+
+@pytest.mark.parametrize("scope_id", [[], {}, "", "   "])
+def test_validate_dimension_index_rejects_invalid_shared_scope_id(scope_id):
+    rows = _synthetic_index_rows()
+    target = next(row for row in rows if row["dimension_id"] == "BRL")
+    target["scope_id"] = copy.deepcopy(scope_id)
+    target["assessment_scope"]["scope_id"] = copy.deepcopy(scope_id)
+    with pytest.raises(ValueError, match="scope_id|字符串"):
+        validate_dimension_index(rows, scope=SUBJECT, case_basis_version=1)
+
+
+@pytest.mark.parametrize("scope_id", [[], {}, "", "   "])
+def test_validate_dimension_index_rejects_invalid_frl_scope_id(scope_id):
+    rows = _synthetic_index_rows()
+    target = next(row for row in rows if row["dimension_id"] == "FRL")
+    target["scope_id"] = copy.deepcopy(scope_id)
+    target["financing_entity"]["financing_entity_id"] = copy.deepcopy(scope_id)
+    with pytest.raises(ValueError, match="scope_id|字符串"):
+        validate_dimension_index(rows, scope=SUBJECT, case_basis_version=1)
+
+
+@pytest.mark.parametrize("scope_id", [[], {}, "", "   "])
+def test_validate_dimension_index_requires_null_crl_scope_id(scope_id):
+    rows = _synthetic_index_rows()
+    target = next(row for row in rows if row["dimension_id"] == "CRL")
+    target["scope_id"] = scope_id
+    with pytest.raises(ValueError, match="CRL|scope_id|null"):
+        validate_dimension_index(rows, scope=SUBJECT, case_basis_version=1)
+
+
 def test_freeze_requires_registered_profile_id_and_six_exact_result_ids(
         profile_case):
     root, _basis, _catalog, results = profile_case
