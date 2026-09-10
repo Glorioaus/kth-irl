@@ -620,6 +620,12 @@ def test_audit_entry_budget_stops_scandir_iterator_before_overread(
             return False
 
         @staticmethod
+        def stat(*, follow_symlinks):
+            class FakeStat:
+                st_file_attributes = 0
+            return FakeStat()
+
+        @staticmethod
         def is_dir(*, follow_symlinks):
             return False
 
