@@ -16,9 +16,14 @@ from kth_hybrid.catalog import build_catalog_from_wheel
 from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.proposal_requests import (
     ProposalQueueRejected,
+    _claim_from_candidate,
     candidate_claim_id,
 )
-from kth_hybrid.review_queue import ReviewQueueRejected
+from kth_hybrid.review_queue import (
+    ReviewQueueRejected,
+    build_authorized_request,
+    build_request,
+)
 from kth_hybrid.workflow import LocalWorkflow, WorkflowRejected
 
 
@@ -64,6 +69,28 @@ def catalog():
     return build_catalog_from_wheel()
 
 
+def _seal_evaluation_provenance(item):
+    provenance = {
+        "units.json": {
+            "scope_id": UNIT["scope_id"], "subject": SUBJECT,
+            "kind": UNIT["unit_kind"], "label": UNIT["unit_label"],
+        },
+        "financing.json": {
+            "entity": FINANCING["financing_entity_id"], "subject": SUBJECT,
+            "units": FINANCING["assessment_unit_refs"],
+        },
+        "frl.json": {
+            "planned": False, "entity": FINANCING["financing_entity_id"],
+            "subject": SUBJECT,
+        },
+    }
+    for filename, body in provenance.items():
+        ref = item.blobs.put_bytes(json.dumps(
+            body, ensure_ascii=False).encode("utf-8"))
+        item.store.add_import_record(
+            "case_provenance", f"session:{filename}", ref.sha256)
+
+
 @pytest.fixture()
 def workflow(tmp_path):
     item = LocalWorkflow(tmp_path / "case")
@@ -72,6 +99,7 @@ def workflow(tmp_path):
         identity, ensure_ascii=False).encode("utf-8"))
     item.store.add_import_record(
         "case_provenance", "session:identity.json", identity_blob.sha256)
+    _seal_evaluation_provenance(item)
     item.initialize_case(
         subject_legal_name=SUBJECT,
         subject_aliases=[],
@@ -211,8 +239,8 @@ def test_v2_job_identity_changes_with_complete_evaluation_input(
     imported, projection = _source_projection(workflow, tmp_path)
     first = _create_candidate_job(workflow, catalog, imported, projection)
     changed = _evaluation_inputs()
-    changed["financing_entity"]["financing_entity_id"] = "FIN-OTHER"
-    changed["frl_applicability"]["financing_entity_id"] = "FIN-OTHER"
+    changed["method_versions"]["candidate_proposal"] = \
+        "kth-local.candidate-proposal.v2"
     second = workflow.create_candidate_job(
         evaluation_inputs=changed,
         proposal_specs=[_proposal_spec(imported, projection)],
@@ -256,6 +284,20 @@ def test_v2_job_rejects_noncanonical_evaluation_input_relations(
     else:
         inputs["frl_applicability"]["financing_entity_id"] = "FIN-OTHER"
     with pytest.raises(WorkflowRejected):
+        workflow.create_candidate_job(
+            evaluation_inputs=inputs,
+            proposal_specs=[_proposal_spec(imported, projection)],
+            catalog=catalog,
+        )
+
+
+def test_v2_job_rejects_shape_valid_but_unresolvable_field_reference(
+        workflow, tmp_path, catalog):
+    imported, projection = _source_projection(workflow, tmp_path)
+    inputs = _evaluation_inputs()
+    inputs["assessment_unit"]["unit_label_ref"] = {
+        "kind": "field_reference", "path": "case:units.json#/missing"}
+    with pytest.raises(WorkflowRejected, match="引用|字段|解析"):
         workflow.create_candidate_job(
             evaluation_inputs=inputs,
             proposal_specs=[_proposal_spec(imported, projection)],
@@ -444,7 +486,8 @@ def test_requested_use_and_canonical_evidence_class_are_revalidated_at_consume(
             subject_source_basis=json.dumps({
                 "kind": "field_reference", "path": "case:identity.json#/subject",
                 "status": "claimed"}),
-        )
+            )
+        _seal_evaluation_provenance(other)
         imported2, projection2 = _source_projection(other, tmp_path / "other-files")
         job2 = _create_candidate_job(other, catalog, imported2, projection2)
         request2 = other.proposals.get_request(job2["proposal_request_ids"][0])
@@ -503,7 +546,8 @@ def test_candidate_materialization_rolls_back_as_one_transaction(
     def fail_request(*, job_id, authorization):
         raise RuntimeError("注入：专业请求落库前中断")
 
-    monkeypatch.setattr(workflow.reviews, "build_authorized_request", fail_request)
+    monkeypatch.setattr(
+        workflow.reviews, "build_trusted_authorized_request", fail_request)
     with pytest.raises(RuntimeError, match="注入"):
         workflow.proposals.consume_response(
             sealed["response_id"], worker_id="consumer", catalog=catalog)
@@ -511,6 +555,162 @@ def test_candidate_materialization_rolls_back_as_one_transaction(
     assert workflow.store.fetch_all("qualifications") == []
     assert workflow.proposals.get_response(sealed["response_id"])["status"] == \
         "proposal_response_sealed"
+
+
+def test_existing_qualification_conflict_rejects_whole_materialization(
+        workflow, tmp_path, catalog):
+    imported, projection = _source_projection(workflow, tmp_path)
+    job = _create_candidate_job(workflow, catalog, imported, projection)
+    request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+    sealed = workflow.proposals.seal_response(
+        request["request_id"], _response(request), source_mode="manual_import")
+    source = workflow.store.fetch_one("sources", "source_id", request["source_id"])
+    claim = _claim_from_candidate(
+        request, sealed["candidates"][0], source,
+        proposal_response_id=sealed["response_id"])
+    workflow.store.add_claim(
+        claim["claim_id"], claim["source_id"],
+        locator_kind=claim["locator_kind"],
+        excerpt_start=claim["locator_start"], excerpt_end=claim["locator_end"],
+        excerpt_sha256=claim["excerpt_sha256"],
+        excerpt_text=claim["excerpt_text"], interpretation=claim["interpretation"],
+        subject_scope=claim["subject_scope"],
+        interpretation_attempt=claim["interpretation_attempt"],
+        locator_ref=claim["locator_ref"], input_digest=claim["input_digest"],
+        content_digest=claim["content_digest"])
+    workflow.store.add_qualification(
+        f"QUALR::{claim['claim_id']}", claim["claim_id"],
+        source_judgment="冲突来源判断", identity_judgment="冲突身份判断",
+        time_judgment="冲突时间判断", independence_judgment="冲突独立性判断",
+        allowed_uses=["company_self_statement"], cannot_prove=[],
+        review_attempt="旧冲突记录", status="qualified")
+
+    with pytest.raises(ProposalQueueRejected, match="Qualification|资格|冲突"):
+        workflow.proposals.consume_response(
+            sealed["response_id"], worker_id="consumer", catalog=catalog)
+    assert workflow.store.get_review_authorization(
+        "REVAUTH::" + "0" * 64) is None
+    assert workflow.store.fetch_review_requests(job["job_id"]) == []
+    assert workflow.proposals.get_response(sealed["response_id"])["status"] == \
+        "proposal_response_sealed"
+
+
+@pytest.mark.parametrize("journal_state", ["claimed", "dispatch_recorded"])
+def test_proposal_consume_fencing_precedes_all_database_materialization(
+        workflow, tmp_path, catalog, journal_state):
+    imported, projection = _source_projection(workflow, tmp_path)
+    job = _create_candidate_job(workflow, catalog, imported, projection)
+    request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+    sealed = workflow.proposals.seal_response(
+        request["request_id"], _response(request), source_mode="manual_import")
+    task_key = f"proposal-consume:{sealed['response_id']}"
+    workflow.journal.ensure_task(task_key, sealed["response_digest"])
+    claim = workflow.journal.claim(
+        task_key, "other-worker", sealed["response_digest"])
+    if journal_state == "dispatch_recorded":
+        workflow.journal.record_dispatch(claim)
+
+    with pytest.raises(ProposalQueueRejected, match="认领|派发|unknown|fenc|任务"):
+        workflow.proposals.consume_response(
+            sealed["response_id"], worker_id="consumer", catalog=catalog)
+    assert workflow.store.fetch_all("claims") == []
+    assert workflow.store.fetch_all("qualifications") == []
+    assert workflow.store.fetch_review_requests(job["job_id"]) == []
+    assert workflow.proposals.get_response(sealed["response_id"])["status"] == \
+        "proposal_response_sealed"
+
+
+def test_post_database_commit_crash_requires_complete_bundle_before_safe_seal(
+        workflow, tmp_path, catalog, monkeypatch):
+    imported, projection = _source_projection(workflow, tmp_path)
+    job = _create_candidate_job(workflow, catalog, imported, projection)
+    request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+    sealed = workflow.proposals.seal_response(
+        request["request_id"], _response(request), source_mode="manual_import")
+    original_commit = workflow.journal.commit
+
+    def crash_after_database(commit_claim, output_ref):
+        if commit_claim.task_key.startswith("proposal-consume:"):
+            raise RuntimeError("注入：数据库提交后Journal封账前崩溃")
+        return original_commit(commit_claim, output_ref)
+
+    monkeypatch.setattr(workflow.journal, "commit", crash_after_database)
+    with pytest.raises(RuntimeError, match="Journal封账前"):
+        workflow.proposals.consume_response(
+            sealed["response_id"], worker_id="consumer", catalog=catalog)
+    consumed = workflow.proposals.get_response(sealed["response_id"])
+    authorization_id = consumed["materialization"]["authorization_ids"][0]
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "DELETE FROM review_authorizations WHERE authorization_id=?",
+            (authorization_id,))
+    monkeypatch.setattr(workflow.journal, "commit", original_commit)
+    with pytest.raises(ProposalQueueRejected, match="完整|物化|authorization|授权"):
+        workflow.proposals.consume_response(
+            sealed["response_id"], worker_id="recovery", catalog=catalog)
+    assert workflow.journal.task_state(
+        f"proposal-consume:{sealed['response_id']}")["state"] == "claimed"
+
+
+@pytest.mark.parametrize("tamper", ["canonical", "profile"])
+def test_self_consistent_but_untrusted_authorization_cannot_be_added(
+        workflow, tmp_path, catalog, tamper):
+    imported, projection = _source_projection(workflow, tmp_path)
+    job = _create_candidate_job(workflow, catalog, imported, projection)
+    request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+    sealed = workflow.proposals.seal_response(
+        request["request_id"], _response(request), source_mode="manual_import")
+    consumed = workflow.proposals.consume_response(
+        sealed["response_id"], worker_id="consumer", catalog=catalog)
+    authorization = workflow.store.get_review_authorization(
+        consumed["materialization"]["authorization_ids"][0])
+    forged = copy.deepcopy(authorization)
+    if tamper == "canonical":
+        forged["canonical_criterion"]["text"] = "调用方伪造准则正文"
+    else:
+        forged["evaluation_inputs"]["profile"]["profile_digest"] = "0" * 64
+    body = {key: value for key, value in forged.items()
+            if key != "authorization_id"}
+    forged["authorization_id"] = "REVAUTH::" + hashlib.sha256(json.dumps(
+        body, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    forged_request = build_authorized_request(
+        job_id=job["job_id"], authorization=forged)
+    with pytest.raises(ReviewQueueRejected, match="信任|存储|catalog|profile|授权"):
+        workflow.reviews.add_request(forged_request)
+
+
+def test_legacy_v1_public_creation_add_and_seal_are_restricted(
+        workflow, tmp_path):
+    with pytest.raises(WorkflowRejected, match="legacy_restricted"):
+        workflow.create_job(
+            assessment_unit=UNIT,
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS,
+            review_specs=[])
+
+    legacy_job = {
+        "schema_version": "kth-local.workflow-job.v1",
+        "job_id": "JOB::legacy-history",
+        "input_digest": "1" * 64,
+        "state": "awaiting_authorized_analysis",
+    }
+    legacy_payload = {
+        "source_id": "SRC-LEGACY", "blob_sha256": "2" * 64,
+        "projection_id": "PROJ::legacy", "locator": {"paragraph": 1},
+        "quote_sha256": "3" * 64, "output_schema": "review_response.v1",
+    }
+    legacy = build_request(job_id=legacy_job["job_id"], payload=legacy_payload)
+    workflow.store.add_workflow_bundle(legacy_job, [legacy])
+    assert workflow.reviews.get_request(legacy["request_id"])["request_id"] == \
+        legacy["request_id"]
+    with pytest.raises(ReviewQueueRejected, match="legacy_restricted"):
+        workflow.reviews.add_request(build_request(
+            job_id=legacy_job["job_id"],
+            payload={**legacy_payload, "quote_sha256": "4" * 64}))
+    with pytest.raises(ReviewQueueRejected, match="legacy_restricted"):
+        workflow.reviews.seal_response(
+            legacy["request_id"], {}, source_mode="manual_import")
 
 
 def test_legacy_v1_request_is_readable_but_cannot_materialize_authorization(
