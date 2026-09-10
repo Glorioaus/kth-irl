@@ -550,6 +550,22 @@ def test_read_time_rejects_tampered_request_and_response_body(workflow, tmp_path
     with pytest.raises(ReviewQueueRejected, match="封存|身份|正文"):
         workflow.reviews.consume_response(
             sealed["response_id"], worker_id="consumer")
+
+
+def test_status_rebuilds_content_addressed_job_before_reporting(workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    row = workflow.store._conn.execute(
+        "SELECT body_json FROM workflow_jobs WHERE job_id=?",
+        (job["job_id"],)).fetchone()
+    forged = json.loads(row[0])
+    forged["method_versions"]["candidate_method"] = "forged.v99"
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE workflow_jobs SET body_json=? WHERE job_id=?",
+            (json.dumps(forged, ensure_ascii=False, sort_keys=True), job["job_id"]))
+    with pytest.raises(WorkflowRejected, match="job|身份|改写"):
+        workflow.status(job["job_id"])
     response = _valid_response(request)
     response["citations"][0]["quote_sha256"] = "0" * 64
     with pytest.raises(ReviewQueueRejected, match="引用|闭包"):
@@ -569,6 +585,9 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
             "SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"workflow_jobs", "attachment_imports", "text_projections",
                 "review_requests", "review_responses", "tasks"} <= tables
+        assert workflow.store._conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
+            "kth-hybrid.store.v4"
         workflow.journal.ensure_task("mechanical:test", "input-1")
         verifier = Journal(db)
         assert verifier.task_state("mechanical:test")["input_id"] == "input-1"
