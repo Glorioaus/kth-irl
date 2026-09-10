@@ -325,6 +325,11 @@ def test_export_creates_new_verification_package_with_verified_hash_manifest(tmp
 
 def test_json_inputs_and_outputs_have_stable_chinese_errors(tmp_path):
     case_dir = tmp_path / "case"
+    _run(
+        "case", "create", "--case-dir", str(case_dir),
+        "--subject-legal-name", "合成主体有限公司",
+        "--evidence-cutoff", "2026-09-09T00:00:00Z",
+        "--subject-source-basis", "synthetic:test")
     broken = tmp_path / "broken.json"
     broken.write_text("{not-json", encoding="utf-8")
     result = _run(
