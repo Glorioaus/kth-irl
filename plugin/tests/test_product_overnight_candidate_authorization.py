@@ -12,8 +12,9 @@ from kth_hybrid.aggregation_profiles import (
     CURRENT_AGGREGATION_PROFILE_ID,
     get_aggregation_profile,
 )
+from kth_hybrid.audit import _verify_projection
 from kth_hybrid.catalog import build_catalog_from_wheel
-from kth_hybrid.contracts import sha256_hex
+from kth_hybrid.contracts import qualification_content_digest, sha256_hex
 from kth_hybrid.proposal_requests import (
     ProposalQueueRejected,
     _claim_from_candidate,
@@ -234,6 +235,21 @@ def test_v2_job_freezes_complete_inputs_and_waits_for_candidate_proposal(
     assert workflow.store.fetch_all("qualifications") == []
 
 
+def test_docx_zip_member_trace_rebuild_uses_complete_sealed_document(
+        workflow, tmp_path):
+    imported, projection = _source_projection(workflow, tmp_path)
+    claim = {
+        "locator_kind": "zip_member",
+        "locator_ref": json.dumps({
+            "member": "word/document.xml",
+            **projection["locator"],
+        }, ensure_ascii=False),
+        "excerpt_sha256": projection["text_sha256"],
+    }
+    assert _verify_projection(
+        claim, workflow.blobs.read_bytes(imported["blob_sha256"])) is None
+
+
 def test_v2_job_identity_changes_with_complete_evaluation_input(
         workflow, tmp_path, catalog):
     imported, projection = _source_projection(workflow, tmp_path)
@@ -421,6 +437,8 @@ def test_seal_then_consume_materializes_real_qualification_and_v2_authorization(
     assert authorization["schema_version"] == "review_authorization.v1"
     assert "result_id" not in authorization
     assert authorization["qualification_input_view"] == view["view"]
+    assert authorization["qualification_digest"] == \
+        qualification_content_digest(qualification)
     assert authorization["requested_use"] == "third_party_reported_fact"
     assert authorization["requested_use"] in authorization["allowed_uses"]
     assert authorization["canonical_criterion"]["criterion_id"] == "TRL4-C1"
@@ -595,7 +613,8 @@ def test_existing_qualification_conflict_rejects_whole_materialization(
         "proposal_response_sealed"
 
 
-@pytest.mark.parametrize("journal_state", ["claimed", "dispatch_recorded"])
+@pytest.mark.parametrize(
+    "journal_state", ["claimed", "dispatch_recorded", "outcome_unknown"])
 def test_proposal_consume_fencing_precedes_all_database_materialization(
         workflow, tmp_path, catalog, journal_state):
     imported, projection = _source_projection(workflow, tmp_path)
@@ -607,8 +626,10 @@ def test_proposal_consume_fencing_precedes_all_database_materialization(
     workflow.journal.ensure_task(task_key, sealed["response_digest"])
     claim = workflow.journal.claim(
         task_key, "other-worker", sealed["response_digest"])
-    if journal_state == "dispatch_recorded":
+    if journal_state in {"dispatch_recorded", "outcome_unknown"}:
         workflow.journal.record_dispatch(claim)
+    if journal_state == "outcome_unknown":
+        workflow.journal.mark_recovered_unknown(task_key)
 
     with pytest.raises(ProposalQueueRejected, match="认领|派发|unknown|fenc|任务"):
         workflow.proposals.consume_response(
