@@ -438,3 +438,54 @@ def test_v1_manifest_rejects_extra_fields_even_when_resealed(
             build_offline_dimension_view(case, blobs, resealed)
     finally:
         case.close()
+
+
+@pytest.mark.parametrize("schema_version,corruption", [
+    (LEGACY_MANIFEST_SCHEMA, "dimensions_list"),
+    (MANIFEST_SCHEMA, "dimensions_list"),
+    (LEGACY_MANIFEST_SCHEMA, "dimensions_wrong_key"),
+    (MANIFEST_SCHEMA, "dimensions_wrong_key"),
+    (LEGACY_MANIFEST_SCHEMA, "expected_versions_list"),
+    (MANIFEST_SCHEMA, "profile_id_list"),
+    (MANIFEST_SCHEMA, "profile_digest_list"),
+])
+def test_manifest_rejects_nested_container_corruption_with_value_error(
+        profile_case, schema_version, corruption):
+    root, _basis, _catalog, results = profile_case
+    case = CaseStore(root / "records.sqlite3")
+    blobs = BlobStore(root / "blobs")
+    try:
+        current = freeze_aggregation_manifest(
+            case, blobs, {dimension: result["result_id"]
+                          for dimension, result in results.items()},
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID)
+        if schema_version == MANIFEST_SCHEMA:
+            body = {key: copy.deepcopy(value)
+                    for key, value in current.items()
+                    if key not in {"manifest_id", "manifest_digest"}}
+        else:
+            body = {
+                "schema_version": LEGACY_MANIFEST_SCHEMA,
+                "case_basis_version": current["case_basis_version"],
+                "scope": current["scope"],
+                "expected_rule_versions": {
+                    dimension: row["rule_version"]
+                    for dimension, row in current["dimensions"].items()
+                },
+                "dimensions": copy.deepcopy(current["dimensions"]),
+            }
+        if corruption == "dimensions_list":
+            body["dimensions"] = ["bad"]
+        elif corruption == "dimensions_wrong_key":
+            body["dimensions"]["WRONG"] = body["dimensions"].pop("CRL")
+        elif corruption == "expected_versions_list":
+            body["expected_rule_versions"] = sorted(EXPECTED_DIMENSIONS)
+        elif corruption == "profile_id_list":
+            body["profile_id"] = [CURRENT_AGGREGATION_PROFILE_ID]
+        elif corruption == "profile_digest_list":
+            body["profile_digest"] = [body["profile_digest"]]
+        resealed = _manifest_identity(body)
+        with pytest.raises(ValueError, match="manifest|dimensions|维度|profile|版本"):
+            build_offline_dimension_view(case, blobs, resealed)
+    finally:
+        case.close()
