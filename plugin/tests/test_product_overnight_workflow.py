@@ -611,7 +611,7 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
                 "review_requests", "review_responses", "tasks"} <= tables
         assert workflow.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-            "kth-hybrid.store.v4"
+            "kth-hybrid.store.v5"
         workflow.journal.ensure_task("mechanical:test", "input-1")
         verifier = Journal(db)
         assert verifier.task_state("mechanical:test")["input_id"] == "input-1"
@@ -619,6 +619,106 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
         if verifier is not None:
             verifier.close()
         workflow.close()
+
+
+def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
+        tmp_path):
+    root = tmp_path / "legacy-v4-duplicates"
+    root.mkdir()
+    first_path = root / "a.txt"
+    second_path = root / "b.md"
+    payload = "同一原件正文。".encode("utf-8")
+    first_path.write_bytes(payload)
+    second_path.write_bytes(payload)
+    blobs = BlobStore(root / "blobs")
+    blob = blobs.put_bytes(payload)
+    legacy = CaseStore(root / "records.sqlite3")
+    try:
+        first_import = legacy.add_import_record(
+            "attachment", str(first_path.resolve()), blob.sha256)
+        second_import = legacy.add_import_record(
+            "attachment", str(second_path.resolve()), blob.sha256)
+        legacy.add_source(
+            "SRC-V4-A", blob.sha256, blob.byte_length,
+            media_type="text/plain", locator=str(first_path.resolve()),
+            source_family="owner_attachment", capture_status="attachment_saved",
+            import_id=first_import)
+        legacy.add_source(
+            "SRC-V4-B", blob.sha256, blob.byte_length,
+            media_type="text/markdown", locator=str(second_path.resolve()),
+            source_family="owner_attachment", capture_status="attachment_saved",
+            import_id=second_import)
+        with legacy._conn:
+            legacy._conn.execute("DROP TABLE attachment_aliases")
+            legacy._conn.execute(
+                "DROP INDEX IF EXISTS idx_attachment_imports_content")
+            legacy._conn.execute(
+                "CREATE UNIQUE INDEX idx_attachment_imports_content "
+                "ON attachment_imports(blob_sha256,media_type)")
+            legacy._conn.executemany(
+                "INSERT INTO attachment_imports("
+                "attachment_id,origin_path,blob_sha256,byte_length,"
+                "original_filename,media_type,status,error,import_id,source_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [
+                    ("ATTIMP::legacy-a", str(first_path.resolve()), blob.sha256,
+                     blob.byte_length, "a.txt", "text/plain", "saved", None,
+                     first_import, "SRC-V4-A"),
+                    ("ATTIMP::legacy-b", str(second_path.resolve()), blob.sha256,
+                     blob.byte_length, "b.md", "text/markdown", "saved", None,
+                     second_import, "SRC-V4-B"),
+                ],
+            )
+            legacy._conn.execute(
+                "UPDATE meta SET value='kth-hybrid.store.v4' "
+                "WHERE key='schema_version'")
+    finally:
+        legacy.close()
+
+    migrated = LocalWorkflow(root)
+    try:
+        objects = migrated.store._conn.execute(
+            "SELECT * FROM attachment_imports").fetchall()
+        aliases = migrated.store._conn.execute(
+            "SELECT * FROM attachment_aliases ORDER BY origin_path").fetchall()
+        assert len(objects) == 1
+        assert objects[0]["attachment_id"] == f"ATTACH::{blob.sha256}"
+        assert objects[0]["blob_sha256"] == blob.sha256
+        assert len(aliases) == 2
+        assert {row["origin_path"] for row in aliases} == {
+            str(first_path.resolve()), str(second_path.resolve())}
+        assert {row["media_type"] for row in aliases} == {
+            "text/plain", "text/markdown"}
+        assert {row["source_id"] for row in aliases} == {
+            "SRC-V4-A", "SRC-V4-B"}
+        assert all(row["attachment_id"] == f"ATTACH::{blob.sha256}"
+                   for row in aliases)
+        assert migrated.store._conn.execute(
+            "PRAGMA foreign_key_check").fetchall() == []
+        assert migrated.store._conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
+            "kth-hybrid.store.v5"
+        with pytest.raises(sqlite3.IntegrityError):
+            with migrated.store._conn:
+                migrated.store._conn.execute(
+                    "INSERT INTO attachment_imports("
+                    "attachment_id,origin_path,blob_sha256,byte_length,"
+                    "original_filename,media_type,status,error,import_id,source_id) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    ("ATTIMP::duplicate", "duplicate", blob.sha256,
+                     blob.byte_length, "duplicate.bin", "application/octet-stream",
+                     "unsupported", "duplicate", first_import, None))
+        before_imports = len(migrated.store.fetch_all("import_records"))
+        first = migrated.import_attachments([first_path])[0]
+        second = migrated.import_attachments([second_path])[0]
+        assert first["attachment_id"] == second["attachment_id"] == \
+            f"ATTACH::{blob.sha256}"
+        assert len(migrated.store.fetch_all("import_records")) == before_imports
+        assert migrated.store.count_attachment_imports() == 1
+        assert migrated.store.count_attachment_aliases() == 2
+        assert len(migrated.store.fetch_all("sources")) == 2
+    finally:
+        migrated.close()
 
 
 def test_failed_mechanical_stage_remains_failed_not_business_no(
