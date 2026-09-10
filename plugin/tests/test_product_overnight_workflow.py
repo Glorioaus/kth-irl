@@ -441,6 +441,101 @@ def test_response_wrong_request_identity_or_citation_closure_is_rejected(
     with pytest.raises(ReviewQueueRejected, match="输入身份"):
         workflow.reviews.seal_response(
             request["request_id"], response, source_mode="manual_import")
+
+
+def test_request_order_does_not_change_job_but_all_request_ids_are_frozen(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    first_spec = _review_spec(imported, projection, purpose="目的A")
+    second_spec = _review_spec(imported, projection, purpose="目的B")
+    first = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS, review_specs=[first_spec, second_spec])
+    second = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS, review_specs=[second_spec, first_spec])
+    assert first["job_id"] == second["job_id"]
+    assert len(first["review_request_ids"]) == 2
+    assert first["review_request_ids"] == sorted(first["review_request_ids"])
+
+
+def test_multi_request_job_state_requires_all_responses_to_advance(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS,
+        review_specs=[
+            _review_spec(imported, projection, purpose="目的A"),
+            _review_spec(imported, projection, purpose="目的B"),
+        ])
+    requests = [workflow.reviews.get_request(request_id)
+                for request_id in job["review_request_ids"]]
+    first = workflow.reviews.seal_response(
+        requests[0]["request_id"], _valid_response(requests[0]),
+        source_mode="manual_import")
+    assert workflow.status(job["job_id"])["state"] == \
+        "awaiting_authorized_analysis"
+    second = workflow.reviews.seal_response(
+        requests[1]["request_id"], _valid_response(requests[1]),
+        source_mode="manual_import")
+    assert workflow.status(job["job_id"])["state"] == "response_sealed"
+    workflow.reviews.consume_response(first["response_id"], worker_id="consumer")
+    assert workflow.status(job["job_id"])["state"] == "response_sealed"
+    workflow.reviews.consume_response(second["response_id"], worker_id="consumer")
+    assert workflow.status(job["job_id"])["state"] == "consumed"
+
+
+def test_same_request_rejects_a_different_resealed_response(workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    request = workflow.reviews.get_request(job["review_request_ids"][0])
+    workflow.reviews.seal_response(
+        request["request_id"], _valid_response(request),
+        source_mode="manual_import")
+    changed = _valid_response(request)
+    changed["findings"]["summary"] = "不同正文"
+    with pytest.raises(ReviewQueueRejected, match="不同response|已封存"):
+        workflow.reviews.seal_response(
+            request["request_id"], changed, source_mode="manual_import")
+
+
+def test_read_time_rejects_tampered_request_and_response_body(workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    request_id = job["review_request_ids"][0]
+    request = workflow.reviews.get_request(request_id)
+    original_request_json = workflow.store._conn.execute(
+        "SELECT body_json FROM review_requests WHERE request_id=?",
+        (request_id,)).fetchone()[0]
+    forged = json.loads(original_request_json)
+    forged["purpose"] = "被改写的目的"
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE review_requests SET body_json=? WHERE request_id=?",
+            (json.dumps(forged, ensure_ascii=False, sort_keys=True), request_id))
+    with pytest.raises(ReviewQueueRejected, match="身份|重建"):
+        workflow.reviews.get_request(request_id)
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE review_requests SET body_json=? WHERE request_id=?",
+            (original_request_json, request_id))
+    request = workflow.reviews.get_request(request_id)
+    sealed = workflow.reviews.seal_response(
+        request_id, _valid_response(request), source_mode="manual_import")
+    response_json = workflow.store._conn.execute(
+        "SELECT body_json FROM review_responses WHERE response_id=?",
+        (sealed["response_id"],)).fetchone()[0]
+    forged_response = json.loads(response_json)
+    forged_response["findings"] = {"summary": "被改写"}
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE review_responses SET body_json=? WHERE response_id=?",
+            (json.dumps(forged_response, ensure_ascii=False, sort_keys=True),
+             sealed["response_id"]))
+    with pytest.raises(ReviewQueueRejected, match="封存|身份|正文"):
+        workflow.reviews.consume_response(
+            sealed["response_id"], worker_id="consumer")
     response = _valid_response(request)
     response["citations"][0]["quote_sha256"] = "0" * 64
     with pytest.raises(ReviewQueueRejected, match="引用|闭包"):
