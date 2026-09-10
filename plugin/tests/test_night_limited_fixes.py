@@ -243,12 +243,27 @@ def test_legacy_candidate_is_readable_but_confirmation_is_restricted():
 
 
 def test_validate_dimension_index_rejects_mixed_versions():
-    rows = [{"dimension_id": dimension, "scope": SCOPE, "case_basis_version": 1,
-             "result_id": f"{dimension}-R", "input_digest": f"{dimension}-D",
-             "product_status": "insufficient", "attained_level": 0,
-             "trace_ok": True,
-             "rule_version": "method-v2" if dimension == "TRL" else "method-v1"}
-            for dimension in ("CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL")]
+    rows = []
+    for dimension in ("CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"):
+        row = {"dimension_id": dimension, "scope": SCOPE,
+               "case_basis_version": 1, "result_id": f"{dimension}-R",
+               "input_digest": f"{dimension}-D", "scope_id": None,
+               "product_status": "insufficient", "attained_level": 0,
+               "catalog_sha256": "c" * 64,
+               "result_schema_version": "result-v1", "trace_ok": True,
+               "rule_version": "method-v2" if dimension == "TRL"
+               else "method-v1", "assessment_scope": None,
+               "financing_entity": None}
+        if dimension in {"BRL", "TRL", "IPRL", "TMRL"}:
+            row["scope_id"] = "UNIT-A"
+            row["assessment_scope"] = {
+                "scope_id": "UNIT-A", "subject_scope": SCOPE}
+        elif dimension == "FRL":
+            row["scope_id"] = "FIN-A"
+            row["financing_entity"] = {
+                "financing_entity_id": "FIN-A", "subject_scope": SCOPE,
+                "assessment_unit_refs": ["UNIT-A"]}
+        rows.append(row)
     with pytest.raises(ValueError, match="方法|版本"):
         validate_dimension_index(rows, scope=SCOPE, case_basis_version=1)
 
