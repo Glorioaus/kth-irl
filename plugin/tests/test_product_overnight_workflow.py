@@ -553,6 +553,114 @@ def test_job_and_all_requests_roll_back_when_second_request_insert_fails(
         "SELECT COUNT(*) FROM review_requests").fetchone()[0] == 0
 
 
+def test_create_job_recovers_complete_bundle_after_keyboard_interrupt(
+        tmp_path, monkeypatch):
+    root = tmp_path / "create-recovery"
+    first = LocalWorkflow(root)
+    first.initialize_case(
+        subject_legal_name=SUBJECT, subject_aliases=["合成主体"],
+        evidence_cutoff="2026-09-09T00:00:00Z",
+        subject_source_basis="synthetic:test")
+    path = tmp_path / "create-recovery.docx"
+    _write_docx(path)
+    imported = first.import_attachments([path])[0]
+    projection = next(row for row in first.project_sources(
+        [imported["source_id"]]) if row["status"] == "projected")
+    spec = _review_spec(imported, projection)
+    real_commit = first.journal.commit
+
+    def interrupt_after_bundle(claim, output_ref):
+        if claim.task_key.startswith("workflow-create:"):
+            raise KeyboardInterrupt("injected after bundle")
+        return real_commit(claim, output_ref)
+
+    monkeypatch.setattr(first.journal, "commit", interrupt_after_bundle)
+    with pytest.raises(KeyboardInterrupt, match="injected after bundle"):
+        first.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[spec])
+    job_id = first.store._conn.execute(
+        "SELECT job_id FROM workflow_jobs").fetchone()[0]
+    input_digest = first.store._conn.execute(
+        "SELECT input_digest FROM workflow_jobs WHERE job_id=?",
+        (job_id,)).fetchone()[0]
+    task_key = f"workflow-create:{job_id}"
+    assert first.journal.task_state(task_key)["state"] == "claimed"
+    assert len(first.store.fetch_review_requests(job_id)) == 1
+    first.close()
+
+    recovered = LocalWorkflow(root)
+    try:
+        result = recovered.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[spec])
+        task = recovered.journal.task_state(task_key)
+        assert result["job_id"] == job_id
+        assert task["state"] == "succeeded"
+        assert task["input_id"] == input_digest
+        assert task["output_ref"] == job_id
+        assert task["external_actions"] == 0
+        assert len(recovered.journal.attempts(task_key)) == 2
+        assert len(recovered.journal.takeover_events(task_key)) == 1
+    finally:
+        recovered.close()
+
+
+@pytest.mark.parametrize("field,bad_value,match", [
+    ("output_ref", "JOB::wrong-output", "output|输出|不一致"),
+    ("input_id", "wrong-input", "input|输入|不一致"),
+])
+def test_existing_succeeded_creation_task_rejects_wrong_identity(
+        workflow, tmp_path, field, bad_value, match):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    task_key = f"workflow-create:{job['job_id']}"
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            f"UPDATE tasks SET {field}=? WHERE task_key=?",
+            (bad_value, task_key))
+    with pytest.raises(WorkflowRejected, match=match):
+        _create_job(workflow, imported, projection)
+
+
+def test_failed_creation_task_requires_explicit_controlled_resume(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    task_key = f"workflow-create:{job['job_id']}"
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE tasks SET state='failed',output_ref=NULL WHERE task_key=?",
+            (task_key,))
+    with pytest.raises(WorkflowRejected, match="failed|显式|恢复"):
+        _create_job(workflow, imported, projection)
+    resumed = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS,
+        review_specs=[_review_spec(imported, projection)],
+        resume_failed_creation=True)
+    assert resumed["job_id"] == job["job_id"]
+    assert workflow.journal.task_state(task_key)["state"] == "succeeded"
+
+
+@pytest.mark.parametrize("state", ["dispatch_recorded", "outcome_unknown"])
+def test_dispatched_or_unknown_creation_task_is_never_auto_taken_over(
+        workflow, tmp_path, state):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    task_key = f"workflow-create:{job['job_id']}"
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE tasks SET state=?,external_actions=1,output_ref=NULL "
+            "WHERE task_key=?", (state, task_key))
+    with pytest.raises(WorkflowRejected, match="派发|unknown|接管|外部动作"):
+        workflow.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS,
+            review_specs=[_review_spec(imported, projection)],
+            resume_failed_creation=True)
+
+
 def test_v5_global_request_digest_schema_migrates_without_losing_requests(
         tmp_path):
     root = tmp_path / "request-v5"
