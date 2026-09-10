@@ -284,6 +284,18 @@ CREATE TABLE IF NOT EXISTS attachment_imports (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content
     ON attachment_imports(blob_sha256, media_type);
+CREATE TABLE IF NOT EXISTS attachment_aliases (
+    alias_id TEXT PRIMARY KEY,
+    attachment_id TEXT NOT NULL REFERENCES attachment_imports(attachment_id),
+    origin_path TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('saved','unsupported','failed')),
+    error TEXT,
+    import_id INTEGER NOT NULL REFERENCES import_records(import_id),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(attachment_id, origin_path)
+);
 CREATE TABLE IF NOT EXISTS text_projections (
     projection_id TEXT PRIMARY KEY,
     source_id TEXT NOT NULL REFERENCES sources(source_id),
@@ -616,6 +628,18 @@ class CaseStore:
             );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content
                 ON attachment_imports(blob_sha256, media_type);
+            CREATE TABLE IF NOT EXISTS attachment_aliases (
+                alias_id TEXT PRIMARY KEY,
+                attachment_id TEXT NOT NULL REFERENCES attachment_imports(attachment_id),
+                origin_path TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('saved','unsupported','failed')),
+                error TEXT,
+                import_id INTEGER NOT NULL REFERENCES import_records(import_id),
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(attachment_id, origin_path)
+            );
             CREATE TABLE IF NOT EXISTS text_projections (
                 projection_id TEXT PRIMARY KEY,
                 source_id TEXT NOT NULL REFERENCES sources(source_id),
@@ -1217,13 +1241,11 @@ class CaseStore:
     def get_attachment_import(self, *, origin_path: str,
                               blob_sha256: str,
                               media_type: str | None = None) -> dict | None:
-        if media_type is not None:
-            row = self._conn.execute(
-                "SELECT * FROM attachment_imports WHERE blob_sha256=? "
-                "AND media_type=? ORDER BY import_id LIMIT 1",
-                (blob_sha256, media_type)).fetchone()
-            if row is not None:
-                return dict(row)
+        row = self._conn.execute(
+            "SELECT * FROM attachment_imports WHERE blob_sha256=? "
+            "ORDER BY import_id LIMIT 1", (blob_sha256,)).fetchone()
+        if row is not None:
+            return dict(row)
         row = self._conn.execute(
             "SELECT * FROM attachment_imports WHERE origin_path=? "
             "AND blob_sha256=?", (origin_path, blob_sha256)).fetchone()
@@ -1261,6 +1283,51 @@ class CaseStore:
         return int(self._conn.execute(
             "SELECT COUNT(*) FROM attachment_imports").fetchone()[0])
 
+    def get_attachment_alias(self, attachment_id: str,
+                             origin_path: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM attachment_aliases WHERE attachment_id=? "
+            "AND origin_path=?", (attachment_id, origin_path)).fetchone()
+        return dict(row) if row else None
+
+    def add_attachment_alias(self, item: dict) -> dict:
+        required = {
+            "alias_id", "attachment_id", "origin_path", "original_filename",
+            "media_type", "status", "error", "import_id",
+        }
+        if set(item) != required:
+            raise ValueError("附件来源别名字段不完整或含额外字段")
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO attachment_aliases("
+                "alias_id,attachment_id,origin_path,original_filename,"
+                "media_type,status,error,import_id) VALUES (?,?,?,?,?,?,?,?)",
+                tuple(item[key] for key in (
+                    "alias_id", "attachment_id", "origin_path",
+                    "original_filename", "media_type", "status", "error",
+                    "import_id")),
+            )
+        stored = self.get_attachment_alias(
+            item["attachment_id"], item["origin_path"])
+        if stored is None:
+            raise RuntimeError("附件来源别名持久化失败")
+        return stored
+
+    def count_attachment_aliases(self) -> int:
+        return int(self._conn.execute(
+            "SELECT COUNT(*) FROM attachment_aliases").fetchone()[0])
+
+    def promote_attachment_source(self, attachment_id: str, *, source_id: str,
+                                  media_type: str, import_id: int) -> None:
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE attachment_imports SET source_id=?,media_type=?,"
+                "status='saved',error=NULL,import_id=? WHERE attachment_id=? "
+                "AND source_id IS NULL",
+                (source_id, media_type, import_id, attachment_id))
+        if cur.rowcount not in {0, 1}:
+            raise RuntimeError("附件业务对象来源提升失败")
+
     @staticmethod
     def _decode_projection(row) -> dict | None:
         if row is None:
@@ -1296,6 +1363,40 @@ class CaseStore:
         if stored is None:
             raise RuntimeError("文本投影记录持久化失败")
         return stored
+
+    def replace_text_projections_atomic(self, source_id: str,
+                                        items: list[dict]) -> list[dict]:
+        """单事务替换一个Source的完整投影集合；任一行失败则全部回滚。"""
+        if not isinstance(items, list) or not items \
+                or any(item.get("source_id") != source_id for item in items) \
+                or len({item.get("projection_id") for item in items}) != len(items):
+            raise ValueError("完整投影集合非法、为空或身份重复")
+        required = {
+            "projection_id", "source_id", "source_blob_sha256", "locator",
+            "text_sha256", "text_blob_sha256", "char_count", "tool",
+            "status", "error",
+        }
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM text_projections WHERE source_id=?", (source_id,))
+            for item in items:
+                if set(item) != required \
+                        or item["status"] not in {
+                            "projected", "unprocessed", "failed"}:
+                    raise ValueError("完整投影集合中的记录非法")
+                self._conn.execute(
+                    "INSERT INTO text_projections("
+                    "projection_id,source_id,source_blob_sha256,locator_json,"
+                    "text_sha256,text_blob_sha256,char_count,tool,status,error) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (item["projection_id"], item["source_id"],
+                     item["source_blob_sha256"],
+                     _strict_json_dumps(item["locator"], label="文本投影定位"),
+                     item["text_sha256"], item["text_blob_sha256"],
+                     item["char_count"], item["tool"], item["status"],
+                     item["error"]),
+                )
+        return self.fetch_text_projections(source_id)
 
     def get_text_projection(self, projection_id: str) -> dict | None:
         row = self._conn.execute(

@@ -76,12 +76,23 @@ class LocalWorkflow:
         return self.store.get_case_basis_version(version)
 
     @staticmethod
-    def _attachment_result(row: dict) -> dict:
-        return {key: row.get(key) for key in (
-            "attachment_id", "origin_path", "blob_sha256", "byte_length",
-            "original_filename", "media_type", "status", "error",
-            "import_id", "source_id", "created_at",
-        )}
+    def _attachment_result(row: dict, alias: dict | None = None) -> dict:
+        alias = alias or {}
+        return {
+            "attachment_id": row.get("attachment_id"),
+            "alias_id": alias.get("alias_id"),
+            "origin_path": alias.get("origin_path", row.get("origin_path")),
+            "blob_sha256": row.get("blob_sha256"),
+            "byte_length": row.get("byte_length"),
+            "original_filename": alias.get(
+                "original_filename", row.get("original_filename")),
+            "media_type": alias.get("media_type", row.get("media_type")),
+            "status": alias.get("status", row.get("status")),
+            "error": alias.get("error", row.get("error")),
+            "import_id": alias.get("import_id", row.get("import_id")),
+            "source_id": row.get("source_id"),
+            "created_at": alias.get("created_at", row.get("created_at")),
+        }
 
     def import_attachments(self, paths: list[Path | str]) -> list[dict]:
         if not isinstance(paths, (list, tuple)) or not paths \
@@ -104,19 +115,23 @@ class LocalWorkflow:
                 origin_path=resolved, blob_sha256=blob_sha256,
                 media_type=inspection.media_type)
             if existing is not None:
-                results.append(self._attachment_result(existing))
-                continue
-            identity = {
+                alias = self.store.get_attachment_alias(
+                    existing["attachment_id"], resolved)
+                if alias is not None:
+                    results.append(self._attachment_result(existing, alias))
+                    continue
+            attachment_id = (existing["attachment_id"] if existing is not None
+                             else f"ATTACH::{blob_sha256}")
+            alias_body = {
+                "attachment_id": attachment_id,
                 "origin_path": resolved,
-                "blob_sha256": blob_sha256,
-                "byte_length": len(data),
                 "original_filename": path.name,
                 "media_type": inspection.media_type,
                 "status": inspection.status,
                 "error": inspection.error,
             }
-            attachment_id = f"ATTIMP::{_digest(identity, label='附件导入')}"
-            task_key = f"attachment-import:{attachment_id}"
+            alias_id = f"ATTALIAS::{_digest(alias_body, label='附件来源别名')}"
+            task_key = f"attachment-import:{alias_id}"
             self.journal.ensure_task(task_key, blob_sha256)
             try:
                 claim = self.journal.claim(
@@ -128,6 +143,7 @@ class LocalWorkflow:
                     resolved, blob.sha256,
                     note=json.dumps({
                         "attachment_id": attachment_id,
+                        "alias_id": alias_id,
                         "status": inspection.status,
                         "error": inspection.error,
                         "media_type": inspection.media_type,
@@ -150,26 +166,41 @@ class LocalWorkflow:
                             capture_status="attachment_saved",
                             import_id=import_id,
                         )
-                stored = self.store.add_attachment_import({
-                    "attachment_id": attachment_id,
-                    "origin_path": resolved,
-                    "blob_sha256": blob.sha256,
-                    "byte_length": blob.byte_length,
-                    "original_filename": path.name,
-                    "media_type": inspection.media_type,
-                    "status": inspection.status,
-                    "error": inspection.error,
+                if existing is None:
+                    stored = self.store.add_attachment_import({
+                        "attachment_id": attachment_id,
+                        "origin_path": resolved,
+                        "blob_sha256": blob.sha256,
+                        "byte_length": blob.byte_length,
+                        "original_filename": path.name,
+                        "media_type": inspection.media_type,
+                        "status": inspection.status,
+                        "error": inspection.error,
+                        "import_id": import_id,
+                        "source_id": source_id,
+                    })
+                else:
+                    stored = existing
+                    if source_id is not None and stored.get("source_id") is None:
+                        self.store.promote_attachment_source(
+                            attachment_id, source_id=source_id,
+                            media_type=inspection.media_type,
+                            import_id=import_id)
+                        stored = self.store.get_attachment_import(
+                            origin_path=resolved, blob_sha256=blob_sha256)
+                alias = self.store.add_attachment_alias({
+                    **alias_body,
+                    "alias_id": alias_id,
                     "import_id": import_id,
-                    "source_id": source_id,
                 })
-                self.journal.commit(claim, attachment_id)
+                self.journal.commit(claim, alias_id)
             except Exception as exc:
                 try:
                     self.journal.record_failure(claim, str(exc))
                 except (UnboundLocalError, CommitRejected):
                     pass
                 raise
-            results.append(self._attachment_result(stored))
+            results.append(self._attachment_result(stored, alias))
         return results
 
     def _projection_public(self, row: dict) -> dict:
@@ -193,10 +224,6 @@ class LocalWorkflow:
             source = self.store.fetch_one("sources", "source_id", source_id)
             if source is None:
                 raise WorkflowRejected(f"投影来源不存在：{source_id}")
-            existing = self.store.fetch_text_projections(source_id)
-            if existing:
-                output.extend(self._projection_public(row) for row in existing)
-                continue
             data = self.blobs.read_bytes(source["blob_sha256"])
             inspection = inspect_attachment(source.get("locator") or "", data)
             input_id = _digest({
@@ -204,57 +231,91 @@ class LocalWorkflow:
                 "blob_sha256": source["blob_sha256"],
                 "tool": inspection.tool,
             }, label="投影输入")
-            task_key = f"text-projection:{source_id}"
+            records = []
+            if inspection.status != "saved" or inspection.projection is None:
+                records.append(({}, None, inspection.status, inspection.error))
+            else:
+                for locator in inspection.projection.locators:
+                    text = locator["text"]
+                    location = {key: value for key, value in locator.items()
+                                if key not in {"text", "text_sha256",
+                                               "char_count"}}
+                    records.append((location, text, "projected", None))
+                for index, error in enumerate(
+                        inspection.projection.unprocessed, start=1):
+                    records.append((
+                        {"unprocessed_index": index}, None,
+                        "unprocessed", error))
+                if not records:
+                    records.append((
+                        {"unprocessed_index": 1}, None, "unprocessed",
+                        "附件未产生可用文本片段"))
+            items = []
+            for locator, text, status, error in records:
+                text_bytes = text.encode("utf-8") if text is not None else None
+                text_blob = (self.blobs.put_bytes(text_bytes)
+                             if text_bytes is not None else None)
+                identity = {
+                    "source_id": source_id,
+                    "source_blob_sha256": source["blob_sha256"],
+                    "locator": locator,
+                    "text_sha256": (sha256_hex(text_bytes)
+                                    if text_bytes is not None else None),
+                    "tool": inspection.tool,
+                    "status": status,
+                    "error": error,
+                }
+                items.append({
+                    **identity,
+                    "projection_id": (
+                        f"PROJ::{_digest(identity, label='文本投影')}"),
+                    "text_blob_sha256": (
+                        text_blob.sha256 if text_blob is not None else None),
+                    "char_count": len(text) if text is not None else None,
+                })
+            projection_ids = sorted(item["projection_id"] for item in items)
+            batch_body = {
+                "schema_version": "kth-local.projection-batch.v1",
+                "source_id": source_id,
+                "source_blob_sha256": source["blob_sha256"],
+                "tool": inspection.tool,
+                "projection_count": len(projection_ids),
+                "projection_ids": projection_ids,
+            }
+            batch = {
+                **batch_body,
+                "batch_digest": _digest(batch_body, label="完整投影批次"),
+            }
+            output_ref = _canonical_bytes(
+                batch, label="完整投影批次").decode("utf-8")
+            task_key = f"text-projection:{source_id}:{input_id}"
             self.journal.ensure_task(task_key, input_id)
-            claim = self.journal.claim(task_key, "local-projector", input_id)
+            state = self.journal.task_state(task_key)
+            existing = self.store.fetch_text_projections(source_id)
+            existing_ids = sorted(item["projection_id"] for item in existing)
+            if state["state"] == "succeeded":
+                if existing_ids != projection_ids \
+                        or state.get("output_ref") != output_ref:
+                    raise WorkflowRejected(
+                        "Journal成功投影与完整projection identity/count不一致")
+                output.extend(self._projection_public(row) for row in existing)
+                continue
+            if state["state"] == "claimed":
+                claim = self.journal.takeover_stale_claim(
+                    task_key, "local-projector", input_id,
+                    evidence="机械投影恢复：按冻结批次重新原子核验/写入")
+            else:
+                claim = self.journal.claim(
+                    task_key, "local-projector", input_id)
             try:
-                records = []
-                if inspection.status != "saved" or inspection.projection is None:
-                    records.append(({}, None, inspection.status, inspection.error))
-                else:
-                    for locator in inspection.projection.locators:
-                        text = locator["text"]
-                        location = {key: value for key, value in locator.items()
-                                    if key not in {"text", "text_sha256",
-                                                   "char_count"}}
-                        records.append((location, text, "projected", None))
-                    for index, error in enumerate(
-                            inspection.projection.unprocessed, start=1):
-                        records.append((
-                            {"unprocessed_index": index}, None,
-                            "unprocessed", error))
-                    if not records:
-                        records.append((
-                            {"unprocessed_index": 1}, None, "unprocessed",
-                            "附件未产生可用文本片段"))
-                for locator, text, status, error in records:
-                    text_bytes = text.encode("utf-8") if text is not None else None
-                    text_blob = (self.blobs.put_bytes(text_bytes)
-                                 if text_bytes is not None else None)
-                    identity = {
-                        "source_id": source_id,
-                        "source_blob_sha256": source["blob_sha256"],
-                        "locator": locator,
-                        "text_sha256": (sha256_hex(text_bytes)
-                                        if text_bytes is not None else None),
-                        "tool": inspection.tool,
-                        "status": status,
-                        "error": error,
-                    }
-                    projection_id = (
-                        f"PROJ::{_digest(identity, label='文本投影')}")
-                    stored = self.store.add_text_projection({
-                        **identity,
-                        "projection_id": projection_id,
-                        "text_blob_sha256": (
-                            text_blob.sha256 if text_blob is not None else None),
-                        "char_count": len(text) if text is not None else None,
-                    })
-                    output.append(self._projection_public(stored))
-                self.journal.commit(
-                    claim, ",".join(sorted(
-                        item["projection_id"] for item in output
-                        if item["source_id"] == source_id)))
+                stored_rows = self.store.replace_text_projections_atomic(
+                    source_id, items)
+                if sorted(row["projection_id"] for row in stored_rows) != \
+                        projection_ids:
+                    raise WorkflowRejected("完整投影批次落库后身份或数量不一致")
+                self.journal.commit(claim, output_ref)
+                output.extend(
+                    self._projection_public(row) for row in stored_rows)
             except Exception as exc:
                 try:
                     self.journal.record_failure(claim, str(exc))
@@ -426,6 +487,11 @@ class LocalWorkflow:
             raise WorkflowRejected("workflow job与review request身份闭包不一致")
         job["review_requests"] = requests
         return job
+
+    def resume_failed_job(self, job_id: str) -> dict:
+        """显式解除机械失败栅栏；复核进度本身无权覆盖failure。"""
+        self.reviews.resume_failed_job(job_id)
+        return self.status(job_id)
 
     def close(self) -> None:
         self.journal.close()

@@ -16,6 +16,11 @@ REQUEST_SCHEMA = "review_request.v1"
 RESPONSE_SCHEMA = "review_response.v1"
 AWAITING = "awaiting_authorized_analysis"
 _ALLOWED_SOURCE_MODES = {"manual_import", "simulated", "runtime_provider"}
+_PRODUCER_KINDS_BY_MODE = {
+    "manual_import": {"authorized_human", "human", "manual_import"},
+    "simulated": {"simulated", "simulated_test"},
+    "runtime_provider": {"runtime_provider"},
+}
 _FORBIDDEN_OUTPUT_KEYS = {
     "level", "maturity_level", "native_disposition", "native_note",
     "product_status", "final_decision", "investment_recommendation",
@@ -207,6 +212,11 @@ class ReviewQueue:
         return request
 
     def _refresh_job_state(self, job_id: str) -> None:
+        job = self.store.get_workflow_job(job_id)
+        if job is None:
+            raise ReviewQueueRejected(f"workflow job不存在：{job_id}")
+        if job["state"] == "failed":
+            return
         requests = self.store.fetch_review_requests(job_id)
         states = [item["status"] for item in requests]
         if not states:
@@ -221,6 +231,28 @@ class ReviewQueue:
             state = "consumed"
         else:
             raise ReviewQueueRejected("review request状态组合非法")
+        self.store.set_workflow_job_state(job_id, state)
+
+    def resume_failed_job(self, job_id: str) -> None:
+        job = self.store.get_workflow_job(job_id)
+        if job is None:
+            raise ReviewQueueRejected(f"workflow job不存在：{job_id}")
+        if job["state"] != "failed":
+            raise ReviewQueueRejected("只有failed job需要显式恢复")
+        requests = self.store.fetch_review_requests(job_id)
+        states = [item["status"] for item in requests]
+        if not states:
+            raise ReviewQueueRejected("failed job没有可恢复的review request")
+        if "failed" in states:
+            state = "failed"
+        elif AWAITING in states:
+            state = AWAITING
+        elif "response_sealed" in states:
+            state = "response_sealed"
+        elif all(item == "consumed" for item in states):
+            state = "consumed"
+        else:
+            raise ReviewQueueRejected("failed job的review状态组合非法")
         self.store.set_workflow_job_state(job_id, state)
 
     def seal_response(self, request_id: str, response: dict, *,
@@ -255,6 +287,9 @@ class ReviewQueue:
                 or any(not isinstance(value, str) or not value.strip()
                        for value in producer.values()):
             raise ReviewQueueRejected("review response producer非法")
+        if producer["producer_kind"] not in _PRODUCER_KINDS_BY_MODE[source_mode]:
+            raise ReviewQueueRejected(
+                "review response source_mode与producer_kind未严格配对")
         if response.get("output_schema") != request["output_schema"]:
             raise ReviewQueueRejected("review response output schema不一致")
         if response.get("decision") not in {"supports", "does_not_support"} \
