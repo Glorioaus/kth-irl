@@ -22,6 +22,10 @@ _VIEW_FIELDS = {
     "case_basis_version", "scope", "dimensions", "evidence_licenses",
     "limitations", "view_id", "input_digest",
 }
+_LEGACY_MANIFEST_FIELDS = {
+    "schema_version", "case_basis_version", "scope",
+    "expected_rule_versions", "dimensions", "manifest_id", "manifest_digest",
+}
 _DIMENSION_ENTRY_FIELDS = {
     "dimension_id", "result_id", "input_digest", "case_basis_version",
     "scope", "scope_id", "product_status", "attained_level",
@@ -147,11 +151,13 @@ def validate_dimension_index(rows, *, scope, case_basis_version,
         if policy["require_identical_assessment_scope"] \
                 and any(value != shared_scopes[0] for value in shared_scopes[1:]):
             raise ValueError("BRL/TRL/IPRL/TMRL共享assessment_scope不一致")
-        shared_scope_id = next(iter(shared_scope_ids))
         frl_refs = by_dimension["FRL"]["financing_entity"][
             "assessment_unit_refs"]
         if policy["frl_must_reference_shared_assessment_unit"] \
-                and shared_scope_id not in frl_refs:
+                and (not isinstance(frl_refs, list)
+                     or len(frl_refs) != len(shared_scope_ids)
+                     or any(not isinstance(value, str) for value in frl_refs)
+                     or set(frl_refs) != shared_scope_ids):
             raise ValueError("FRL未引用BRL/TRL/IPRL/TMRL共享评估单元")
     return by_dimension
 
@@ -190,6 +196,9 @@ def _validate_manifest_identity(manifest):
     if not isinstance(manifest, dict) or manifest.get("schema_version") not in {
             MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMA}:
         raise ValueError("aggregation manifest结构或schema非法")
+    if manifest["schema_version"] == LEGACY_MANIFEST_SCHEMA \
+            and set(manifest) != _LEGACY_MANIFEST_FIELDS:
+        raise ValueError("v1 aggregation manifest字段集合非法")
     body = {key: value for key, value in manifest.items()
             if key not in {"manifest_id", "manifest_digest"}}
     digest = sha256_hex(json.dumps(
