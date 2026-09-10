@@ -553,3 +553,47 @@ def test_audit_artifact_walk_rejects_each_budget_before_unbounded_read(
             case_dir, object_id="AGGMAN::" + "b" * 64,
             id_field="manifest_id", label="aggregation manifest",
             schema_prefix="kth-hybrid.aggregation-manifest.")
+
+
+def test_audit_entry_budget_stops_scandir_iterator_before_overread(
+        tmp_path, monkeypatch):
+    case_dir = tmp_path / "case"
+    (case_dir / "audit").mkdir(parents=True)
+
+    class FakeEntry:
+        def __init__(self, index):
+            self.name = f"entry-{index}"
+            self.path = str(case_dir / "audit" / self.name)
+
+        @staticmethod
+        def is_symlink():
+            return False
+
+        @staticmethod
+        def is_dir(*, follow_symlinks):
+            return False
+
+        @staticmethod
+        def is_file(*, follow_symlinks):
+            return False
+
+    class GuardedEntries:
+        def __init__(self):
+            self.index = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self.index += 1
+            if self.index > 3:
+                raise AssertionError("目录项预算后仍在读取")
+            return FakeEntry(self.index)
+
+    monkeypatch.setattr(cli_module, "MAX_AUDIT_TOTAL_ENTRIES", 2)
+    monkeypatch.setattr(cli_module.os, "scandir", lambda _path: GuardedEntries())
+    with pytest.raises(ValueError, match="目录项"):
+        cli_module._find_audit_artifact(
+            case_dir, object_id="AGGMAN::" + "c" * 64,
+            id_field="manifest_id", label="aggregation manifest",
+            schema_prefix="kth-hybrid.aggregation-manifest.")
