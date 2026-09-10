@@ -6,15 +6,21 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
 import pytest
 
 from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
+from kth_hybrid.aggregate import (
+    build_offline_dimension_view,
+    freeze_aggregation_manifest,
+)
 from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.evidence_permissions import build_evidence_use_license
-from kth_hybrid.store import CaseStore
+from kth_hybrid.store import BlobStore, CaseStore
+from test_product_overnight_profiles import profile_case as aggregation_case
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -299,8 +305,50 @@ def test_trace_routes_exact_workflow_ids_and_rejects_missing_objects(tmp_path):
         assert expected in result.stdout + result.stderr
 
 
+def test_trace_routes_manifest_and_view_from_controlled_case_audit_artifacts(
+        aggregation_case):
+    root, _basis, _catalog, results = aggregation_case
+    with CaseStore(root / "records.sqlite3") as case:
+        manifest = freeze_aggregation_manifest(
+            case, BlobStore(root / "blobs"),
+            {dimension: result["result_id"]
+             for dimension, result in results.items()},
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID)
+        view = build_offline_dimension_view(
+            case, BlobStore(root / "blobs"), manifest)
+    audit = root / "audit"
+    audit.mkdir(exist_ok=True)
+    (audit / "aggregation-manifest-v2.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    (audit / "offline-six-dimension-view-v3.json").write_text(
+        json.dumps(view, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+    traced_manifest = _json(_run(
+        "trace", "--case-dir", str(root),
+        "--result-id", manifest["manifest_id"]))
+    assert traced_manifest["kind"] == "aggregation_manifest"
+    assert traced_manifest["object_id"] == manifest["manifest_id"]
+    assert traced_manifest["ok"] is True
+    traced_view = _json(_run(
+        "trace", "--case-dir", str(root), "--result-id", view["view_id"]))
+    assert traced_view["kind"] == "offline_dimension_view"
+    assert traced_view["object_id"] == view["view_id"]
+    assert traced_view["manifest_id"] == manifest["manifest_id"]
+    assert traced_view["ok"] is True
+
+    missing_manifest = _run(
+        "trace", "--case-dir", str(root),
+        "--result-id", "AGGMAN::" + "0" * 64, ok=False)
+    assert "aggregation manifest不存在" in missing_manifest.stderr
+    missing_view = _run(
+        "trace", "--case-dir", str(root),
+        "--result-id", "OFFLINE6::" + "0" * 64, ok=False)
+    assert "六维view不存在" in missing_view.stderr
+
+
 def test_export_creates_new_verification_package_with_verified_hash_manifest(tmp_path):
-    case_dir, _, _, job = _created_job(tmp_path)
+    case_dir, imported, _, job = _created_job(tmp_path)
+    unrelated = BlobStore(case_dir / "blobs").put_bytes(b"unrelated-case-material")
     output = tmp_path / "verification-package"
     exported = _json(_run(
         "export", "--case-dir", str(case_dir),
@@ -315,11 +363,28 @@ def test_export_creates_new_verification_package_with_verified_hash_manifest(tmp
         "job.json", "status.json", "sources.json", "projections.json",
         "review-requests.json", "review-responses.json",
     } <= names
+    source_index = json.loads((output / "sources.json").read_text(encoding="utf-8"))
+    assert len(source_index) == 1
+    assert source_index[0]["blob_sha256"] == imported["blob_sha256"]
+    assert source_index[0]["export_blob_path"] == (
+        f"blobs/{imported['blob_sha256']}.bin")
+    assert f"blobs/{imported['blob_sha256']}.bin" in names
+    assert f"blobs/{unrelated.sha256}.bin" not in names
     for item in manifest["files"]:
         data = (output / item["path"]).read_bytes()
         assert hashlib.sha256(data).hexdigest() == item["sha256"]
+
+    detached = tmp_path / "detached-verification-package"
+    shutil.copytree(output, detached)
+    shutil.move(str(case_dir), str(tmp_path / "case-unavailable"))
+    detached_sources = json.loads(
+        (detached / "sources.json").read_text(encoding="utf-8"))
+    for source in detached_sources:
+        blob = (detached / source["export_blob_path"]).read_bytes()
+        assert len(blob) == source["byte_length"]
+        assert hashlib.sha256(blob).hexdigest() == source["blob_sha256"]
     _run(
-        "export", "--case-dir", str(case_dir),
+        "export", "--case-dir", str(tmp_path / "case-unavailable"),
         "--job-id", job["job_id"], "--output-dir", str(output), ok=False)
 
 
