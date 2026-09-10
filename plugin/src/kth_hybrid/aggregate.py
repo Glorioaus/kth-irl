@@ -88,9 +88,21 @@ def _result_entry(case, blobs, dimension_id: str, result_id: str) -> tuple[dict,
 
 def validate_dimension_index(rows, *, scope, case_basis_version,
                              expected_rule_versions=None, profile_id=None):
+    try:
+        iterator = iter(rows)
+    except TypeError as error:
+        raise ValueError("六维索引rows必须是可迭代对象") from error
+    if expected_rule_versions is not None \
+            and (not isinstance(expected_rule_versions, dict)
+                 or set(expected_rule_versions) != EXPECTED_DIMENSIONS):
+        raise ValueError("逐维预期方法版本必须是精确六维键的字典")
     by_dimension = {}
-    for row in rows:
-        dimension = row.get("dimension_id") if isinstance(row, dict) else None
+    for row in iterator:
+        if not isinstance(row, dict):
+            raise ValueError("六维索引每行必须是字典")
+        dimension = row.get("dimension_id")
+        if not isinstance(dimension, str) or dimension not in EXPECTED_DIMENSIONS:
+            raise ValueError("六维索引dimension_id必须是已登记维度字符串")
         if dimension in by_dimension:
             raise ValueError(f"维度重复：{dimension}")
         by_dimension[dimension] = row
@@ -125,8 +137,6 @@ def validate_dimension_index(rows, *, scope, case_basis_version,
                     or not entity.get("assessment_unit_refs"):
                 raise ValueError("FRL融资主体或共享评估单元与manifest不一致")
     if expected_rule_versions is not None:
-        if set(expected_rule_versions) != EXPECTED_DIMENSIONS:
-            raise ValueError("逐维预期方法版本集合不完整")
         for dimension, version in expected_rule_versions.items():
             if by_dimension[dimension]["rule_version"] != version:
                 raise ValueError(f"{dimension}方法版本与manifest profile不一致")
