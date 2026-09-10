@@ -234,7 +234,7 @@ def test_attachment_import_is_idempotent_by_path_and_content(workflow, tmp_path)
 def test_same_original_bytes_at_another_path_do_not_create_another_import(
         workflow, tmp_path):
     first_path = tmp_path / "first.docx"
-    second_path = tmp_path / "second.docx"
+    second_path = tmp_path / "second.pdf"
     _write_docx(first_path)
     second_path.write_bytes(first_path.read_bytes())
     first = workflow.import_attachments([first_path])[0]
@@ -242,7 +242,8 @@ def test_same_original_bytes_at_another_path_do_not_create_another_import(
     assert second["attachment_id"] == first["attachment_id"]
     assert second["source_id"] == first["source_id"]
     assert workflow.store.count_attachment_imports() == 1
-    assert len(workflow.store.fetch_all("import_records")) == 1
+    assert workflow.store.count_attachment_aliases() == 2
+    assert len(workflow.store.fetch_all("import_records")) == 2
 
 
 def test_attachment_list_must_be_explicit_finite_sequence(workflow, tmp_path):
@@ -288,7 +289,8 @@ def test_pdf_page_and_docx_paragraph_projection_are_persisted(
     persisted = workflow.store.get_text_projection(projection["projection_id"])
     assert persisted["source_id"] == imported["source_id"]
     assert persisted["source_blob_sha256"] == imported["blob_sha256"]
-    assert persisted["locator"][locator_key] == 1
+    assert isinstance(persisted["locator"][locator_key], int)
+    assert persisted["locator"][locator_key] >= 1
     text = workflow.blobs.read_bytes(
         persisted["text_blob_sha256"]).decode("utf-8")
     assert persisted["text_sha256"] == sha256_hex(
@@ -439,10 +441,32 @@ def test_simulated_response_requires_explicit_test_switch(workflow, tmp_path):
         workflow.reviews.seal_response(
             request["request_id"], _valid_response(request),
             source_mode="simulated")
+    response = _valid_response(request)
+    response["producer"] = {
+        "producer_id": "simulator-01", "producer_kind": "simulated"}
     sealed = workflow.reviews.seal_response(
-        request["request_id"], _valid_response(request),
+        request["request_id"], response,
         source_mode="simulated", allow_simulated=True)
     assert sealed["source_mode"] == "simulated"
+
+
+@pytest.mark.parametrize("mode,producer_kind,allow_simulated", [
+    ("manual_import", "simulated", False),
+    ("simulated", "authorized_human", True),
+    ("runtime_provider", "runtime_provider", False),
+])
+def test_source_mode_must_match_real_producer_kind(
+        workflow, tmp_path, mode, producer_kind, allow_simulated):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    request = workflow.reviews.get_request(job["review_request_ids"][0])
+    response = _valid_response(request)
+    response["producer"] = {
+        "producer_id": "producer-01", "producer_kind": producer_kind}
+    with pytest.raises(ReviewQueueRejected, match="producer|来源|未授权|配对"):
+        workflow.reviews.seal_response(
+            request["request_id"], response, source_mode=mode,
+            allow_simulated=allow_simulated)
 
 
 def test_response_wrong_request_identity_or_citation_closure_is_rejected(
@@ -608,3 +632,69 @@ def test_failed_mechanical_stage_remains_failed_not_business_no(
     assert state["state"] == "failed"
     assert state["failure"]["detail"] == "parser crash"
     assert "insufficient" not in json.dumps(state, ensure_ascii=False)
+
+
+def test_review_progress_cannot_overwrite_failed_job_without_explicit_resume(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    workflow.store.set_workflow_job_state(
+        job["job_id"], "failed",
+        failure={"stage": "deterministic", "detail": "worker crashed"})
+    request = workflow.reviews.get_request(job["review_request_ids"][0])
+    sealed = workflow.reviews.seal_response(
+        request["request_id"], _valid_response(request),
+        source_mode="manual_import")
+    after_seal = workflow.status(job["job_id"])
+    assert after_seal["state"] == "failed"
+    assert after_seal["failure"] == {
+        "stage": "deterministic", "detail": "worker crashed"}
+    workflow.reviews.consume_response(
+        sealed["response_id"], worker_id="consumer")
+    after_consume = workflow.status(job["job_id"])
+    assert after_consume["state"] == "failed"
+    assert after_consume["failure"]["detail"] == "worker crashed"
+
+    resumed = workflow.resume_failed_job(job["job_id"])
+    assert resumed["state"] == "consumed"
+    assert "failure" not in resumed
+
+
+def test_multi_locator_projection_rolls_back_partial_rows_and_retries_complete(
+        workflow, tmp_path):
+    path = tmp_path / "multi.docx"
+    _write_docx(path, ("第一段。", "第二段。", "第三段。"))
+    imported = workflow.import_attachments([path])[0]
+    source_id = imported["source_id"]
+    with workflow.store._conn:
+        workflow.store._conn.execute("""
+            CREATE TRIGGER fail_second_projection
+            BEFORE INSERT ON text_projections
+            WHEN (SELECT COUNT(*) FROM text_projections
+                  WHERE source_id=NEW.source_id) >= 1
+            BEGIN
+                SELECT RAISE(ABORT, 'injected projection failure');
+            END
+        """)
+    with pytest.raises(sqlite3.IntegrityError, match="injected projection failure"):
+        workflow.project_sources([source_id])
+    assert workflow.store.fetch_text_projections(source_id) == []
+    task = workflow.store._conn.execute(
+        "SELECT task_key,state FROM tasks WHERE task_key LIKE 'text-projection:%'"
+    ).fetchone()
+    assert dict(task)["state"] == "failed"
+
+    with workflow.store._conn:
+        workflow.store._conn.execute("DROP TRIGGER fail_second_projection")
+    projections = workflow.project_sources([source_id])
+    assert len(projections) == 3
+    assert len(workflow.store.fetch_text_projections(source_id)) == 3
+    task = workflow.store._conn.execute(
+        "SELECT task_key,state,output_ref FROM tasks "
+        "WHERE task_key LIKE 'text-projection:%'"
+    ).fetchone()
+    assert task["state"] == "succeeded"
+    batch = json.loads(task["output_ref"])
+    assert batch["projection_count"] == 3
+    assert batch["projection_ids"] == sorted(
+        projection["projection_id"] for projection in projections)
