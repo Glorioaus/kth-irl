@@ -111,31 +111,41 @@ def validate_dimension_index(rows, *, scope, case_basis_version,
     if missing or extra:
         raise ValueError(f"六维缺失或额外：缺失={sorted(missing)}，额外={sorted(extra)}")
     profile = get_aggregation_profile(profile_id) if profile_id is not None else None
-    versions = {row.get("rule_version") for row in by_dimension.values()}
-    if profile is None and expected_rule_versions is None and len(versions) != 1:
-        raise ValueError("六维方法版本混用且未提供逐维预期版本")
     for dimension, row in by_dimension.items():
+        for field in ("result_id", "input_digest", "catalog_sha256",
+                      "rule_version", "result_schema_version"):
+            if not isinstance(row.get(field), str) or not row[field].strip():
+                raise ValueError(f"{dimension} manifest缺少字符串字段{field}")
         if row.get("scope") != scope:
             raise ValueError(f"{dimension} scope不一致")
         if row.get("case_basis_version") != case_basis_version:
             raise ValueError(f"{dimension} CaseBasis版本不一致")
         if row.get("trace_ok") is not True:
             raise ValueError(f"{dimension} trace未通过")
-        for field in ("result_id", "input_digest", "catalog_sha256",
-                      "rule_version", "result_schema_version"):
-            if not isinstance(row.get(field), str) or not row[field].strip():
-                raise ValueError(f"{dimension} manifest缺少{field}")
+        scope_id = row.get("scope_id")
+        if dimension == "CRL":
+            if scope_id is not None:
+                raise ValueError("CRL scope_id必须为null")
+        elif not isinstance(scope_id, str) or not scope_id.strip():
+            raise ValueError(f"{dimension} scope_id必须是非空字符串")
         if dimension in {"BRL", "TRL", "IPRL", "TMRL"}:
-            unit = row.get("assessment_scope") or {}
+            unit = row.get("assessment_scope")
+            if not isinstance(unit, dict):
+                raise ValueError(f"{dimension} assessment_scope必须是字典")
             if unit.get("scope_id") != row.get("scope_id") \
                     or unit.get("subject_scope") != scope:
                 raise ValueError(f"{dimension}评估单元与manifest scope_id不一致")
         if dimension == "FRL":
-            entity = row.get("financing_entity") or {}
+            entity = row.get("financing_entity")
+            if not isinstance(entity, dict):
+                raise ValueError("FRL financing_entity必须是字典")
             if entity.get("financing_entity_id") != row.get("scope_id") \
                     or entity.get("subject_scope") != scope \
                     or not entity.get("assessment_unit_refs"):
                 raise ValueError("FRL融资主体或共享评估单元与manifest不一致")
+    versions = {row["rule_version"] for row in by_dimension.values()}
+    if profile is None and expected_rule_versions is None and len(versions) != 1:
+        raise ValueError("六维方法版本混用且未提供逐维预期版本")
     if expected_rule_versions is not None:
         for dimension, version in expected_rule_versions.items():
             if by_dimension[dimension]["rule_version"] != version:
