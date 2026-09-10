@@ -9,6 +9,7 @@ import pytest
 
 from kth_hybrid import runner
 from kth_hybrid.aggregate import (
+    EXPECTED_DIMENSIONS,
     LEGACY_MANIFEST_SCHEMA,
     MANIFEST_SCHEMA,
     build_offline_dimension_view,
@@ -45,6 +46,42 @@ def _result_ids(case):
             (dimension,),
         ).fetchone()[0]
     return ids
+
+
+def _synthetic_index_rows():
+    rows = []
+    for dimension in sorted(EXPECTED_DIMENSIONS):
+        row = {
+            "dimension_id": dimension,
+            "result_id": f"{dimension}-RESULT",
+            "input_digest": f"{dimension}-INPUT",
+            "case_basis_version": 1,
+            "scope": SUBJECT,
+            "scope_id": None,
+            "product_status": "insufficient",
+            "attained_level": 0,
+            "catalog_sha256": "c" * 64,
+            "rule_version": "method-v1",
+            "result_schema_version": "result-v1",
+            "assessment_scope": None,
+            "financing_entity": None,
+            "trace_ok": True,
+        }
+        if dimension in {"BRL", "TRL", "IPRL", "TMRL"}:
+            row["scope_id"] = UNIT_ID
+            row["assessment_scope"] = {
+                "scope_id": UNIT_ID,
+                "subject_scope": SUBJECT,
+            }
+        elif dimension == "FRL":
+            row["scope_id"] = "FIN-A"
+            row["financing_entity"] = {
+                "financing_entity_id": "FIN-A",
+                "subject_scope": SUBJECT,
+                "assessment_unit_refs": [UNIT_ID],
+            }
+        rows.append(row)
+    return rows
 
 
 @pytest.fixture(scope="module")
@@ -118,6 +155,43 @@ def test_current_profile_is_content_addressed_and_registers_only_approved_combo(
         body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     assert profile["profile_digest"] == digest
     assert profile["profile_id"] == f"AGGPROF::{digest}"
+
+
+@pytest.mark.parametrize("rows", [
+    None,
+    42,
+    "not-rows",
+    {},
+    [None],
+    [["not-a-row"]],
+    [{"dimension_id": []}],
+    [{"dimension_id": "UNKNOWN"}],
+])
+def test_validate_dimension_index_rejects_malformed_rows_with_value_error(rows):
+    with pytest.raises(ValueError):
+        validate_dimension_index(
+            rows, scope=SUBJECT, case_basis_version=1)
+
+
+@pytest.mark.parametrize("expected_rule_versions", [
+    sorted(EXPECTED_DIMENSIONS),
+    tuple(sorted(EXPECTED_DIMENSIONS)),
+])
+def test_validate_dimension_index_rejects_non_dict_expected_versions(
+        expected_rule_versions):
+    with pytest.raises(ValueError, match="版本|字典|集合"):
+        validate_dimension_index(
+            _synthetic_index_rows(), scope=SUBJECT, case_basis_version=1,
+            expected_rule_versions=expected_rule_versions)
+
+
+def test_validate_dimension_index_accepts_iterable_rows_and_exact_version_map():
+    expected = {dimension: "method-v1" for dimension in EXPECTED_DIMENSIONS}
+    indexed = validate_dimension_index(
+        (row for row in _synthetic_index_rows()),
+        scope=SUBJECT, case_basis_version=1,
+        expected_rule_versions=expected)
+    assert set(indexed) == EXPECTED_DIMENSIONS
 
 
 def test_freeze_requires_registered_profile_id_and_six_exact_result_ids(
