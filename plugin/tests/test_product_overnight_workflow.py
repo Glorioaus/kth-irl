@@ -231,6 +231,20 @@ def test_attachment_import_is_idempotent_by_path_and_content(workflow, tmp_path)
     assert len(workflow.store.fetch_all("sources")) == 1
 
 
+def test_same_original_bytes_at_another_path_do_not_create_another_import(
+        workflow, tmp_path):
+    first_path = tmp_path / "first.docx"
+    second_path = tmp_path / "second.docx"
+    _write_docx(first_path)
+    second_path.write_bytes(first_path.read_bytes())
+    first = workflow.import_attachments([first_path])[0]
+    second = workflow.import_attachments([second_path])[0]
+    assert second["attachment_id"] == first["attachment_id"]
+    assert second["source_id"] == first["source_id"]
+    assert workflow.store.count_attachment_imports() == 1
+    assert len(workflow.store.fetch_all("import_records")) == 1
+
+
 def test_attachment_list_must_be_explicit_finite_sequence(workflow, tmp_path):
     with pytest.raises(WorkflowRejected, match="有限文件列表"):
         workflow.import_attachments(path for path in [tmp_path / "x.docx"])
