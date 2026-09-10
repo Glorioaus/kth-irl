@@ -216,6 +216,11 @@ def _validate_manifest_identity(manifest):
     if not isinstance(manifest, dict) or manifest.get("schema_version") not in {
             MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMA}:
         raise ValueError("aggregation manifest结构或schema非法")
+    case_basis_version = manifest.get("case_basis_version")
+    if isinstance(case_basis_version, bool) \
+            or not isinstance(case_basis_version, int) \
+            or case_basis_version <= 0:
+        raise ValueError("aggregation manifest CaseBasis版本必须是非布尔正整数")
     if manifest["schema_version"] == LEGACY_MANIFEST_SCHEMA:
         if set(manifest) != _LEGACY_MANIFEST_FIELDS:
             raise ValueError("v1 aggregation manifest字段集合非法")
