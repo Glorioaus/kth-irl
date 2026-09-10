@@ -192,6 +192,7 @@ class LocalWorkflow:
                     **alias_body,
                     "alias_id": alias_id,
                     "import_id": import_id,
+                    "source_id": source_id,
                 })
                 self.journal.commit(claim, alias_id)
             except Exception as exc:

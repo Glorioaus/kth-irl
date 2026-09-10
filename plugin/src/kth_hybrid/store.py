@@ -21,7 +21,7 @@ from threading import RLock
 
 from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
-_SCHEMA_VERSION = "kth-hybrid.store.v4"
+_SCHEMA_VERSION = "kth-hybrid.store.v5"
 
 
 def _strict_json_dumps(value, *, label: str) -> str:
@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS attachment_imports (
     UNIQUE(origin_path, blob_sha256)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content
-    ON attachment_imports(blob_sha256, media_type);
+    ON attachment_imports(blob_sha256);
 CREATE TABLE IF NOT EXISTS attachment_aliases (
     alias_id TEXT PRIMARY KEY,
     attachment_id TEXT NOT NULL REFERENCES attachment_imports(attachment_id),
@@ -293,6 +293,7 @@ CREATE TABLE IF NOT EXISTS attachment_aliases (
     status TEXT NOT NULL CHECK (status IN ('saved','unsupported','failed')),
     error TEXT,
     import_id INTEGER NOT NULL REFERENCES import_records(import_id),
+    source_id TEXT REFERENCES sources(source_id),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     UNIQUE(attachment_id, origin_path)
 );
@@ -476,7 +477,7 @@ class CaseStore:
             self._conn.execute("COMMIT")
 
     def _migrate(self) -> None:
-        """已建库的增量列迁移（v1→v2→v3：R1/R1.1/R1.2 修复所需列与表）。"""
+        """已建库增量迁移：保留R1数据并升级本地工作流至store.v5。"""
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS case_basis (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -637,6 +638,7 @@ class CaseStore:
                 status TEXT NOT NULL CHECK (status IN ('saved','unsupported','failed')),
                 error TEXT,
                 import_id INTEGER NOT NULL REFERENCES import_records(import_id),
+                source_id TEXT REFERENCES sources(source_id),
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 UNIQUE(attachment_id, origin_path)
             );
@@ -724,7 +726,97 @@ class CaseStore:
             self._conn.execute(
                 "ALTER TABLE dimension_evidence_reviews ADD COLUMN "
                 "permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'")
+        alias_columns = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(attachment_aliases)").fetchall()}
+        if "source_id" not in alias_columns:
+            self._conn.execute(
+                "ALTER TABLE attachment_aliases ADD COLUMN source_id TEXT")
+        self._migrate_attachment_objects_v5()
         self._conn.commit()
+
+    def _migrate_attachment_objects_v5(self) -> None:
+        """将v4按路径/媒体拆出的同blob行归并为单一内容对象。"""
+        self._conn.execute("DROP INDEX IF EXISTS idx_attachment_imports_content")
+        rows = self._conn.execute(
+            "SELECT * FROM attachment_imports "
+            "ORDER BY blob_sha256,origin_path,attachment_id").fetchall()
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row["blob_sha256"], []).append(dict(row))
+        for blob_sha256, group in grouped.items():
+            canonical_id = f"ATTACH::{blob_sha256}"
+            old_ids = [row["attachment_id"] for row in group]
+            placeholders = ",".join("?" for _ in old_ids)
+            existing_aliases = [dict(row) for row in self._conn.execute(
+                f"SELECT * FROM attachment_aliases WHERE attachment_id IN "
+                f"({placeholders}) ORDER BY origin_path,alias_id", old_ids
+            ).fetchall()]
+            self._conn.execute(
+                f"DELETE FROM attachment_aliases WHERE attachment_id IN "
+                f"({placeholders})", old_ids)
+            chosen = next(
+                (row for row in group
+                 if row["attachment_id"] == canonical_id), None)
+            if chosen is None:
+                chosen = next(
+                    (row for row in group
+                     if row["status"] == "saved" and row["source_id"]),
+                    group[0])
+                self._conn.execute(
+                    "UPDATE attachment_imports SET attachment_id=? "
+                    "WHERE attachment_id=?",
+                    (canonical_id, chosen["attachment_id"]))
+            self._conn.execute(
+                "DELETE FROM attachment_imports WHERE blob_sha256=? "
+                "AND attachment_id<>?", (blob_sha256, canonical_id))
+
+            aliases_by_path: dict[str, dict] = {}
+            for row in group:
+                aliases_by_path[row["origin_path"]] = {
+                    "origin_path": row["origin_path"],
+                    "original_filename": row["original_filename"],
+                    "media_type": row["media_type"],
+                    "status": row["status"],
+                    "error": row["error"],
+                    "import_id": row["import_id"],
+                    "source_id": row["source_id"],
+                }
+            for alias in existing_aliases:
+                prior = aliases_by_path.get(alias["origin_path"], {})
+                aliases_by_path[alias["origin_path"]] = {
+                    "origin_path": alias["origin_path"],
+                    "original_filename": alias["original_filename"],
+                    "media_type": alias["media_type"],
+                    "status": alias["status"],
+                    "error": alias["error"],
+                    "import_id": alias["import_id"],
+                    "source_id": alias.get("source_id") or prior.get("source_id"),
+                }
+            for alias in aliases_by_path.values():
+                identity = {
+                    "attachment_id": canonical_id,
+                    "origin_path": alias["origin_path"],
+                    "original_filename": alias["original_filename"],
+                    "media_type": alias["media_type"],
+                    "status": alias["status"],
+                    "error": alias["error"],
+                }
+                alias_digest = sha256_hex(json.dumps(
+                    identity, ensure_ascii=False, sort_keys=True,
+                    separators=(",", ":"), allow_nan=False).encode("utf-8"))
+                self._conn.execute(
+                    "INSERT INTO attachment_aliases("
+                    "alias_id,attachment_id,origin_path,original_filename,"
+                    "media_type,status,error,import_id,source_id) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (f"ATTALIAS::{alias_digest}", canonical_id,
+                     alias["origin_path"], alias["original_filename"],
+                     alias["media_type"], alias["status"], alias["error"],
+                     alias["import_id"], alias["source_id"]),
+                )
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content "
+            "ON attachment_imports(blob_sha256)")
 
     # ---- 阶段与运行 ----
 
@@ -1293,7 +1385,7 @@ class CaseStore:
     def add_attachment_alias(self, item: dict) -> dict:
         required = {
             "alias_id", "attachment_id", "origin_path", "original_filename",
-            "media_type", "status", "error", "import_id",
+            "media_type", "status", "error", "import_id", "source_id",
         }
         if set(item) != required:
             raise ValueError("附件来源别名字段不完整或含额外字段")
@@ -1301,11 +1393,12 @@ class CaseStore:
             self._conn.execute(
                 "INSERT OR IGNORE INTO attachment_aliases("
                 "alias_id,attachment_id,origin_path,original_filename,"
-                "media_type,status,error,import_id) VALUES (?,?,?,?,?,?,?,?)",
+                "media_type,status,error,import_id,source_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 tuple(item[key] for key in (
                     "alias_id", "attachment_id", "origin_path",
                     "original_filename", "media_type", "status", "error",
-                    "import_id")),
+                    "import_id", "source_id")),
             )
         stored = self.get_attachment_alias(
             item["attachment_id"], item["origin_path"])
