@@ -368,11 +368,15 @@ class ReviewQueue:
             raise ReviewQueueRejected("review response封存blob与数据库正文不一致")
         return response
 
-    def consume_response(self, response_id: str, *, worker_id: str) -> dict:
+    def get_response(self, response_id: str) -> dict:
+        """按精确ID读取并核验封存返回；不提供latest语义。"""
         response = self.store.get_review_response(response_id)
         if response is None:
             raise ReviewQueueRejected(f"review response不存在：{response_id}")
-        response = self._validate_stored_response(response)
+        return self._validate_stored_response(response)
+
+    def consume_response(self, response_id: str, *, worker_id: str) -> dict:
+        response = self.get_response(response_id)
         request = self.get_request(response["request_id"])
         if response["status"] == "consumed":
             return response

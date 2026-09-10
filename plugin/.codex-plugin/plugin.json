@@ -1,0 +1,21 @@
+{
+  "name": "plugin",
+  "version": "0.1.0",
+  "description": "KTH IRL Evaluator 本地可恢复工作流候选入口",
+  "author": {
+    "name": "KTH 本地工程组"
+  },
+  "interface": {
+    "displayName": "KTH Local Evaluator",
+    "shortDescription": "本地附件、专业复核队列与核验追溯",
+    "longDescription": "调用同一 kth-local CLI 管理本地 Case、附件投影、受控专业复核、状态恢复与核验包导出。",
+    "developerName": "KTH 本地工程组",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "查看指定 KTH 本地 Case 的工作流状态",
+      "导入本地附件并生成可追溯文本投影",
+      "导出指定 job 的非正式核验包"
+    ]
+  }
+}

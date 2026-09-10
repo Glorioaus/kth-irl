@@ -9,6 +9,9 @@ description = "KTH IRL Evaluator 整体重建运行层（runtime-rebuild，R0+R1
 requires-python = ">=3.12"
 dependencies = []
 
+[project.scripts]
+kth-local = "kth_hybrid.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
