@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from .aggregate import build_offline_dimension_view, validate_offline_dimension_view
 from .audit import render_trace, trace, trace_crl_dimension, trace_dimension_result
 from .contracts import sha256_hex
 from .review_queue import ReviewQueueRejected
@@ -17,6 +18,8 @@ from .workflow import LocalWorkflow, WorkflowRejected
 
 TITLE = "【证据与判据核验，非正式评估报告】"
 MAX_CLI_JSON_BYTES = 4 * 1024 * 1024
+MAX_AUDIT_JSON_FILES = 4096
+MAX_AUDIT_ARTIFACT_BYTES = 16 * 1024 * 1024
 
 
 class ChineseArgumentParser(argparse.ArgumentParser):
@@ -232,7 +235,89 @@ def _trace_workflow_object(workflow: LocalWorkflow, object_id: str) -> dict:
     raise CliRejected(f"工作流对象ID类型不受支持：{object_id}")
 
 
+def _find_audit_artifact(case_dir: Path, *, object_id: str,
+                         id_field: str, label: str,
+                         schema_prefix: str) -> tuple[Path, dict]:
+    """只在Case audit树中按顶层精确ID定位一个受控JSON工件。"""
+    prefix, separator, digest = object_id.partition("::")
+    if separator != "::" or len(digest) != 64 \
+            or any(character not in "0123456789abcdef" for character in digest):
+        raise CliRejected(f"{label} ID非法：{object_id}")
+    audit_root = (case_dir / "audit").resolve()
+    if not audit_root.is_dir():
+        raise CliRejected(f"{label}不存在：{object_id}")
+    matches = []
+    count = 0
+    for path in sorted(audit_root.rglob("*.json")):
+        count += 1
+        if count > MAX_AUDIT_JSON_FILES:
+            raise CliRejected(
+                f"Case audit JSON文件超过上限{MAX_AUDIT_JSON_FILES}")
+        resolved = path.resolve()
+        if not resolved.is_relative_to(audit_root) or not resolved.is_file():
+            continue
+        try:
+            size = resolved.stat().st_size
+            if size > MAX_AUDIT_ARTIFACT_BYTES:
+                continue
+            value = json.loads(resolved.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict) and value.get(id_field) == object_id \
+                and isinstance(value.get("schema_version"), str) \
+                and value["schema_version"].startswith(schema_prefix):
+            matches.append((resolved, value))
+    if not matches:
+        raise CliRejected(f"{label}不存在：{object_id}")
+    if len(matches) != 1:
+        paths = "、".join(str(path.relative_to(audit_root))
+                         for path, _value in matches)
+        raise CliRejected(f"{label}精确ID在audit中不唯一：{paths}")
+    return matches[0]
+
+
+def _trace_aggregation_artifact(case_dir: Path, object_id: str) -> dict:
+    if object_id.startswith("AGGMAN::"):
+        path, manifest = _find_audit_artifact(
+            case_dir, object_id=object_id, id_field="manifest_id",
+            label="aggregation manifest",
+            schema_prefix="kth-hybrid.aggregation-manifest.")
+        with CaseStore(case_dir / "records.sqlite3") as case:
+            rebuilt_view = build_offline_dimension_view(
+                case, BlobStore(case_dir / "blobs"), manifest)
+        return {
+            "kind": "aggregation_manifest", "object_id": object_id,
+            "ok": True, "broken": [],
+            "artifact_path": str(path.relative_to(case_dir.resolve())),
+            "manifest": manifest,
+            "rebuilt_view_id": rebuilt_view["view_id"],
+        }
+    path, view = _find_audit_artifact(
+        case_dir, object_id=object_id, id_field="view_id", label="六维view",
+        schema_prefix="kth-hybrid.offline-six-dimension-view.")
+    validate_offline_dimension_view(view)
+    _manifest_path, manifest = _find_audit_artifact(
+        case_dir, object_id=view["manifest_id"], id_field="manifest_id",
+        label="aggregation manifest",
+        schema_prefix="kth-hybrid.aggregation-manifest.")
+    with CaseStore(case_dir / "records.sqlite3") as case:
+        rebuilt = build_offline_dimension_view(
+            case, BlobStore(case_dir / "blobs"), manifest)
+    if rebuilt != view:
+        raise CliRejected("六维view与同Case manifest及精确六维结果重建不一致")
+    return {
+        "kind": "offline_dimension_view", "object_id": object_id,
+        "manifest_id": view["manifest_id"], "ok": True, "broken": [],
+        "artifact_path": str(path.relative_to(case_dir.resolve())),
+        "view": view,
+    }
+
+
 def cmd_trace(case_dir: Path, result_id: str) -> int:
+    if result_id.startswith(("AGGMAN::", "OFFLINE6::")):
+        report = _trace_aggregation_artifact(case_dir, result_id)
+        _print_json(report)
+        return 0
     if result_id.startswith("CRLR2A::"):
         with CaseStore(case_dir / "records.sqlite3") as case:
             report = trace_crl_dimension(case, BlobStore(case_dir / "blobs"), result_id)
@@ -279,14 +364,18 @@ def _export_verification_package(workflow: LocalWorkflow, job_id: str,
     if output_dir.exists():
         raise CliRejected(f"核验包输出目录必须尚不存在：{output_dir}")
     status = workflow.status(job_id)
-    output_dir.mkdir(parents=True, exist_ok=False)
     sources = []
     projections = []
+    source_blobs: dict[str, bytes] = {}
     for frozen in status["sources"]:
         report = _trace_source(workflow, frozen["source_id"])
         if not report["ok"]:
             raise CliRejected("核验包来源核验失败：" + "；".join(report["broken"]))
-        sources.append(report["source"])
+        source = report["source"]
+        relative_blob_path = f"blobs/{source['blob_sha256']}.bin"
+        data = workflow.blobs.read_bytes(source["blob_sha256"])
+        source_blobs[relative_blob_path] = data
+        sources.append({**source, "export_blob_path": relative_blob_path})
     for frozen in status["projections"]:
         report = _trace_projection(workflow, frozen["projection_id"])
         if not report["ok"]:
@@ -307,10 +396,16 @@ def _export_verification_package(workflow: LocalWorkflow, job_id: str,
         "review-requests.json": requests,
         "review-responses.json": responses,
     }
-    for filename, value in payloads.items():
-        _write_json(output_dir / filename, value)
+    serialized = {filename: _json_bytes(value)
+                  for filename, value in payloads.items()}
+    serialized.update(source_blobs)
+    output_dir.mkdir(parents=True, exist_ok=False)
+    for filename, data in serialized.items():
+        path = output_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
     files = []
-    for filename in sorted(payloads):
+    for filename in sorted(serialized):
         data = (output_dir / filename).read_bytes()
         files.append({"path": filename, "sha256": hashlib.sha256(data).hexdigest(),
                       "byte_length": len(data)})
