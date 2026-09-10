@@ -6,8 +6,12 @@ import copy
 import io
 import json
 import sqlite3
+import time
 
 import pytest
+import kth_hybrid.intake as intake_module
+import kth_hybrid.review_queue as review_queue_module
+import kth_hybrid.workflow as workflow_module
 
 from kth_hybrid.aggregation_profiles import (
     CURRENT_AGGREGATION_PROFILE_ID,
@@ -502,6 +506,168 @@ def test_request_order_does_not_change_job_but_all_request_ids_are_frozen(
     assert first["review_request_ids"] == sorted(first["review_request_ids"])
 
 
+def test_same_request_input_can_belong_to_x_and_xy_jobs_atomically(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    x = _review_spec(imported, projection, purpose="请求X")
+    y = _review_spec(imported, projection, purpose="请求Y")
+    job_x = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS, review_specs=[x])
+    job_xy = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS, review_specs=[x, y])
+    assert job_x["job_id"] != job_xy["job_id"]
+    assert len(job_x["review_request_ids"]) == 1
+    assert len(job_xy["review_request_ids"]) == 2
+    assert workflow.store.count_workflow_jobs() == 2
+    assert workflow.store._conn.execute(
+        "SELECT COUNT(*) FROM review_requests").fetchone()[0] == 3
+    assert all(len(workflow.store.fetch_review_requests(job_id)) == count
+               for job_id, count in ((job_x["job_id"], 1),
+                                     (job_xy["job_id"], 2)))
+
+
+def test_job_and_all_requests_roll_back_when_second_request_insert_fails(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    x = _review_spec(imported, projection, purpose="请求X")
+    y = _review_spec(imported, projection, purpose="请求Y")
+    with workflow.store._conn:
+        workflow.store._conn.execute("""
+            CREATE TRIGGER fail_second_job_request
+            BEFORE INSERT ON review_requests
+            WHEN (SELECT COUNT(*) FROM review_requests
+                  WHERE job_id=NEW.job_id) >= 1
+            BEGIN
+                SELECT RAISE(ABORT, 'injected second request failure');
+            END
+        """)
+    with pytest.raises(sqlite3.IntegrityError,
+                       match="injected second request failure"):
+        workflow.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[x, y])
+    assert workflow.store.count_workflow_jobs() == 0
+    assert workflow.store._conn.execute(
+        "SELECT COUNT(*) FROM review_requests").fetchone()[0] == 0
+
+
+def test_v5_global_request_digest_schema_migrates_without_losing_requests(
+        tmp_path):
+    root = tmp_path / "request-v5"
+    workflow = LocalWorkflow(root)
+    workflow.initialize_case(
+        subject_legal_name=SUBJECT, subject_aliases=["合成主体"],
+        evidence_cutoff="2026-09-09T00:00:00Z",
+        subject_source_basis="synthetic:test")
+    path = tmp_path / "request-source.docx"
+    _write_docx(path)
+    imported = workflow.import_attachments([path])[0]
+    projection = next(row for row in workflow.project_sources(
+        [imported["source_id"]]) if row["status"] == "projected")
+    x = _review_spec(imported, projection, purpose="请求X")
+    y = _review_spec(imported, projection, purpose="请求Y")
+    job_x = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS, review_specs=[x])
+    request_before = workflow.reviews.get_request(job_x["review_request_ids"][0])
+    response_before = workflow.reviews.seal_response(
+        request_before["request_id"], _valid_response(request_before),
+        source_mode="manual_import")
+    request_before = workflow.reviews.get_request(job_x["review_request_ids"][0])
+    workflow.close()
+
+    conn = sqlite3.connect(root / "records.sqlite3")
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.executescript("""
+            BEGIN IMMEDIATE;
+            CREATE TABLE review_requests_v5 (
+                request_id TEXT PRIMARY KEY,
+                request_input_digest TEXT NOT NULL UNIQUE,
+                job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+                status TEXT NOT NULL CHECK (status IN
+                    ('awaiting_authorized_analysis','response_sealed',
+                     'consumed','failed')),
+                body_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO review_requests_v5 SELECT * FROM review_requests;
+            DROP TABLE review_requests;
+            ALTER TABLE review_requests_v5 RENAME TO review_requests;
+            CREATE INDEX idx_review_requests_job
+                ON review_requests(job_id,request_id);
+            UPDATE meta SET value='kth-hybrid.store.v5'
+                WHERE key='schema_version';
+            COMMIT;
+        """)
+    finally:
+        conn.close()
+
+    migrated = LocalWorkflow(root)
+    try:
+        request_after = migrated.reviews.get_request(request_before["request_id"])
+        assert request_after["created_at"] == request_before["created_at"]
+        assert request_after["updated_at"] == request_before["updated_at"]
+        assert request_after["request_input_digest"] == \
+            request_before["request_input_digest"]
+        response_after = migrated.store.get_review_response(
+            response_before["response_id"])
+        assert response_after["response_id"] == response_before["response_id"]
+        assert response_after["status"] == "response_sealed"
+        assert response_after["created_at"] == response_before["created_at"]
+        job_xy = migrated.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[x, y])
+        assert len(job_xy["review_request_ids"]) == 2
+        assert migrated.store._conn.execute(
+            "SELECT COUNT(*) FROM review_requests").fetchone()[0] == 3
+        assert migrated.store._conn.execute(
+            "PRAGMA foreign_key_check").fetchall() == []
+        assert migrated.store._conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
+            "kth-hybrid.store.v6"
+    finally:
+        migrated.close()
+
+
+def test_job_state_refresh_cannot_downgrade_from_stale_request_snapshot(
+        workflow, tmp_path, monkeypatch):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = workflow.create_job(
+        assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+        method_versions=METHODS,
+        review_specs=[
+            _review_spec(imported, projection, purpose="请求X"),
+            _review_spec(imported, projection, purpose="请求Y"),
+        ])
+    first_id, second_id = job["review_request_ids"]
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "UPDATE review_requests SET status='response_sealed' "
+            "WHERE request_id=?", (first_id,))
+        workflow.store._conn.execute(
+            "UPDATE workflow_jobs SET state='response_sealed' WHERE job_id=?",
+            (job["job_id"],))
+    original_fetch = workflow.store.fetch_review_requests
+
+    def stale_then_interleave(job_id):
+        stale = original_fetch(job_id)
+        with workflow.store._conn:
+            workflow.store._conn.execute(
+                "UPDATE review_requests SET status='response_sealed' "
+                "WHERE request_id=?", (second_id,))
+        return stale
+
+    monkeypatch.setattr(
+        workflow.store, "fetch_review_requests", stale_then_interleave)
+    workflow.reviews._refresh_job_state(job["job_id"])
+    assert workflow.store.get_workflow_job(job["job_id"])["state"] == \
+        "response_sealed"
+
+
 def test_multi_request_job_state_requires_all_responses_to_advance(
         workflow, tmp_path):
     imported, projection = _import_and_project(workflow, tmp_path)
@@ -611,7 +777,7 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
                 "review_requests", "review_responses", "tasks"} <= tables
         assert workflow.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-            "kth-hybrid.store.v5"
+            "kth-hybrid.store.v6"
         workflow.journal.ensure_task("mechanical:test", "input-1")
         verifier = Journal(db)
         assert verifier.task_state("mechanical:test")["input_id"] == "input-1"
@@ -661,6 +827,9 @@ def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
                 "original_filename,media_type,status,error,import_id,source_id) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [
+                    (f"ATTACH::{blob.sha256}", "canonical-poor", blob.sha256,
+                     blob.byte_length, "poor.bin", "application/octet-stream",
+                     "unsupported", "unsupported", first_import, None),
                     ("ATTIMP::legacy-a", str(first_path.resolve()), blob.sha256,
                      blob.byte_length, "a.txt", "text/plain", "saved", None,
                      first_import, "SRC-V4-A"),
@@ -684,20 +853,22 @@ def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
         assert len(objects) == 1
         assert objects[0]["attachment_id"] == f"ATTACH::{blob.sha256}"
         assert objects[0]["blob_sha256"] == blob.sha256
-        assert len(aliases) == 2
+        assert len(aliases) == 3
+        assert objects[0]["status"] == "saved"
+        assert objects[0]["source_id"] in {"SRC-V4-A", "SRC-V4-B"}
         assert {row["origin_path"] for row in aliases} == {
-            str(first_path.resolve()), str(second_path.resolve())}
+            "canonical-poor", str(first_path.resolve()), str(second_path.resolve())}
         assert {row["media_type"] for row in aliases} == {
-            "text/plain", "text/markdown"}
+            "application/octet-stream", "text/plain", "text/markdown"}
         assert {row["source_id"] for row in aliases} == {
-            "SRC-V4-A", "SRC-V4-B"}
+            None, "SRC-V4-A", "SRC-V4-B"}
         assert all(row["attachment_id"] == f"ATTACH::{blob.sha256}"
                    for row in aliases)
         assert migrated.store._conn.execute(
             "PRAGMA foreign_key_check").fetchall() == []
         assert migrated.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-            "kth-hybrid.store.v5"
+            "kth-hybrid.store.v6"
         with pytest.raises(sqlite3.IntegrityError):
             with migrated.store._conn:
                 migrated.store._conn.execute(
@@ -715,10 +886,99 @@ def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
             f"ATTACH::{blob.sha256}"
         assert len(migrated.store.fetch_all("import_records")) == before_imports
         assert migrated.store.count_attachment_imports() == 1
-        assert migrated.store.count_attachment_aliases() == 2
+        assert migrated.store.count_attachment_aliases() == 3
         assert len(migrated.store.fetch_all("sources")) == 2
+        created_at = {row["alias_id"]: row["created_at"] for row in aliases}
     finally:
         migrated.close()
+    time.sleep(0.02)
+    reopened = LocalWorkflow(root)
+    try:
+        assert {row["alias_id"]: row["created_at"] for row in
+                reopened.store._conn.execute(
+                    "SELECT alias_id,created_at FROM attachment_aliases")} == \
+            created_at
+    finally:
+        reopened.close()
+
+
+def test_attachment_single_and_batch_byte_limits_fail_before_any_import(
+        workflow, tmp_path, monkeypatch):
+    first = tmp_path / "a.txt"
+    second = tmp_path / "b.txt"
+    first.write_bytes(b"abcd")
+    second.write_bytes(b"xyz")
+    monkeypatch.setattr(workflow_module, "MAX_ATTACHMENT_BYTES", 3)
+    with pytest.raises(WorkflowRejected, match="单文件|字节|上限"):
+        workflow.import_attachments([first])
+    assert workflow.store.count_attachment_imports() == 0
+    monkeypatch.setattr(workflow_module, "MAX_ATTACHMENT_BYTES", 4)
+    monkeypatch.setattr(workflow_module, "MAX_ATTACHMENT_BATCH_BYTES", 6)
+    with pytest.raises(WorkflowRejected, match="批次|总字节|上限"):
+        workflow.import_attachments([first, second])
+    assert workflow.store.count_attachment_imports() == 0
+
+
+def test_docx_zip_preflight_rejects_member_limit_before_parser(
+        workflow, tmp_path, monkeypatch):
+    path = tmp_path / "large.docx"
+    _write_docx(path)
+    monkeypatch.setattr(intake_module, "DOCX_MAX_MEMBERS", 1)
+    result = workflow.import_attachments([path])[0]
+    assert result["status"] == "failed"
+    assert "DOCX" in result["error"] and "成员" in result["error"]
+    assert workflow.store.fetch_all("sources") == []
+
+
+def test_review_specs_and_response_payload_limits_fail_closed(
+        workflow, tmp_path, monkeypatch):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    spec = _review_spec(imported, projection)
+    monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS", 1)
+    with pytest.raises(WorkflowRejected, match="review_specs|条目|上限"):
+        workflow.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[spec, copy.deepcopy(spec)])
+    assert workflow.store.count_workflow_jobs() == 0
+    monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS", 512)
+    monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS_BYTES", 64)
+    with pytest.raises(WorkflowRejected, match="review_specs|序列化|字节|上限"):
+        workflow.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[spec])
+    monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS_BYTES", 2 * 1024 * 1024)
+    monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPEC_DEPTH", 3)
+    with pytest.raises(WorkflowRejected, match="review_specs|深度|上限"):
+        workflow.create_job(
+            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
+            method_versions=METHODS, review_specs=[spec])
+    monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPEC_DEPTH", 24)
+
+    job = _create_job(workflow, imported, projection)
+    request = workflow.reviews.get_request(job["review_request_ids"][0])
+    response = _valid_response(request)
+    monkeypatch.setattr(review_queue_module, "MAX_FINDINGS_BYTES", 16)
+    response["findings"] = {"summary": "x" * 100}
+    with pytest.raises(ReviewQueueRejected, match="findings|字节|上限"):
+        workflow.reviews.seal_response(
+            request["request_id"], response, source_mode="manual_import")
+    response = _valid_response(request)
+    monkeypatch.setattr(review_queue_module, "MAX_CITATIONS", 0)
+    with pytest.raises(ReviewQueueRejected, match="citations|条目|上限"):
+        workflow.reviews.seal_response(
+            request["request_id"], response, source_mode="manual_import")
+    response = _valid_response(request)
+    monkeypatch.setattr(review_queue_module, "MAX_CITATIONS", 64)
+    monkeypatch.setattr(review_queue_module, "MAX_RESPONSE_BYTES", 64)
+    with pytest.raises(ReviewQueueRejected, match="response|序列化|字节|上限"):
+        workflow.reviews.seal_response(
+            request["request_id"], response, source_mode="manual_import")
+    monkeypatch.setattr(review_queue_module, "MAX_RESPONSE_BYTES", 1024 * 1024)
+    monkeypatch.setattr(review_queue_module, "MAX_JSON_DEPTH", 2)
+    response["findings"] = {"a": {"b": {"c": "too-deep"}}}
+    with pytest.raises(ReviewQueueRejected, match="深度|上限"):
+        workflow.reviews.seal_response(
+            request["request_id"], response, source_mode="manual_import")
 
 
 def test_failed_mechanical_stage_remains_failed_not_business_no(
