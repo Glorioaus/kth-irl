@@ -311,6 +311,46 @@ class Journal:
                     (task_key,),
                 )
 
+    def complete_existing_local_task(
+            self, task_key: str, *, input_id: str, output_ref: str,
+            worker_id: str, evidence: str,
+            allow_failed_recovery: bool = False) -> dict:
+        """核验已有本地结果后安全封账，不适用于任何已派发任务。
+
+        ``claimed`` 仅在 ``external_actions=0`` 时以新token接管并留存事件；
+        ``failed`` 必须由调用方显式开启受控恢复。已成功任务只做精确身份核验。
+        """
+        if not all(isinstance(value, str) and value.strip() for value in (
+                task_key, input_id, output_ref, worker_id, evidence)):
+            raise CommitRejected("本地任务封账必须提供完整身份、输出和恢复证据")
+        state = self.task_state(task_key)
+        if state["input_id"] != input_id:
+            raise CommitRejected(
+                f"本地任务 {task_key} 输入不一致：{state['input_id']} vs {input_id}")
+        if state["state"] == "succeeded":
+            if state["output_ref"] != output_ref:
+                raise CommitRejected(
+                    f"本地任务 {task_key} 已成功但输出不一致："
+                    f"{state['output_ref']} vs {output_ref}")
+            return state
+        if state["state"] in {"dispatch_recorded", "outcome_unknown"} \
+                or state["external_actions"] != 0:
+            raise CommitRejected(
+                f"本地任务 {task_key} 已派发/unknown或存在外部动作，绝不自动接管")
+        if state["state"] == "failed" and not allow_failed_recovery:
+            raise CommitRejected(
+                f"本地任务 {task_key} 为failed，必须显式授权受控恢复")
+        if state["state"] == "claimed":
+            claim = self.takeover_stale_claim(
+                task_key, worker_id, input_id, evidence=evidence)
+        elif state["state"] in {"planned", "failed"}:
+            claim = self.claim(task_key, worker_id, input_id)
+        else:
+            raise CommitRejected(
+                f"本地任务 {task_key} 状态 {state['state']} 不可封账")
+        self.commit(claim, output_ref)
+        return self.task_state(task_key)
+
     # ---- 读取 ----
 
     def task_state(self, task_key: str) -> dict:

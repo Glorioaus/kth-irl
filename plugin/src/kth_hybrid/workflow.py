@@ -372,7 +372,10 @@ class LocalWorkflow:
         return output
 
     def create_job(self, *, assessment_unit: dict, profile_id: str,
-                   method_versions: dict, review_specs: list[dict]) -> dict:
+                   method_versions: dict, review_specs: list[dict],
+                   resume_failed_creation: bool = False) -> dict:
+        if not isinstance(resume_failed_creation, bool):
+            raise WorkflowRejected("resume_failed_creation必须是显式布尔值")
         if not isinstance(assessment_unit, dict) \
                 or not isinstance(assessment_unit.get("scope_id"), str) \
                 or not assessment_unit["scope_id"].strip():
@@ -469,9 +472,17 @@ class LocalWorkflow:
             "review_request_ids": [item["request_id"] for item in requests],
         }
         existing = self.store.get_workflow_job(job_id)
+        task_key = f"workflow-create:{job_id}"
         if existing is None:
-            task_key = f"workflow-create:{job_id}"
             self.journal.ensure_task(task_key, input_digest)
+            state = self.journal.task_state(task_key)
+            if state["state"] == "failed" and not resume_failed_creation:
+                raise WorkflowRejected(
+                    "workflow-create任务failed，必须显式受控恢复")
+            if state["state"] not in {"planned", "failed"}:
+                raise WorkflowRejected(
+                    "workflow-create任务已有非终态但bundle不完整，"
+                    "本阶段不自动接管或补写")
             claim = self.journal.claim(task_key, "local-workflow", input_digest)
             try:
                 validated_requests = [
@@ -486,9 +497,22 @@ class LocalWorkflow:
                     pass
                 raise
         else:
-            for request in requests:
-                if self.store.get_review_request(request["request_id"]) is None:
-                    self.reviews.add_request(request)
+            try:
+                verified = self.status(job_id)
+                if verified["input_digest"] != input_digest \
+                        or verified["review_request_ids"] != \
+                        job["review_request_ids"]:
+                    raise WorkflowRejected(
+                        "existing workflow job/request bundle与本次输入不一致")
+                self.journal.complete_existing_local_task(
+                    task_key, input_id=input_digest, output_ref=job_id,
+                    worker_id="local-workflow-recovery",
+                    evidence=(
+                        "existing workflow job/request bundle已逐字核验完整"),
+                    allow_failed_recovery=resume_failed_creation)
+            except (KeyError, CommitRejected, ReviewQueueRejected) as exc:
+                raise WorkflowRejected(
+                    f"workflow-create既有bundle封账被拒：{exc}") from exc
         return self.status(job_id)
 
     def status(self, job_id: str) -> dict:
