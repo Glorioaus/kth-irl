@@ -149,7 +149,7 @@ def _review_spec(imported, projection, **changes):
 
 
 def _create_job(workflow, imported, projection, **spec_changes):
-    return workflow.create_job(
+    return workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT,
         profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS,
@@ -215,11 +215,11 @@ def test_any_frozen_input_change_produces_new_job(workflow, tmp_path, change):
 
     if change in {"profile", "projection"}:
         with pytest.raises(WorkflowRejected):
-            workflow.create_job(
+            workflow._create_job_v1_history_fixture(
                 assessment_unit=unit, profile_id=profile_id,
                 method_versions=methods, review_specs=specs)
     else:
-        second = workflow.create_job(
+        second = workflow._create_job_v1_history_fixture(
             assessment_unit=unit, profile_id=profile_id,
             method_versions=methods, review_specs=specs)
         assert second["job_id"] != first["job_id"]
@@ -357,11 +357,11 @@ def test_stale_case_basis_or_profile_identity_is_rejected(workflow, tmp_path):
     spec = _review_spec(imported, projection)
     spec["case_basis_version"] = 999
     with pytest.raises(WorkflowRejected, match="CaseBasis|过期"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec])
     with pytest.raises(WorkflowRejected, match="profile|登记"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id="AGGPROF::" + "0" * 64,
             method_versions=METHODS, review_specs=[_review_spec(imported, projection)])
 
@@ -391,7 +391,7 @@ def test_manual_response_is_sealed_then_consumed_in_separate_step(workflow, tmp_
     imported, projection = _import_and_project(workflow, tmp_path)
     job = _create_job(workflow, imported, projection)
     request = workflow.reviews.get_request(job["review_request_ids"][0])
-    sealed = workflow.reviews.seal_response(
+    sealed = workflow.reviews._seal_response_v1_history_fixture(
         request["request_id"], _valid_response(request),
         source_mode="manual_import")
 
@@ -399,12 +399,12 @@ def test_manual_response_is_sealed_then_consumed_in_separate_step(workflow, tmp_
     assert sealed["source_mode"] == "manual_import"
     assert workflow.status(job["job_id"])["state"] == "response_sealed"
     assert workflow.blobs.read_bytes(sealed["response_blob_sha256"])
-    consumed = workflow.reviews.consume_response(
+    consumed = workflow.reviews._consume_response_v1_history_fixture(
         sealed["response_id"], worker_id="consumer-A")
     assert consumed["status"] == "consumed"
     assert consumed["source_mode"] == "manual_import"
     assert workflow.status(job["job_id"])["state"] == "consumed"
-    assert workflow.reviews.consume_response(
+    assert workflow.reviews._consume_response_v1_history_fixture(
         sealed["response_id"], worker_id="consumer-A")["response_id"] == \
         sealed["response_id"]
 
@@ -422,7 +422,7 @@ def test_response_rejects_rule_or_decision_fields(workflow, tmp_path, forbidden)
     response = _valid_response(request)
     response.update(forbidden)
     with pytest.raises(ReviewQueueRejected, match="越权|禁止"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
 
 
@@ -433,7 +433,7 @@ def test_response_rejects_unapproved_or_fake_source_mode(
     job = _create_job(workflow, imported, projection)
     request = workflow.reviews.get_request(job["review_request_ids"][0])
     with pytest.raises(ReviewQueueRejected, match="source_mode|未授权|模式"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], _valid_response(request), source_mode=mode)
 
 
@@ -442,13 +442,13 @@ def test_simulated_response_requires_explicit_test_switch(workflow, tmp_path):
     job = _create_job(workflow, imported, projection)
     request = workflow.reviews.get_request(job["review_request_ids"][0])
     with pytest.raises(ReviewQueueRejected, match="显式|模拟"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], _valid_response(request),
             source_mode="simulated")
     response = _valid_response(request)
     response["producer"] = {
         "producer_id": "simulator-01", "producer_kind": "simulated"}
-    sealed = workflow.reviews.seal_response(
+    sealed = workflow.reviews._seal_response_v1_history_fixture(
         request["request_id"], response,
         source_mode="simulated", allow_simulated=True)
     assert sealed["source_mode"] == "simulated"
@@ -468,7 +468,7 @@ def test_source_mode_must_match_real_producer_kind(
     response["producer"] = {
         "producer_id": "producer-01", "producer_kind": producer_kind}
     with pytest.raises(ReviewQueueRejected, match="producer|来源|未授权|配对"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode=mode,
             allow_simulated=allow_simulated)
 
@@ -481,12 +481,12 @@ def test_response_wrong_request_identity_or_citation_closure_is_rejected(
     response = _valid_response(request)
     response["request_input_digest"] = "0" * 64
     with pytest.raises(ReviewQueueRejected, match="输入身份"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
     response = _valid_response(request)
     response["citations"][0]["quote_sha256"] = "0" * 64
     with pytest.raises(ReviewQueueRejected, match="引用|闭包"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
 
 
@@ -495,10 +495,10 @@ def test_request_order_does_not_change_job_but_all_request_ids_are_frozen(
     imported, projection = _import_and_project(workflow, tmp_path)
     first_spec = _review_spec(imported, projection, purpose="目的A")
     second_spec = _review_spec(imported, projection, purpose="目的B")
-    first = workflow.create_job(
+    first = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS, review_specs=[first_spec, second_spec])
-    second = workflow.create_job(
+    second = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS, review_specs=[second_spec, first_spec])
     assert first["job_id"] == second["job_id"]
@@ -511,10 +511,10 @@ def test_same_request_input_can_belong_to_x_and_xy_jobs_atomically(
     imported, projection = _import_and_project(workflow, tmp_path)
     x = _review_spec(imported, projection, purpose="请求X")
     y = _review_spec(imported, projection, purpose="请求Y")
-    job_x = workflow.create_job(
+    job_x = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS, review_specs=[x])
-    job_xy = workflow.create_job(
+    job_xy = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS, review_specs=[x, y])
     assert job_x["job_id"] != job_xy["job_id"]
@@ -545,7 +545,7 @@ def test_job_and_all_requests_roll_back_when_second_request_insert_fails(
         """)
     with pytest.raises(sqlite3.IntegrityError,
                        match="injected second request failure"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[x, y])
     assert workflow.store.count_workflow_jobs() == 0
@@ -576,7 +576,7 @@ def test_create_job_recovers_complete_bundle_after_keyboard_interrupt(
 
     monkeypatch.setattr(first.journal, "commit", interrupt_after_bundle)
     with pytest.raises(KeyboardInterrupt, match="injected after bundle"):
-        first.create_job(
+        first._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec])
     job_id = first.store._conn.execute(
@@ -591,7 +591,7 @@ def test_create_job_recovers_complete_bundle_after_keyboard_interrupt(
 
     recovered = LocalWorkflow(root)
     try:
-        result = recovered.create_job(
+        result = recovered._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec])
         task = recovered.journal.task_state(task_key)
@@ -634,7 +634,7 @@ def test_failed_creation_task_requires_explicit_controlled_resume(
             (task_key,))
     with pytest.raises(WorkflowRejected, match="failed|显式|恢复"):
         _create_job(workflow, imported, projection)
-    resumed = workflow.create_job(
+    resumed = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS,
         review_specs=[_review_spec(imported, projection)],
@@ -654,7 +654,7 @@ def test_dispatched_or_unknown_creation_task_is_never_auto_taken_over(
             "UPDATE tasks SET state=?,external_actions=1,output_ref=NULL "
             "WHERE task_key=?", (state, task_key))
     with pytest.raises(WorkflowRejected, match="派发|unknown|接管|外部动作"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS,
             review_specs=[_review_spec(imported, projection)],
@@ -676,11 +676,11 @@ def test_v5_global_request_digest_schema_migrates_without_losing_requests(
         [imported["source_id"]]) if row["status"] == "projected")
     x = _review_spec(imported, projection, purpose="请求X")
     y = _review_spec(imported, projection, purpose="请求Y")
-    job_x = workflow.create_job(
+    job_x = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS, review_specs=[x])
     request_before = workflow.reviews.get_request(job_x["review_request_ids"][0])
-    response_before = workflow.reviews.seal_response(
+    response_before = workflow.reviews._seal_response_v1_history_fixture(
         request_before["request_id"], _valid_response(request_before),
         source_mode="manual_import")
     request_before = workflow.reviews.get_request(job_x["review_request_ids"][0])
@@ -726,7 +726,7 @@ def test_v5_global_request_digest_schema_migrates_without_losing_requests(
         assert response_after["response_id"] == response_before["response_id"]
         assert response_after["status"] == "response_sealed"
         assert response_after["created_at"] == response_before["created_at"]
-        job_xy = migrated.create_job(
+        job_xy = migrated._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[x, y])
         assert len(job_xy["review_request_ids"]) == 2
@@ -744,7 +744,7 @@ def test_v5_global_request_digest_schema_migrates_without_losing_requests(
 def test_job_state_refresh_cannot_downgrade_from_stale_request_snapshot(
         workflow, tmp_path, monkeypatch):
     imported, projection = _import_and_project(workflow, tmp_path)
-    job = workflow.create_job(
+    job = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS,
         review_specs=[
@@ -779,7 +779,7 @@ def test_job_state_refresh_cannot_downgrade_from_stale_request_snapshot(
 def test_multi_request_job_state_requires_all_responses_to_advance(
         workflow, tmp_path):
     imported, projection = _import_and_project(workflow, tmp_path)
-    job = workflow.create_job(
+    job = workflow._create_job_v1_history_fixture(
         assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         method_versions=METHODS,
         review_specs=[
@@ -788,18 +788,18 @@ def test_multi_request_job_state_requires_all_responses_to_advance(
         ])
     requests = [workflow.reviews.get_request(request_id)
                 for request_id in job["review_request_ids"]]
-    first = workflow.reviews.seal_response(
+    first = workflow.reviews._seal_response_v1_history_fixture(
         requests[0]["request_id"], _valid_response(requests[0]),
         source_mode="manual_import")
     assert workflow.status(job["job_id"])["state"] == \
         "awaiting_authorized_analysis"
-    second = workflow.reviews.seal_response(
+    second = workflow.reviews._seal_response_v1_history_fixture(
         requests[1]["request_id"], _valid_response(requests[1]),
         source_mode="manual_import")
     assert workflow.status(job["job_id"])["state"] == "response_sealed"
-    workflow.reviews.consume_response(first["response_id"], worker_id="consumer")
+    workflow.reviews._consume_response_v1_history_fixture(first["response_id"], worker_id="consumer")
     assert workflow.status(job["job_id"])["state"] == "response_sealed"
-    workflow.reviews.consume_response(second["response_id"], worker_id="consumer")
+    workflow.reviews._consume_response_v1_history_fixture(second["response_id"], worker_id="consumer")
     assert workflow.status(job["job_id"])["state"] == "consumed"
 
 
@@ -807,13 +807,13 @@ def test_same_request_rejects_a_different_resealed_response(workflow, tmp_path):
     imported, projection = _import_and_project(workflow, tmp_path)
     job = _create_job(workflow, imported, projection)
     request = workflow.reviews.get_request(job["review_request_ids"][0])
-    workflow.reviews.seal_response(
+    workflow.reviews._seal_response_v1_history_fixture(
         request["request_id"], _valid_response(request),
         source_mode="manual_import")
     changed = _valid_response(request)
     changed["findings"]["summary"] = "不同正文"
     with pytest.raises(ReviewQueueRejected, match="不同response|已封存"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], changed, source_mode="manual_import")
 
 
@@ -838,7 +838,7 @@ def test_read_time_rejects_tampered_request_and_response_body(workflow, tmp_path
             "UPDATE review_requests SET body_json=? WHERE request_id=?",
             (original_request_json, request_id))
     request = workflow.reviews.get_request(request_id)
-    sealed = workflow.reviews.seal_response(
+    sealed = workflow.reviews._seal_response_v1_history_fixture(
         request_id, _valid_response(request), source_mode="manual_import")
     response_json = workflow.store._conn.execute(
         "SELECT body_json FROM review_responses WHERE response_id=?",
@@ -851,7 +851,7 @@ def test_read_time_rejects_tampered_request_and_response_body(workflow, tmp_path
             (json.dumps(forged_response, ensure_ascii=False, sort_keys=True),
              sealed["response_id"]))
     with pytest.raises(ReviewQueueRejected, match="封存|身份|正文"):
-        workflow.reviews.consume_response(
+        workflow.reviews._consume_response_v1_history_fixture(
             sealed["response_id"], worker_id="consumer")
 
 
@@ -1044,20 +1044,20 @@ def test_review_specs_and_response_payload_limits_fail_closed(
     spec = _review_spec(imported, projection)
     monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS", 1)
     with pytest.raises(WorkflowRejected, match="review_specs|条目|上限"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec, copy.deepcopy(spec)])
     assert workflow.store.count_workflow_jobs() == 0
     monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS", 512)
     monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS_BYTES", 64)
     with pytest.raises(WorkflowRejected, match="review_specs|序列化|字节|上限"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec])
     monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPECS_BYTES", 2 * 1024 * 1024)
     monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPEC_DEPTH", 3)
     with pytest.raises(WorkflowRejected, match="review_specs|深度|上限"):
-        workflow.create_job(
+        workflow._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec])
     monkeypatch.setattr(workflow_module, "MAX_REVIEW_SPEC_DEPTH", 24)
@@ -1068,24 +1068,24 @@ def test_review_specs_and_response_payload_limits_fail_closed(
     monkeypatch.setattr(review_queue_module, "MAX_FINDINGS_BYTES", 16)
     response["findings"] = {"summary": "x" * 100}
     with pytest.raises(ReviewQueueRejected, match="findings|字节|上限"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
     response = _valid_response(request)
     monkeypatch.setattr(review_queue_module, "MAX_CITATIONS", 0)
     with pytest.raises(ReviewQueueRejected, match="citations|条目|上限"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
     response = _valid_response(request)
     monkeypatch.setattr(review_queue_module, "MAX_CITATIONS", 64)
     monkeypatch.setattr(review_queue_module, "MAX_RESPONSE_BYTES", 64)
     with pytest.raises(ReviewQueueRejected, match="response|序列化|字节|上限"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
     monkeypatch.setattr(review_queue_module, "MAX_RESPONSE_BYTES", 1024 * 1024)
     monkeypatch.setattr(review_queue_module, "MAX_JSON_DEPTH", 2)
     response["findings"] = {"a": {"b": {"c": "too-deep"}}}
     with pytest.raises(ReviewQueueRejected, match="深度|上限"):
-        workflow.reviews.seal_response(
+        workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode="manual_import")
 
 
@@ -1110,14 +1110,14 @@ def test_review_progress_cannot_overwrite_failed_job_without_explicit_resume(
         job["job_id"], "failed",
         failure={"stage": "deterministic", "detail": "worker crashed"})
     request = workflow.reviews.get_request(job["review_request_ids"][0])
-    sealed = workflow.reviews.seal_response(
+    sealed = workflow.reviews._seal_response_v1_history_fixture(
         request["request_id"], _valid_response(request),
         source_mode="manual_import")
     after_seal = workflow.status(job["job_id"])
     assert after_seal["state"] == "failed"
     assert after_seal["failure"] == {
         "stage": "deterministic", "detail": "worker crashed"}
-    workflow.reviews.consume_response(
+    workflow.reviews._consume_response_v1_history_fixture(
         sealed["response_id"], worker_id="consumer")
     after_consume = workflow.status(job["job_id"])
     assert after_consume["state"] == "failed"
