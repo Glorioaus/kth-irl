@@ -5,8 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+from pathlib import PurePosixPath
+import shutil
 import sys
+import tempfile
 from typing import Any
 
 from .aggregate import build_offline_dimension_view, validate_offline_dimension_view
@@ -18,8 +22,11 @@ from .workflow import LocalWorkflow, WorkflowRejected
 
 TITLE = "【证据与判据核验，非正式评估报告】"
 MAX_CLI_JSON_BYTES = 4 * 1024 * 1024
+MAX_AUDIT_DIRECTORY_DEPTH = 24
+MAX_AUDIT_TOTAL_ENTRIES = 16_384
 MAX_AUDIT_JSON_FILES = 4096
 MAX_AUDIT_ARTIFACT_BYTES = 16 * 1024 * 1024
+MAX_AUDIT_TOTAL_BYTES = 64 * 1024 * 1024
 
 
 class ChineseArgumentParser(argparse.ArgumentParser):
@@ -28,7 +35,7 @@ class ChineseArgumentParser(argparse.ArgumentParser):
         self.exit(2, f"错误：命令参数非法：{message}\n")
 
 
-class CliRejected(RuntimeError):
+class CliRejected(ValueError):
     """CLI 文件、路由或输出边界非法。"""
 
 
@@ -239,7 +246,7 @@ def _find_audit_artifact(case_dir: Path, *, object_id: str,
                          id_field: str, label: str,
                          schema_prefix: str) -> tuple[Path, dict]:
     """只在Case audit树中按顶层精确ID定位一个受控JSON工件。"""
-    prefix, separator, digest = object_id.partition("::")
+    _prefix, separator, digest = object_id.partition("::")
     if separator != "::" or len(digest) != 64 \
             or any(character not in "0123456789abcdef" for character in digest):
         raise CliRejected(f"{label} ID非法：{object_id}")
@@ -247,26 +254,73 @@ def _find_audit_artifact(case_dir: Path, *, object_id: str,
     if not audit_root.is_dir():
         raise CliRejected(f"{label}不存在：{object_id}")
     matches = []
-    count = 0
-    for path in sorted(audit_root.rglob("*.json")):
-        count += 1
-        if count > MAX_AUDIT_JSON_FILES:
-            raise CliRejected(
-                f"Case audit JSON文件超过上限{MAX_AUDIT_JSON_FILES}")
-        resolved = path.resolve()
-        if not resolved.is_relative_to(audit_root) or not resolved.is_file():
-            continue
+    total_entries = 0
+    json_files = 0
+    total_bytes = 0
+    stack = [(audit_root, 0)]
+    while stack:
+        directory, depth = stack.pop()
         try:
-            size = resolved.stat().st_size
-            if size > MAX_AUDIT_ARTIFACT_BYTES:
-                continue
-            value = json.loads(resolved.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        if isinstance(value, dict) and value.get(id_field) == object_id \
-                and isinstance(value.get("schema_version"), str) \
-                and value["schema_version"].startswith(schema_prefix):
-            matches.append((resolved, value))
+            entries = os.scandir(directory)
+        except OSError as exc:
+            raise CliRejected(f"Case audit目录读取失败：{directory}：{exc}") from exc
+        child_directories = []
+        try:
+            for entry in entries:
+                total_entries += 1
+                if total_entries > MAX_AUDIT_TOTAL_ENTRIES:
+                    raise CliRejected(
+                        f"Case audit目录项超过上限{MAX_AUDIT_TOTAL_ENTRIES}")
+                if entry.is_symlink():
+                    raise CliRejected(f"Case audit禁止符号链接：{entry.path}")
+                if entry.is_dir(follow_symlinks=False):
+                    child_depth = depth + 1
+                    if child_depth > MAX_AUDIT_DIRECTORY_DEPTH:
+                        raise CliRejected(
+                            "Case audit目录深度超过上限"
+                            f"{MAX_AUDIT_DIRECTORY_DEPTH}")
+                    child_directories.append((Path(entry.path), child_depth))
+                    continue
+                if not entry.is_file(follow_symlinks=False) \
+                        or not entry.name.lower().endswith(".json"):
+                    continue
+                json_files += 1
+                if json_files > MAX_AUDIT_JSON_FILES:
+                    raise CliRejected(
+                        f"Case audit JSON文件超过上限{MAX_AUDIT_JSON_FILES}")
+                try:
+                    size = entry.stat(follow_symlinks=False).st_size
+                except OSError as exc:
+                    raise CliRejected(
+                        f"Case audit工件stat失败：{entry.path}：{exc}") from exc
+                total_bytes += size
+                if total_bytes > MAX_AUDIT_TOTAL_BYTES:
+                    raise CliRejected(
+                        "Case audit JSON累计字节超过上限"
+                        f"{MAX_AUDIT_TOTAL_BYTES}")
+                if size > MAX_AUDIT_ARTIFACT_BYTES:
+                    raise CliRejected(
+                        "Case audit JSON单件字节超过上限"
+                        f"{MAX_AUDIT_ARTIFACT_BYTES}")
+                path = Path(entry.path)
+                try:
+                    data = path.read_bytes()
+                    if len(data) != size:
+                        raise CliRejected(f"Case audit工件读取期间大小变化：{path}")
+                    value = json.loads(data.decode("utf-8"))
+                except CliRejected:
+                    raise
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    continue
+                if isinstance(value, dict) and value.get(id_field) == object_id \
+                        and isinstance(value.get("schema_version"), str) \
+                        and value["schema_version"].startswith(schema_prefix):
+                    matches.append((path.resolve(), value))
+        finally:
+            close = getattr(entries, "close", None)
+            if callable(close):
+                close()
+        stack.extend(reversed(child_directories))
     if not matches:
         raise CliRejected(f"{label}不存在：{object_id}")
     if len(matches) != 1:
@@ -359,6 +413,85 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_bytes(_json_bytes(value))
 
 
+def _write_fsynced_file(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    if path.read_bytes() != data:
+        raise CliRejected(f"临时工件写后核验不一致：{path.name}")
+
+
+def _atomic_write_file(path: Path | str, data: bytes) -> None:
+    """在同父目录完整落盘并核验后，原子发布一个新文件。"""
+    target = Path(path)
+    if target.exists():
+        raise CliRejected(f"输出文件已存在：{target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, raw_temp = tempfile.mkstemp(
+        prefix=f".{target.name}.tmp-", dir=target.parent)
+    os.close(descriptor)
+    temp = Path(raw_temp)
+    try:
+        temp.unlink()
+        _write_fsynced_file(temp, data)
+        os.rename(temp, target)
+    except Exception:
+        if temp.exists():
+            temp.unlink()
+        elif target.is_file():
+            target.unlink()
+        raise
+
+
+def _safe_package_path(root: Path, relative: str) -> Path:
+    pure = PurePosixPath(relative)
+    if pure.is_absolute() or not pure.parts \
+            or any(part in {"", ".", ".."} for part in pure.parts):
+        raise CliRejected(f"核验包相对路径非法：{relative}")
+    target = root.joinpath(*pure.parts)
+    if not target.resolve().is_relative_to(root.resolve()):
+        raise CliRejected(f"核验包相对路径越界：{relative}")
+    return target
+
+
+def _cleanup_temp_directory(temp: Path, parent: Path) -> None:
+    resolved = temp.resolve()
+    expected_parent = parent.resolve()
+    if resolved.parent != expected_parent or not temp.name.startswith("."):
+        raise CliRejected(f"拒绝清理边界外临时目录：{temp}")
+    if temp.exists():
+        shutil.rmtree(temp)
+
+
+def _atomic_publish_directory(path: Path | str,
+                              files: dict[str, bytes]) -> None:
+    """在同父路径构建、fsync并逐字核验后，原子发布一个新目录。"""
+    target = Path(path)
+    if target.exists():
+        raise CliRejected(f"输出目录已存在：{target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp = Path(tempfile.mkdtemp(
+        prefix=f".{target.name}.tmp-", dir=target.parent))
+    try:
+        for relative, data in sorted(files.items()):
+            _write_fsynced_file(_safe_package_path(temp, relative), data)
+        for relative, expected in sorted(files.items()):
+            actual = _safe_package_path(temp, relative).read_bytes()
+            if len(actual) != len(expected) \
+                    or hashlib.sha256(actual).digest() != \
+                    hashlib.sha256(expected).digest():
+                raise CliRejected(f"核验包临时工件核验失败：{relative}")
+        os.rename(temp, target)
+    except Exception:
+        if temp.exists():
+            _cleanup_temp_directory(temp, target.parent)
+        elif target.is_dir() and target.resolve().parent == target.parent.resolve():
+            shutil.rmtree(target)
+        raise
+
+
 def _export_verification_package(workflow: LocalWorkflow, job_id: str,
                                  output_dir: Path) -> dict:
     if output_dir.exists():
@@ -399,14 +532,9 @@ def _export_verification_package(workflow: LocalWorkflow, job_id: str,
     serialized = {filename: _json_bytes(value)
                   for filename, value in payloads.items()}
     serialized.update(source_blobs)
-    output_dir.mkdir(parents=True, exist_ok=False)
-    for filename, data in serialized.items():
-        path = output_dir / filename
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
     files = []
     for filename in sorted(serialized):
-        data = (output_dir / filename).read_bytes()
+        data = serialized[filename]
         files.append({"path": filename, "sha256": hashlib.sha256(data).hexdigest(),
                       "byte_length": len(data)})
     manifest = {
@@ -414,11 +542,13 @@ def _export_verification_package(workflow: LocalWorkflow, job_id: str,
         "artifact_kind": "核验包", "not_a_formal_report": True,
         "job_id": job_id, "files": files,
     }
-    _write_json(output_dir / "文件SHA256.json", manifest)
+    manifest_bytes = _json_bytes(manifest)
+    serialized["文件SHA256.json"] = manifest_bytes
+    _atomic_publish_directory(output_dir, serialized)
     return {
         "artifact_kind": "核验包", "job_id": job_id,
         "output_dir": str(output_dir.resolve()),
-        "manifest_sha256": sha256_hex((output_dir / "文件SHA256.json").read_bytes()),
+        "manifest_sha256": sha256_hex(manifest_bytes),
         "file_count": len(files),
     }
 
@@ -561,11 +691,11 @@ def _dispatch(args: argparse.Namespace) -> int:
                 output = Path(args.output)
                 if output.exists():
                     raise CliRejected(f"复核请求输出文件已存在：{output}")
-                output.parent.mkdir(parents=True, exist_ok=True)
-                _write_json(output, request)
+                request_bytes = _json_bytes(request)
+                _atomic_write_file(output, request_bytes)
                 result = {"request_id": args.request_id,
                           "output": str(output.resolve()),
-                          "sha256": sha256_hex(output.read_bytes())}
+                          "sha256": sha256_hex(request_bytes)}
             elif args.review_command == "import":
                 response = _load_json_file(Path(args.response_file),
                                            label="review response")
