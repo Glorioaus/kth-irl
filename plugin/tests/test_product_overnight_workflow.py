@@ -455,6 +455,11 @@ def test_response_wrong_request_identity_or_citation_closure_is_rejected(
     with pytest.raises(ReviewQueueRejected, match="输入身份"):
         workflow.reviews.seal_response(
             request["request_id"], response, source_mode="manual_import")
+    response = _valid_response(request)
+    response["citations"][0]["quote_sha256"] = "0" * 64
+    with pytest.raises(ReviewQueueRejected, match="引用|闭包"):
+        workflow.reviews.seal_response(
+            request["request_id"], response, source_mode="manual_import")
 
 
 def test_request_order_does_not_change_job_but_all_request_ids_are_frozen(
@@ -566,11 +571,6 @@ def test_status_rebuilds_content_addressed_job_before_reporting(workflow, tmp_pa
             (json.dumps(forged, ensure_ascii=False, sort_keys=True), job["job_id"]))
     with pytest.raises(WorkflowRejected, match="job|身份|改写"):
         workflow.status(job["job_id"])
-    response = _valid_response(request)
-    response["citations"][0]["quote_sha256"] = "0" * 64
-    with pytest.raises(ReviewQueueRejected, match="引用|闭包"):
-        workflow.reviews.seal_response(
-            request["request_id"], response, source_mode="manual_import")
 
 
 def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
@@ -597,15 +597,14 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
         workflow.close()
 
 
-def test_failed_mechanical_stage_remains_failed_not_business_no(workflow):
-    workflow.store.add_workflow_job({
-        "schema_version": "kth-local.workflow-job.v1",
-        "job_id": "JOB::" + "0" * 64,
-        "input_digest": "0" * 64,
-        "state": "failed",
-        "failure": {"stage": "projection", "detail": "parser crash"},
-    })
-    state = workflow.status("JOB::" + "0" * 64)
+def test_failed_mechanical_stage_remains_failed_not_business_no(
+        workflow, tmp_path):
+    imported, projection = _import_and_project(workflow, tmp_path)
+    job = _create_job(workflow, imported, projection)
+    workflow.store.set_workflow_job_state(
+        job["job_id"], "failed",
+        failure={"stage": "projection", "detail": "parser crash"})
+    state = workflow.status(job["job_id"])
     assert state["state"] == "failed"
     assert state["failure"]["detail"] == "parser crash"
     assert "insufficient" not in json.dumps(state, ensure_ascii=False)
