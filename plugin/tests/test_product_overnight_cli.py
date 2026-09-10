@@ -12,6 +12,7 @@ import sys
 
 import pytest
 
+import kth_hybrid.cli as cli_module
 from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
 from kth_hybrid.aggregate import (
     build_offline_dimension_view,
@@ -20,6 +21,7 @@ from kth_hybrid.aggregate import (
 from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.evidence_permissions import build_evidence_use_license
 from kth_hybrid.store import BlobStore, CaseStore
+from kth_hybrid.workflow import LocalWorkflow
 from test_product_overnight_profiles import profile_case as aggregation_case
 
 
@@ -416,3 +418,138 @@ def test_console_entrypoint_and_single_plugin_manifest_are_declared():
     assert "kth-local" in command
     assert "python -m kth_hybrid.cli" not in command
     assert "正式" not in command or "非正式" in command
+
+
+def test_plugin_launcher_is_self_contained_from_unrelated_cwd_without_pythonpath(
+        tmp_path):
+    launcher = PLUGIN_ROOT / "scripts" / "kth-local.py"
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    unrelated_cwd = tmp_path / "unrelated-cwd"
+    unrelated_cwd.mkdir()
+    help_result = subprocess.run(
+        [sys.executable, "-I", str(launcher), "--help"],
+        cwd=unrelated_cwd, env=env, text=True, capture_output=True,
+        encoding="utf-8", timeout=30)
+    assert help_result.returncode == 0, help_result.stderr
+    assert "kth-local" in help_result.stdout
+
+    case_dir = tmp_path / "launcher-case"
+    created = subprocess.run([
+        sys.executable, "-I", str(launcher), "case", "create",
+        "--case-dir", str(case_dir),
+        "--subject-legal-name", "启动器主体有限公司",
+        "--evidence-cutoff", "2026-09-10T00:00:00Z",
+        "--subject-source-basis", "launcher:test",
+    ], cwd=unrelated_cwd, env=env, text=True, capture_output=True,
+        encoding="utf-8", timeout=30)
+    assert created.returncode == 0, created.stderr
+    assert json.loads(created.stdout)["subject_legal_name"] == "启动器主体有限公司"
+    assert (case_dir / "records.sqlite3").is_file()
+
+
+def test_atomic_file_and_directory_publish_clean_up_after_fsync_failure(
+        tmp_path, monkeypatch):
+    file_target = tmp_path / "request.json"
+    directory_target = tmp_path / "package"
+
+    def fail_fsync(_fd):
+        raise OSError("合成fsync故障")
+
+    real_fsync = os.fsync
+    monkeypatch.setattr(cli_module.os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="fsync"):
+        cli_module._atomic_write_file(file_target, b"request")
+    assert not file_target.exists()
+    assert not list(tmp_path.glob(".request.json.tmp-*"))
+    with pytest.raises(OSError, match="fsync"):
+        cli_module._atomic_publish_directory(
+            directory_target, {"job.json": b"job"})
+    assert not directory_target.exists()
+    assert not list(tmp_path.glob(".package.tmp-*"))
+
+    monkeypatch.setattr(cli_module.os, "fsync", real_fsync)
+    cli_module._atomic_write_file(file_target, b"request")
+    cli_module._atomic_publish_directory(
+        directory_target, {"job.json": b"job"})
+    assert file_target.read_bytes() == b"request"
+    assert (directory_target / "job.json").read_bytes() == b"job"
+
+
+def test_review_request_and_verification_export_use_atomic_publish(
+        tmp_path, monkeypatch):
+    case_dir, _, _, job = _created_job(tmp_path)
+    request = job["review_requests"][0]
+    writes = []
+    directories = []
+    real_file = cli_module._atomic_write_file
+    real_directory = cli_module._atomic_publish_directory
+
+    def record_file(path, data):
+        writes.append(Path(path))
+        return real_file(path, data)
+
+    def record_directory(path, files):
+        directories.append((Path(path), sorted(files)))
+        return real_directory(path, files)
+
+    monkeypatch.setattr(cli_module, "_atomic_write_file", record_file)
+    monkeypatch.setattr(cli_module, "_atomic_publish_directory", record_directory)
+    request_path = tmp_path / "request.json"
+    assert cli_module.main([
+        "review", "export-request", "--case-dir", str(case_dir),
+        "--request-id", request["request_id"],
+        "--output", str(request_path)]) == 0
+    package = tmp_path / "package"
+    assert cli_module.main([
+        "export", "--case-dir", str(case_dir), "--job-id", job["job_id"],
+        "--output-dir", str(package)]) == 0
+    assert writes == [request_path]
+    assert directories and directories[0][0] == package
+
+
+def test_audit_artifact_walk_rejects_symlink_without_following_it(tmp_path):
+    case_dir = tmp_path / "case"
+    audit = case_dir / "audit"
+    outside = tmp_path / "outside"
+    audit.mkdir(parents=True)
+    outside.mkdir()
+    object_id = "AGGMAN::" + "a" * 64
+    target = outside / "manifest.json"
+    target.write_text(json.dumps({
+        "schema_version": "kth-hybrid.aggregation-manifest.v2",
+        "manifest_id": object_id,
+    }), encoding="utf-8")
+    link = audit / "linked.json"
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        pytest.fail(f"测试环境无法创建文件符号链接：{exc}")
+    with pytest.raises(ValueError, match="符号链接"):
+        cli_module._find_audit_artifact(
+            case_dir, object_id=object_id, id_field="manifest_id",
+            label="aggregation manifest",
+            schema_prefix="kth-hybrid.aggregation-manifest.")
+
+
+@pytest.mark.parametrize("limit_name,limit_value,expected", [
+    ("MAX_AUDIT_DIRECTORY_DEPTH", 1, "深度"),
+    ("MAX_AUDIT_TOTAL_ENTRIES", 1, "目录项"),
+    ("MAX_AUDIT_JSON_FILES", 1, "JSON文件"),
+    ("MAX_AUDIT_TOTAL_BYTES", 10, "累计字节"),
+    ("MAX_AUDIT_ARTIFACT_BYTES", 10, "单件字节"),
+])
+def test_audit_artifact_walk_rejects_each_budget_before_unbounded_read(
+        tmp_path, monkeypatch, limit_name, limit_value, expected):
+    case_dir = tmp_path / limit_name
+    deep = case_dir / "audit" / "one" / "two"
+    deep.mkdir(parents=True)
+    for index in range(2):
+        (deep / f"{index}.json").write_text(
+            json.dumps({"padding": "x" * 64}), encoding="utf-8")
+    monkeypatch.setattr(cli_module, limit_name, limit_value)
+    with pytest.raises(ValueError, match=expected):
+        cli_module._find_audit_artifact(
+            case_dir, object_id="AGGMAN::" + "b" * 64,
+            id_field="manifest_id", label="aggregation manifest",
+            schema_prefix="kth-hybrid.aggregation-manifest.")
