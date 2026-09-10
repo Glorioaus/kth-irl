@@ -558,6 +558,30 @@ def test_audit_artifact_walk_rejects_symlink_without_following_it(tmp_path):
             schema_prefix="kth-hybrid.aggregation-manifest.")
 
 
+def test_audit_root_symlink_cannot_escape_case_and_match_external_artifact(
+        tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    outside = tmp_path / "outside-audit"
+    outside.mkdir()
+    object_id = "AGGMAN::" + "d" * 64
+    (outside / "manifest.json").write_text(json.dumps({
+        "schema_version": "kth-hybrid.aggregation-manifest.v2",
+        "manifest_id": object_id,
+    }), encoding="utf-8")
+    audit_link = case_dir / "audit"
+    try:
+        audit_link.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.fail(f"测试环境无法创建目录符号链接：{exc}")
+
+    with pytest.raises(ValueError, match="audit根目录.*(?:符号链接|重解析|越界)"):
+        cli_module._find_audit_artifact(
+            case_dir, object_id=object_id, id_field="manifest_id",
+            label="aggregation manifest",
+            schema_prefix="kth-hybrid.aggregation-manifest.")
+
+
 @pytest.mark.parametrize("limit_name,limit_value,expected", [
     ("MAX_AUDIT_DIRECTORY_DEPTH", 1, "深度"),
     ("MAX_AUDIT_TOTAL_ENTRIES", 1, "目录项"),
