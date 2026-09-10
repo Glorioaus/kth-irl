@@ -21,7 +21,7 @@ from kth_hybrid.aggregation_profiles import (
 )
 from kth_hybrid.contracts import sha256_hex
 from kth_hybrid.store import BlobStore, CaseStore
-from test_night_brl_runner import SUBJECT, _seed, _unit_input
+from test_night_brl_runner import SUBJECT, UNIT_ID, _seed, _unit_input
 
 
 def _manifest_identity(body):
@@ -208,7 +208,12 @@ def test_profile_rejects_cross_dimension_assessment_unit_drift(
             profile_id=CURRENT_AGGREGATION_PROFILE_ID)
 
 
-def test_profile_requires_frl_to_reference_the_shared_assessment_unit(profile_case):
+@pytest.mark.parametrize("assessment_unit_refs", [
+    ["UNIT-B"],
+    [UNIT_ID, "UNIT-EXTRA"],
+])
+def test_profile_requires_frl_to_reference_exactly_the_shared_assessment_unit(
+        profile_case, assessment_unit_refs):
     root, _basis, _catalog, _results = profile_case
     case = CaseStore(root / "records.sqlite3")
     blobs = BlobStore(root / "blobs")
@@ -219,7 +224,8 @@ def test_profile_requires_frl_to_reference_the_shared_assessment_unit(profile_ca
     finally:
         case.close()
     rows = copy.deepcopy(manifest["dimensions"])
-    rows["FRL"]["financing_entity"]["assessment_unit_refs"] = ["UNIT-B"]
+    rows["FRL"]["financing_entity"]["assessment_unit_refs"] = \
+        assessment_unit_refs
     with pytest.raises(ValueError, match="FRL|共享|评估单元"):
         validate_dimension_index(
             list(rows.values()), scope=manifest["scope"],
@@ -281,3 +287,35 @@ def test_v1_manifest_replays_read_only_but_new_freeze_only_emits_v2(profile_case
             for dimension, row in legacy_view["dimensions"].items()} == {
                 dimension: row["result_id"]
                 for dimension, row in current["dimensions"].items()}
+
+
+@pytest.mark.parametrize("extra_field", [
+    {"profile_id": CURRENT_AGGREGATION_PROFILE_ID},
+    {"unknown_field": "not-allowed"},
+])
+def test_v1_manifest_rejects_extra_fields_even_when_resealed(
+        profile_case, extra_field):
+    root, _basis, _catalog, results = profile_case
+    case = CaseStore(root / "records.sqlite3")
+    blobs = BlobStore(root / "blobs")
+    try:
+        current = freeze_aggregation_manifest(
+            case, blobs, {dimension: result["result_id"]
+                          for dimension, result in results.items()},
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID)
+        legacy_body = {
+            "schema_version": LEGACY_MANIFEST_SCHEMA,
+            "case_basis_version": current["case_basis_version"],
+            "scope": current["scope"],
+            "expected_rule_versions": {
+                dimension: row["rule_version"]
+                for dimension, row in current["dimensions"].items()
+            },
+            "dimensions": current["dimensions"],
+            **extra_field,
+        }
+        resealed = _manifest_identity(legacy_body)
+        with pytest.raises(ValueError, match="v1|字段|manifest"):
+            build_offline_dimension_view(case, blobs, resealed)
+    finally:
+        case.close()
