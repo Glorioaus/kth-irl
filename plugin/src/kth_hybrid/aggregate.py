@@ -216,9 +216,28 @@ def _validate_manifest_identity(manifest):
     if not isinstance(manifest, dict) or manifest.get("schema_version") not in {
             MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMA}:
         raise ValueError("aggregation manifest结构或schema非法")
-    if manifest["schema_version"] == LEGACY_MANIFEST_SCHEMA \
-            and set(manifest) != _LEGACY_MANIFEST_FIELDS:
-        raise ValueError("v1 aggregation manifest字段集合非法")
+    if manifest["schema_version"] == LEGACY_MANIFEST_SCHEMA:
+        if set(manifest) != _LEGACY_MANIFEST_FIELDS:
+            raise ValueError("v1 aggregation manifest字段集合非法")
+        expected_versions = manifest.get("expected_rule_versions")
+        if not isinstance(expected_versions, dict) \
+                or set(expected_versions) != EXPECTED_DIMENSIONS:
+            raise ValueError("v1 aggregation manifest版本映射结构非法")
+    else:
+        expected_fields = {
+            "schema_version", "profile_id", "profile_digest",
+            "case_basis_version", "scope", "dimensions",
+            "manifest_id", "manifest_digest",
+        }
+        if set(manifest) != expected_fields:
+            raise ValueError("v2 aggregation manifest字段集合非法")
+        if not isinstance(manifest.get("profile_id"), str) \
+                or not isinstance(manifest.get("profile_digest"), str):
+            raise ValueError("v2 aggregation manifest profile字段结构非法")
+    dimensions = manifest.get("dimensions")
+    if not isinstance(dimensions, dict) \
+            or set(dimensions) != EXPECTED_DIMENSIONS:
+        raise ValueError("aggregation manifest dimensions必须是精确六维键字典")
     body = {key: value for key, value in manifest.items()
             if key not in {"manifest_id", "manifest_digest"}}
     digest = sha256_hex(json.dumps(
@@ -227,13 +246,6 @@ def _validate_manifest_identity(manifest):
             or manifest.get("manifest_id") != f"AGGMAN::{digest}":
         raise ValueError("aggregation manifest身份摘要不一致")
     if manifest["schema_version"] == MANIFEST_SCHEMA:
-        expected_fields = {
-            "schema_version", "profile_id", "profile_digest",
-            "case_basis_version", "scope", "dimensions",
-            "manifest_id", "manifest_digest",
-        }
-        if set(manifest) != expected_fields:
-            raise ValueError("v2 aggregation manifest字段集合非法")
         profile = get_aggregation_profile(manifest.get("profile_id"))
         if manifest.get("profile_digest") != profile["profile_digest"]:
             raise ValueError("aggregation manifest profile摘要与registry不一致")
