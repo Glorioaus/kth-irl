@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from kth_hybrid import runner
 from kth_hybrid.aggregate import build_offline_dimension_view,freeze_aggregation_manifest
+from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
 from kth_hybrid.audit import trace_crl_dimension,trace_dimension_result
 from kth_hybrid.catalog import build_catalog_from_wheel
 from kth_hybrid.roles import assemble_offline_deliberation,role_candidate_digest
@@ -29,7 +30,9 @@ def test_real_six_dimension_and_offline_role_gate():
  try:
   assert trace_crl_dimension(case,blobs,results["CRL"]["result_id"])["ok"]
   assert all(trace_dimension_result(case,blobs,results[d]["result_id"])["ok"] for d in ("FRL","BRL","TRL","IPRL","TMRL"))
-  manifest=freeze_aggregation_manifest(case,blobs,{d:r["result_id"] for d,r in results.items()})
+  manifest=freeze_aggregation_manifest(
+   case,blobs,{d:r["result_id"] for d,r in results.items()},
+   profile_id=CURRENT_AGGREGATION_PROFILE_ID)
   view=build_offline_dimension_view(case,blobs,manifest)
  finally:case.close()
  pro=_attempt(view,"PRO","P","CTX-P");con=_attempt(view,"CON","C","CTX-C");chair=_attempt(view,"CHAIR","H","CTX-H")

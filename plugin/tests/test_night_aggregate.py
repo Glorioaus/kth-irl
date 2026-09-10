@@ -7,6 +7,7 @@ from kth_hybrid.aggregate import (freeze_aggregation_manifest,
                                   build_offline_dimension_view)
 from kth_hybrid.catalog import APPROVED_WHEEL_SHA256
 from kth_hybrid.catalog import build_catalog_from_wheel
+from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
 from kth_hybrid import runner
 from kth_hybrid.store import CaseStore,BlobStore
 EXPECTED={"CRL","BRL","TRL","IPRL","TMRL","FRL"}
@@ -44,7 +45,8 @@ def test_real_offline_six_dimension_view_is_traceable_not_a_decision():
  case=CaseStore(root/'records.sqlite3');blobs=BlobStore(root/'blobs')
  try:
   ids={d:result["result_id"] for d,result in results.items()}
-  manifest=freeze_aggregation_manifest(case,blobs,ids)
+  manifest=freeze_aggregation_manifest(
+   case,blobs,ids,profile_id=CURRENT_AGGREGATION_PROFILE_ID)
   view=build_offline_dimension_view(case,blobs,manifest)
  finally:case.close()
  assert set(view["dimensions"])==EXPECTED and view["status"]=="offline_candidate"

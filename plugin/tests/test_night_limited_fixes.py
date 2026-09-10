@@ -16,6 +16,7 @@ from kth_hybrid.aggregate import (
     freeze_aggregation_manifest,
     validate_dimension_index,
 )
+from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
 from kth_hybrid.audit import trace_dimension_result, validate_dimension_payload
 from kth_hybrid.catalog import APPROVED_WHEEL_SHA256, build_catalog_from_wheel
 from kth_hybrid.contracts import sha256_hex
@@ -368,7 +369,9 @@ def test_explicit_manifest_freezes_exact_results_units_and_versions(case_copy):
             result_ids[dimension] = case._conn.execute(
                 "SELECT result_id FROM dimension_results WHERE dimension_id=? "
                 "ORDER BY created_at DESC,result_id DESC LIMIT 1", (dimension,)).fetchone()[0]
-        manifest = freeze_aggregation_manifest(case, blobs, result_ids)
+        manifest = freeze_aggregation_manifest(
+            case, blobs, result_ids,
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID)
         view = build_offline_dimension_view(case, blobs, manifest)
         assert {d: row["result_id"] for d, row in view["dimensions"].items()} == result_ids
         assert all(row.get("rule_version") for row in manifest["dimensions"].values())

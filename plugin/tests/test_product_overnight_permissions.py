@@ -14,6 +14,7 @@ from kth_hybrid.aggregate import (
     freeze_aggregation_manifest,
     validate_offline_dimension_view,
 )
+from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
 from kth_hybrid.audit import trace_dimension_result
 from kth_hybrid.evidence_permissions import build_permission_binding
 from kth_hybrid.roles import (
@@ -88,6 +89,7 @@ def _build_real_view(root):
             case, blobs,
             {dimension: result["result_id"]
              for dimension, result in results.items()},
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID,
         )
         view = build_offline_dimension_view(case, blobs, manifest)
     finally:

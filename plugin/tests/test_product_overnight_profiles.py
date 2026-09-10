@@ -252,12 +252,13 @@ def test_frozen_manifest_ignores_new_latest_result(profile_case):
 
 
 def test_v1_manifest_replays_read_only_but_new_freeze_only_emits_v2(profile_case):
-    root, _basis, _catalog, _results = profile_case
+    root, _basis, _catalog, results = profile_case
     case = CaseStore(root / "records.sqlite3")
     blobs = BlobStore(root / "blobs")
     try:
         current = freeze_aggregation_manifest(
-            case, blobs, _result_ids(case),
+            case, blobs, {dimension: result["result_id"]
+                          for dimension, result in results.items()},
             profile_id=CURRENT_AGGREGATION_PROFILE_ID)
         legacy_body = {
             "schema_version": LEGACY_MANIFEST_SCHEMA,

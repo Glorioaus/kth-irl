@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from .audit import trace_crl_dimension, trace_dimension_result
+from .aggregation_profiles import get_aggregation_profile
 from .contracts import sha256_hex
 from .evidence_permissions import (
     LEGACY_LICENSE_FIELDS,
@@ -12,7 +13,8 @@ from .evidence_permissions import (
 )
 
 EXPECTED_DIMENSIONS = {"CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}
-MANIFEST_SCHEMA = "kth-hybrid.aggregation-manifest.v1"
+MANIFEST_SCHEMA = "kth-hybrid.aggregation-manifest.v2"
+LEGACY_MANIFEST_SCHEMA = "kth-hybrid.aggregation-manifest.v1"
 VIEW_SCHEMA = "kth-hybrid.offline-six-dimension-view.v3"
 LEGACY_VIEW_SCHEMA = "kth-hybrid.offline-six-dimension-view.v2"
 _VIEW_FIELDS = {
@@ -81,7 +83,7 @@ def _result_entry(case, blobs, dimension_id: str, result_id: str) -> tuple[dict,
 
 
 def validate_dimension_index(rows, *, scope, case_basis_version,
-                             expected_rule_versions=None):
+                             expected_rule_versions=None, profile_id=None):
     by_dimension = {}
     for row in rows:
         dimension = row.get("dimension_id") if isinstance(row, dict) else None
@@ -92,8 +94,9 @@ def validate_dimension_index(rows, *, scope, case_basis_version,
     extra = set(by_dimension) - EXPECTED_DIMENSIONS
     if missing or extra:
         raise ValueError(f"六维缺失或额外：缺失={sorted(missing)}，额外={sorted(extra)}")
+    profile = get_aggregation_profile(profile_id) if profile_id is not None else None
     versions = {row.get("rule_version") for row in by_dimension.values()}
-    if expected_rule_versions is None and len(versions) != 1:
+    if profile is None and expected_rule_versions is None and len(versions) != 1:
         raise ValueError("六维方法版本混用且未提供逐维预期版本")
     for dimension, row in by_dimension.items():
         if row.get("scope") != scope:
@@ -123,11 +126,39 @@ def validate_dimension_index(rows, *, scope, case_basis_version,
         for dimension, version in expected_rule_versions.items():
             if by_dimension[dimension]["rule_version"] != version:
                 raise ValueError(f"{dimension}方法版本与manifest profile不一致")
+    if profile is not None:
+        for dimension, expected in profile["dimensions"].items():
+            row = by_dimension[dimension]
+            if row["catalog_sha256"] != profile["catalog_sha256"]:
+                raise ValueError(f"{dimension} catalog与登记profile不一致")
+            if row["rule_version"] != expected["rule_version"]:
+                raise ValueError(f"{dimension}方法版本与登记profile不一致")
+            if row["result_schema_version"] != expected["result_schema_version"]:
+                raise ValueError(f"{dimension}结果schema与登记profile不一致")
+        policy = profile["shared_unit_policy"]
+        shared_dimensions = policy["assessment_unit_dimensions"]
+        shared_scope_ids = {
+            by_dimension[dimension]["scope_id"] for dimension in shared_dimensions
+        }
+        if policy["require_identical_scope_id"] and len(shared_scope_ids) != 1:
+            raise ValueError("BRL/TRL/IPRL/TMRL共享评估单元scope_id不一致")
+        shared_scopes = [by_dimension[dimension]["assessment_scope"]
+                         for dimension in shared_dimensions]
+        if policy["require_identical_assessment_scope"] \
+                and any(value != shared_scopes[0] for value in shared_scopes[1:]):
+            raise ValueError("BRL/TRL/IPRL/TMRL共享assessment_scope不一致")
+        shared_scope_id = next(iter(shared_scope_ids))
+        frl_refs = by_dimension["FRL"]["financing_entity"][
+            "assessment_unit_refs"]
+        if policy["frl_must_reference_shared_assessment_unit"] \
+                and shared_scope_id not in frl_refs:
+            raise ValueError("FRL未引用BRL/TRL/IPRL/TMRL共享评估单元")
     return by_dimension
 
 
-def freeze_aggregation_manifest(case, blobs, result_ids):
+def freeze_aggregation_manifest(case, blobs, result_ids, *, profile_id):
     """从调用方显式给出的六个result_id冻结聚合manifest。"""
+    profile = get_aggregation_profile(profile_id)
     if not isinstance(result_ids, dict) or set(result_ids) != EXPECTED_DIMENSIONS:
         raise ValueError("聚合manifest必须显式给出六个精确result_id")
     basis = case.get_case_basis()
@@ -137,17 +168,16 @@ def freeze_aggregation_manifest(case, blobs, result_ids):
         entry, payload = _result_entry(case, blobs, dimension, result_ids[dimension])
         entries[dimension] = entry
         payloads[dimension] = payload
-    expected_versions = {dimension: entry["rule_version"]
-                         for dimension, entry in entries.items()}
     validate_dimension_index(
         list(entries.values()), scope=basis["subject_legal_name"],
         case_basis_version=basis["version"],
-        expected_rule_versions=expected_versions)
+        profile_id=profile_id)
     body = {
         "schema_version": MANIFEST_SCHEMA,
+        "profile_id": profile_id,
+        "profile_digest": profile["profile_digest"],
         "case_basis_version": basis["version"],
         "scope": basis["subject_legal_name"],
-        "expected_rule_versions": expected_versions,
         "dimensions": entries,
     }
     digest = sha256_hex(json.dumps(
@@ -157,7 +187,8 @@ def freeze_aggregation_manifest(case, blobs, result_ids):
 
 
 def _validate_manifest_identity(manifest):
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != MANIFEST_SCHEMA:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") not in {
+            MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMA}:
         raise ValueError("aggregation manifest结构或schema非法")
     body = {key: value for key, value in manifest.items()
             if key not in {"manifest_id", "manifest_digest"}}
@@ -166,6 +197,17 @@ def _validate_manifest_identity(manifest):
     if manifest.get("manifest_digest") != digest \
             or manifest.get("manifest_id") != f"AGGMAN::{digest}":
         raise ValueError("aggregation manifest身份摘要不一致")
+    if manifest["schema_version"] == MANIFEST_SCHEMA:
+        expected_fields = {
+            "schema_version", "profile_id", "profile_digest",
+            "case_basis_version", "scope", "dimensions",
+            "manifest_id", "manifest_digest",
+        }
+        if set(manifest) != expected_fields:
+            raise ValueError("v2 aggregation manifest字段集合非法")
+        profile = get_aggregation_profile(manifest.get("profile_id"))
+        if manifest.get("profile_digest") != profile["profile_digest"]:
+            raise ValueError("aggregation manifest profile摘要与registry不一致")
 
 
 def _is_sha256(value):
@@ -267,11 +309,16 @@ def build_offline_dimension_view(case, blobs, manifest):
     basis = case.get_case_basis_version(manifest["case_basis_version"])
     if basis is None or basis["subject_legal_name"] != manifest.get("scope"):
         raise ValueError("manifest CaseBasis版本或主体不存在")
-    expected_versions = manifest.get("expected_rule_versions") or {}
+    validation_args = {}
+    if manifest["schema_version"] == MANIFEST_SCHEMA:
+        validation_args["profile_id"] = manifest["profile_id"]
+    else:
+        validation_args["expected_rule_versions"] = \
+            manifest.get("expected_rule_versions") or {}
     indexed = validate_dimension_index(
         list((manifest.get("dimensions") or {}).values()),
         scope=manifest["scope"], case_basis_version=manifest["case_basis_version"],
-        expected_rule_versions=expected_versions)
+        **validation_args)
     current_entries = {}
     payloads = {}
     for dimension, saved in indexed.items():
