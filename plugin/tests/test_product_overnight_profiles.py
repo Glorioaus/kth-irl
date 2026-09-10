@@ -489,3 +489,41 @@ def test_manifest_rejects_nested_container_corruption_with_value_error(
             build_offline_dimension_view(case, blobs, resealed)
     finally:
         case.close()
+
+
+@pytest.mark.parametrize("schema_version", [
+    LEGACY_MANIFEST_SCHEMA,
+    MANIFEST_SCHEMA,
+])
+@pytest.mark.parametrize("invalid_version", [[], True, False, 0, -1])
+def test_manifest_requires_non_boolean_positive_case_basis_version(
+        profile_case, schema_version, invalid_version):
+    root, _basis, _catalog, results = profile_case
+    case = CaseStore(root / "records.sqlite3")
+    blobs = BlobStore(root / "blobs")
+    try:
+        current = freeze_aggregation_manifest(
+            case, blobs, {dimension: result["result_id"]
+                          for dimension, result in results.items()},
+            profile_id=CURRENT_AGGREGATION_PROFILE_ID)
+        if schema_version == MANIFEST_SCHEMA:
+            body = {key: copy.deepcopy(value)
+                    for key, value in current.items()
+                    if key not in {"manifest_id", "manifest_digest"}}
+        else:
+            body = {
+                "schema_version": LEGACY_MANIFEST_SCHEMA,
+                "case_basis_version": current["case_basis_version"],
+                "scope": current["scope"],
+                "expected_rule_versions": {
+                    dimension: row["rule_version"]
+                    for dimension, row in current["dimensions"].items()
+                },
+                "dimensions": copy.deepcopy(current["dimensions"]),
+            }
+        body["case_basis_version"] = copy.deepcopy(invalid_version)
+        resealed = _manifest_identity(body)
+        with pytest.raises(ValueError, match="CaseBasis|正整数|bool"):
+            build_offline_dimension_view(case, blobs, resealed)
+    finally:
+        case.close()
