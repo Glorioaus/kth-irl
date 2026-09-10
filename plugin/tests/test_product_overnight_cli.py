@@ -476,6 +476,32 @@ def test_atomic_file_and_directory_publish_clean_up_after_fsync_failure(
     assert (directory_target / "job.json").read_bytes() == b"job"
 
 
+def test_atomic_publish_removes_own_target_if_rename_reports_after_move(
+        tmp_path, monkeypatch):
+    real_rename = os.rename
+
+    def move_then_fail(source, target):
+        real_rename(source, target)
+        raise OSError("合成rename后报告故障")
+
+    monkeypatch.setattr(cli_module.os, "rename", move_then_fail)
+    file_target = tmp_path / "request.json"
+    with pytest.raises(OSError, match="rename"):
+        cli_module._atomic_write_file(file_target, b"request")
+    assert not file_target.exists()
+    directory_target = tmp_path / "package"
+    with pytest.raises(OSError, match="rename"):
+        cli_module._atomic_publish_directory(
+            directory_target, {"job.json": b"job"})
+    assert not directory_target.exists()
+
+    monkeypatch.setattr(cli_module.os, "rename", real_rename)
+    cli_module._atomic_write_file(file_target, b"request")
+    cli_module._atomic_publish_directory(
+        directory_target, {"job.json": b"job"})
+    assert file_target.exists() and directory_target.is_dir()
+
+
 def test_review_request_and_verification_export_use_atomic_publish(
         tmp_path, monkeypatch):
     case_dir, _, _, job = _created_job(tmp_path)
