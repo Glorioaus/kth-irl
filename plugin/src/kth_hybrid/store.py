@@ -21,7 +21,7 @@ from threading import RLock
 
 from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
-_SCHEMA_VERSION = "kth-hybrid.store.v3"
+_SCHEMA_VERSION = "kth-hybrid.store.v4"
 
 
 def _strict_json_dumps(value, *, label: str) -> str:
@@ -268,6 +268,76 @@ CREATE TABLE IF NOT EXISTS criterion_results (
 );
 CREATE INDEX IF NOT EXISTS idx_claims_source ON claims(source_id);
 CREATE INDEX IF NOT EXISTS idx_quals_claim ON qualifications(claim_id);
+CREATE TABLE IF NOT EXISTS attachment_imports (
+    attachment_id TEXT PRIMARY KEY,
+    origin_path TEXT NOT NULL,
+    blob_sha256 TEXT NOT NULL,
+    byte_length INTEGER NOT NULL,
+    original_filename TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('saved','unsupported','failed')),
+    error TEXT,
+    import_id INTEGER REFERENCES import_records(import_id),
+    source_id TEXT REFERENCES sources(source_id),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(origin_path, blob_sha256)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content
+    ON attachment_imports(blob_sha256, media_type);
+CREATE TABLE IF NOT EXISTS text_projections (
+    projection_id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES sources(source_id),
+    source_blob_sha256 TEXT NOT NULL,
+    locator_json TEXT NOT NULL,
+    text_sha256 TEXT,
+    text_blob_sha256 TEXT,
+    char_count INTEGER,
+    tool TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('projected','unprocessed','failed')),
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_text_projections_source
+    ON text_projections(source_id, projection_id);
+CREATE TABLE IF NOT EXISTS workflow_jobs (
+    job_id TEXT PRIMARY KEY,
+    input_digest TEXT NOT NULL UNIQUE,
+    schema_version TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN
+        ('saved','projected','awaiting_authorized_analysis','response_sealed',
+         'consumed','failed','insufficient')),
+    body_json TEXT NOT NULL,
+    failure_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS review_requests (
+    request_id TEXT PRIMARY KEY,
+    request_input_digest TEXT NOT NULL UNIQUE,
+    job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+    status TEXT NOT NULL CHECK (status IN
+        ('awaiting_authorized_analysis','response_sealed','consumed','failed')),
+    body_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_review_requests_job
+    ON review_requests(job_id, request_id);
+CREATE TABLE IF NOT EXISTS review_responses (
+    response_id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL UNIQUE REFERENCES review_requests(request_id),
+    response_digest TEXT NOT NULL UNIQUE,
+    response_blob_sha256 TEXT NOT NULL,
+    source_mode TEXT NOT NULL CHECK (source_mode IN
+        ('manual_import','simulated','runtime_provider')),
+    producer_json TEXT NOT NULL,
+    output_schema TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('response_sealed','consumed','failed')),
+    body_json TEXT NOT NULL,
+    consumed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 """
 
 
@@ -370,7 +440,8 @@ class CaseStore:
         self._conn.executescript(_SCHEMA)
         self._migrate()
         self._conn.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
+            "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (_SCHEMA_VERSION,),
         )
         self._conn.commit()
@@ -529,6 +600,77 @@ class CaseStore:
             );
             CREATE INDEX IF NOT EXISTS idx_dimension_results_dimension
                 ON dimension_results(dimension_id, scope_id);
+            CREATE TABLE IF NOT EXISTS attachment_imports (
+                attachment_id TEXT PRIMARY KEY,
+                origin_path TEXT NOT NULL,
+                blob_sha256 TEXT NOT NULL,
+                byte_length INTEGER NOT NULL,
+                original_filename TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('saved','unsupported','failed')),
+                error TEXT,
+                import_id INTEGER REFERENCES import_records(import_id),
+                source_id TEXT REFERENCES sources(source_id),
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(origin_path, blob_sha256)
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content
+                ON attachment_imports(blob_sha256, media_type);
+            CREATE TABLE IF NOT EXISTS text_projections (
+                projection_id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL REFERENCES sources(source_id),
+                source_blob_sha256 TEXT NOT NULL,
+                locator_json TEXT NOT NULL,
+                text_sha256 TEXT,
+                text_blob_sha256 TEXT,
+                char_count INTEGER,
+                tool TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('projected','unprocessed','failed')),
+                error TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_text_projections_source
+                ON text_projections(source_id, projection_id);
+            CREATE TABLE IF NOT EXISTS workflow_jobs (
+                job_id TEXT PRIMARY KEY,
+                input_digest TEXT NOT NULL UNIQUE,
+                schema_version TEXT NOT NULL,
+                state TEXT NOT NULL CHECK (state IN
+                    ('saved','projected','awaiting_authorized_analysis',
+                     'response_sealed','consumed','failed','insufficient')),
+                body_json TEXT NOT NULL,
+                failure_json TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS review_requests (
+                request_id TEXT PRIMARY KEY,
+                request_input_digest TEXT NOT NULL UNIQUE,
+                job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+                status TEXT NOT NULL CHECK (status IN
+                    ('awaiting_authorized_analysis','response_sealed','consumed','failed')),
+                body_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_review_requests_job
+                ON review_requests(job_id, request_id);
+            CREATE TABLE IF NOT EXISTS review_responses (
+                response_id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL UNIQUE REFERENCES review_requests(request_id),
+                response_digest TEXT NOT NULL UNIQUE,
+                response_blob_sha256 TEXT NOT NULL,
+                source_mode TEXT NOT NULL CHECK (source_mode IN
+                    ('manual_import','simulated','runtime_provider')),
+                producer_json TEXT NOT NULL,
+                output_schema TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN
+                    ('response_sealed','consumed','failed')),
+                body_json TEXT NOT NULL,
+                consumed_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
         """)
         columns = {row[1] for row in self._conn.execute(
             "PRAGMA table_info(sources)").fetchall()}
@@ -1069,6 +1211,281 @@ class CaseStore:
                 (dimension_id,),
             ).fetchone()
         return int(row[0])
+
+    # ---- 本地产品工作流（追加式、内容寻址）----
+
+    def get_attachment_import(self, *, origin_path: str,
+                              blob_sha256: str,
+                              media_type: str | None = None) -> dict | None:
+        if media_type is not None:
+            row = self._conn.execute(
+                "SELECT * FROM attachment_imports WHERE blob_sha256=? "
+                "AND media_type=? ORDER BY import_id LIMIT 1",
+                (blob_sha256, media_type)).fetchone()
+            if row is not None:
+                return dict(row)
+        row = self._conn.execute(
+            "SELECT * FROM attachment_imports WHERE origin_path=? "
+            "AND blob_sha256=?", (origin_path, blob_sha256)).fetchone()
+        return dict(row) if row else None
+
+    def add_attachment_import(self, item: dict) -> dict:
+        required = {
+            "attachment_id", "origin_path", "blob_sha256", "byte_length",
+            "original_filename", "media_type", "status", "error",
+            "import_id", "source_id",
+        }
+        if set(item) != required:
+            raise ValueError("附件导入记录字段不完整或含额外字段")
+        if item["status"] not in {"saved", "unsupported", "failed"}:
+            raise ValueError("附件导入状态非法")
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO attachment_imports("
+                "attachment_id,origin_path,blob_sha256,byte_length,"
+                "original_filename,media_type,status,error,import_id,source_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                tuple(item[key] for key in (
+                    "attachment_id", "origin_path", "blob_sha256",
+                    "byte_length", "original_filename", "media_type", "status",
+                    "error", "import_id", "source_id")),
+            )
+        stored = self.get_attachment_import(
+            origin_path=item["origin_path"], blob_sha256=item["blob_sha256"],
+            media_type=item["media_type"])
+        if stored is None:
+            raise RuntimeError("附件导入记录持久化失败")
+        return stored
+
+    def count_attachment_imports(self) -> int:
+        return int(self._conn.execute(
+            "SELECT COUNT(*) FROM attachment_imports").fetchone()[0])
+
+    @staticmethod
+    def _decode_projection(row) -> dict | None:
+        if row is None:
+            return None
+        item = dict(row)
+        item["locator"] = json.loads(item.pop("locator_json"))
+        return item
+
+    def add_text_projection(self, item: dict) -> dict:
+        required = {
+            "projection_id", "source_id", "source_blob_sha256", "locator",
+            "text_sha256", "text_blob_sha256", "char_count", "tool",
+            "status", "error",
+        }
+        if set(item) != required:
+            raise ValueError("文本投影记录字段不完整或含额外字段")
+        if item["status"] not in {"projected", "unprocessed", "failed"}:
+            raise ValueError("文本投影状态非法")
+        locator_json = _strict_json_dumps(item["locator"], label="文本投影定位")
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO text_projections("
+                "projection_id,source_id,source_blob_sha256,locator_json,"
+                "text_sha256,text_blob_sha256,char_count,tool,status,error) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (item["projection_id"], item["source_id"],
+                 item["source_blob_sha256"], locator_json,
+                 item["text_sha256"], item["text_blob_sha256"],
+                 item["char_count"], item["tool"], item["status"],
+                 item["error"]),
+            )
+        stored = self.get_text_projection(item["projection_id"])
+        if stored is None:
+            raise RuntimeError("文本投影记录持久化失败")
+        return stored
+
+    def get_text_projection(self, projection_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM text_projections WHERE projection_id=?",
+            (projection_id,)).fetchone()
+        return self._decode_projection(row)
+
+    def fetch_text_projections(self, source_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM text_projections WHERE source_id=? "
+            "ORDER BY projection_id", (source_id,)).fetchall()
+        return [self._decode_projection(row) for row in rows]
+
+    @staticmethod
+    def _decode_workflow_job(row) -> dict | None:
+        if row is None:
+            return None
+        stored = dict(row)
+        body = json.loads(stored.pop("body_json"))
+        failure_json = stored.pop("failure_json")
+        body.update({
+            "state": stored["state"],
+            "created_at": stored["created_at"],
+            "updated_at": stored["updated_at"],
+        })
+        if failure_json is not None:
+            body["failure"] = json.loads(failure_json)
+        return body
+
+    def add_workflow_job(self, item: dict) -> dict:
+        required = {"schema_version", "job_id", "input_digest", "state"}
+        if not required <= set(item):
+            raise ValueError("工作流job缺少身份或状态字段")
+        body = {key: value for key, value in item.items()
+                if key not in {"state", "failure", "created_at", "updated_at"}}
+        failure = item.get("failure")
+        body_json = _strict_json_dumps(body, label="工作流job")
+        failure_json = (_strict_json_dumps(failure, label="工作流失败")
+                        if failure is not None else None)
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO workflow_jobs("
+                "job_id,input_digest,schema_version,state,body_json,failure_json) "
+                "VALUES (?,?,?,?,?,?)",
+                (item["job_id"], item["input_digest"],
+                 item["schema_version"], item["state"], body_json,
+                 failure_json),
+            )
+        stored = self.get_workflow_job(item["job_id"])
+        if stored is None:
+            raise RuntimeError("工作流job持久化失败")
+        return stored
+
+    def get_workflow_job(self, job_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM workflow_jobs WHERE job_id=?", (job_id,)).fetchone()
+        return self._decode_workflow_job(row)
+
+    def count_workflow_jobs(self) -> int:
+        return int(self._conn.execute(
+            "SELECT COUNT(*) FROM workflow_jobs").fetchone()[0])
+
+    def set_workflow_job_state(self, job_id: str, state: str, *,
+                               failure: dict | None = None) -> None:
+        failure_json = (_strict_json_dumps(failure, label="工作流失败")
+                        if failure is not None else None)
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE workflow_jobs SET state=?, failure_json=?, "
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE job_id=?", (state, failure_json, job_id))
+        if cur.rowcount != 1:
+            raise KeyError(f"工作流job {job_id} 不存在")
+
+    @staticmethod
+    def _decode_review_request(row) -> dict | None:
+        if row is None:
+            return None
+        stored = dict(row)
+        body = json.loads(stored.pop("body_json"))
+        body["status"] = stored["status"]
+        body["created_at"] = stored["created_at"]
+        body["updated_at"] = stored["updated_at"]
+        return body
+
+    def add_review_request(self, item: dict) -> dict:
+        body_json = _strict_json_dumps(
+            {key: value for key, value in item.items() if key != "status"},
+            label="专业复核请求")
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO review_requests("
+                "request_id,request_input_digest,job_id,status,body_json) "
+                "VALUES (?,?,?,?,?)",
+                (item["request_id"], item["request_input_digest"],
+                 item["job_id"], item["status"], body_json),
+            )
+        stored = self.get_review_request(item["request_id"])
+        if stored is None:
+            raise RuntimeError("专业复核请求持久化失败")
+        return stored
+
+    def get_review_request(self, request_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM review_requests WHERE request_id=?",
+            (request_id,)).fetchone()
+        return self._decode_review_request(row)
+
+    def fetch_review_requests(self, job_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM review_requests WHERE job_id=? ORDER BY request_id",
+            (job_id,)).fetchall()
+        return [self._decode_review_request(row) for row in rows]
+
+    @staticmethod
+    def _decode_review_response(row) -> dict | None:
+        if row is None:
+            return None
+        stored = dict(row)
+        body = json.loads(stored.pop("body_json"))
+        body.update({
+            "response_blob_sha256": stored["response_blob_sha256"],
+            "source_mode": stored["source_mode"],
+            "status": stored["status"],
+            "created_at": stored["created_at"],
+            "updated_at": stored["updated_at"],
+            "consumed_at": stored["consumed_at"],
+        })
+        return body
+
+    def add_review_response(self, item: dict) -> dict:
+        body_json = _strict_json_dumps(
+            {key: value for key, value in item.items()
+             if key not in {"status", "response_blob_sha256", "source_mode"}},
+            label="专业复核返回")
+        producer_json = _strict_json_dumps(item["producer"], label="复核生产者")
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO review_responses("
+                "response_id,request_id,response_digest,response_blob_sha256,"
+                "source_mode,producer_json,output_schema,status,body_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (item["response_id"], item["request_id"],
+                 item["response_digest"], item["response_blob_sha256"],
+                 item["source_mode"], producer_json, item["output_schema"],
+                 item["status"], body_json),
+            )
+            self._conn.execute(
+                "UPDATE review_requests SET status='response_sealed', "
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE request_id=? AND status='awaiting_authorized_analysis'",
+                (item["request_id"],),
+            )
+        stored = self.get_review_response(item["response_id"])
+        if stored is None:
+            raise RuntimeError("专业复核返回持久化失败")
+        return stored
+
+    def get_review_response(self, response_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM review_responses WHERE response_id=?",
+            (response_id,)).fetchone()
+        return self._decode_review_response(row)
+
+    def get_review_response_for_request(self, request_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM review_responses WHERE request_id=?",
+            (request_id,)).fetchone()
+        return self._decode_review_response(row)
+
+    def mark_review_response_consumed(self, response_id: str) -> dict:
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT request_id,status FROM review_responses WHERE response_id=?",
+                (response_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"专业复核返回 {response_id} 不存在")
+            if row["status"] == "response_sealed":
+                self._conn.execute(
+                    "UPDATE review_responses SET status='consumed', "
+                    "consumed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'), "
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                    "WHERE response_id=? AND status='response_sealed'",
+                    (response_id,))
+                self._conn.execute(
+                    "UPDATE review_requests SET status='consumed', "
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                    "WHERE request_id=? AND status='response_sealed'",
+                    (row["request_id"],))
+        return self.get_review_response(response_id)
 
     # ---- 记录写入（事务）----
 

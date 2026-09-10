@@ -23,6 +23,8 @@ from .store import BlobStore, CaseStore
 # 本地已验证的解析库版本（R1 实测可用；pypdf 不在环境内，不假装使用）
 PDF_TOOL = "PyPDF2 3.0.1"
 DOCX_TOOL = "python-docx 1.2.0"
+TEXT_TOOL = "utf-8(stdlib)"
+SUPPORTED_ATTACHMENT_SUFFIXES = frozenset({".pdf", ".docx", ".txt", ".md"})
 
 # zip 安全边界（防压缩炸弹）
 ZIP_MAX_TOTAL_UNCOMPRESSED = 256 * 1024 * 1024
@@ -43,6 +45,17 @@ class ImportOutcome:
     import_id: int | None = None
     source_id: str | None = None
     notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AttachmentInspection:
+    """完整读取后的有限格式检查结果；尚未登记任何业务对象。"""
+
+    media_type: str
+    status: str
+    tool: str
+    projection: TextProjection | None = None
+    error: str | None = None
 
 
 def import_attachment(path: Path | str, blobs: BlobStore, case: CaseStore, *,
@@ -432,3 +445,58 @@ def extract_docx_paragraphs(data: bytes) -> TextProjection:
             "char_count": len(text), "text": text,
         })
     return projection
+
+
+def inspect_attachment(name: str, data: bytes) -> AttachmentInspection:
+    """在登记前完整验证一个明确支持的附件格式。
+
+    不支持格式与损坏文件返回诚实状态；调用方仍可封存原件，但不得据此创建
+    Source 或把解析问题解释为业务证据不足。
+    """
+    suffix = Path(name).suffix.lower()
+    if suffix not in SUPPORTED_ATTACHMENT_SUFFIXES:
+        return AttachmentInspection(
+            media_type="application/octet-stream", status="unsupported",
+            tool="none", error=f"不支持的附件格式：{suffix or '<无扩展名>'}")
+    if suffix == ".pdf":
+        try:
+            projection = extract_pdf_pages(data)
+        except Exception as exc:
+            return AttachmentInspection(
+                media_type="application/pdf", status="failed", tool=PDF_TOOL,
+                error=f"PDF解析失败：{type(exc).__name__}: {exc}")
+        return AttachmentInspection(
+            media_type="application/pdf", status="saved", tool=PDF_TOOL,
+            projection=projection)
+    if suffix == ".docx":
+        try:
+            projection = extract_docx_paragraphs(data)
+        except Exception as exc:
+            return AttachmentInspection(
+                media_type=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"),
+                status="failed", tool=DOCX_TOOL,
+                error=f"DOCX解析失败：{type(exc).__name__}: {exc}")
+        return AttachmentInspection(
+            media_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"),
+            status="saved", tool=DOCX_TOOL, projection=projection)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        return AttachmentInspection(
+            media_type="text/plain", status="failed", tool=TEXT_TOOL,
+            error=f"UTF-8文本解析失败：{exc}")
+    projection = TextProjection(tool=TEXT_TOOL, locator_kind="byte_range")
+    if text.strip():
+        projection.locators.append({
+            "start": 0, "end": len(data), "text": text,
+            "text_sha256": sha256_hex(data), "char_count": len(text),
+        })
+    else:
+        projection.unprocessed.append("文本为空")
+    return AttachmentInspection(
+        media_type="text/markdown" if suffix == ".md" else "text/plain",
+        status="saved", tool=TEXT_TOOL, projection=projection)
