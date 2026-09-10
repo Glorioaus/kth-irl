@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
+import stat
 import sys
 import tempfile
 from typing import Any
@@ -250,7 +251,22 @@ def _find_audit_artifact(case_dir: Path, *, object_id: str,
     if separator != "::" or len(digest) != 64 \
             or any(character not in "0123456789abcdef" for character in digest):
         raise CliRejected(f"{label} ID非法：{object_id}")
-    audit_root = (case_dir / "audit").resolve()
+    audit_path = case_dir / "audit"
+    try:
+        audit_lstat = audit_path.lstat()
+    except FileNotFoundError:
+        raise CliRejected(f"{label}不存在：{object_id}") from None
+    except OSError as exc:
+        raise CliRejected(f"Case audit根目录lstat失败：{exc}") from exc
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    is_junction = getattr(audit_path, "is_junction", lambda: False)
+    if audit_path.is_symlink() or is_junction() \
+            or bool(getattr(audit_lstat, "st_file_attributes", 0) & reparse_flag):
+        raise CliRejected("Case audit根目录禁止符号链接或重解析点")
+    case_root = case_dir.resolve()
+    audit_root = audit_path.resolve()
+    if not audit_root.is_relative_to(case_root):
+        raise CliRejected("Case audit根目录解析后越界")
     if not audit_root.is_dir():
         raise CliRejected(f"{label}不存在：{object_id}")
     matches = []
@@ -271,7 +287,13 @@ def _find_audit_artifact(case_dir: Path, *, object_id: str,
                 if total_entries > MAX_AUDIT_TOTAL_ENTRIES:
                     raise CliRejected(
                         f"Case audit目录项超过上限{MAX_AUDIT_TOTAL_ENTRIES}")
-                if entry.is_symlink():
+                try:
+                    entry_lstat = entry.stat(follow_symlinks=False)
+                except OSError as exc:
+                    raise CliRejected(
+                        f"Case audit目录项lstat失败：{entry.path}：{exc}") from exc
+                if entry.is_symlink() or bool(
+                        getattr(entry_lstat, "st_file_attributes", 0) & reparse_flag):
                     raise CliRejected(f"Case audit禁止符号链接：{entry.path}")
                 if entry.is_dir(follow_symlinks=False):
                     child_depth = depth + 1
@@ -288,11 +310,7 @@ def _find_audit_artifact(case_dir: Path, *, object_id: str,
                 if json_files > MAX_AUDIT_JSON_FILES:
                     raise CliRejected(
                         f"Case audit JSON文件超过上限{MAX_AUDIT_JSON_FILES}")
-                try:
-                    size = entry.stat(follow_symlinks=False).st_size
-                except OSError as exc:
-                    raise CliRejected(
-                        f"Case audit工件stat失败：{entry.path}：{exc}") from exc
+                size = entry_lstat.st_size
                 total_bytes += size
                 if total_bytes > MAX_AUDIT_TOTAL_BYTES:
                     raise CliRejected(
