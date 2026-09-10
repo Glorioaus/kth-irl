@@ -21,7 +21,7 @@ from threading import RLock
 
 from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
-_SCHEMA_VERSION = "kth-hybrid.store.v6"
+_SCHEMA_VERSION = "kth-hybrid.store.v7"
 
 
 def _strict_json_dumps(value, *, label: str) -> str:
@@ -318,7 +318,8 @@ CREATE TABLE IF NOT EXISTS workflow_jobs (
     schema_version TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN
         ('saved','projected','awaiting_authorized_analysis','response_sealed',
-         'consumed','failed','insufficient')),
+         'consumed','failed','insufficient','awaiting_candidate_proposal',
+         'proposal_response_sealed')),
     body_json TEXT NOT NULL,
     failure_json TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -351,6 +352,48 @@ CREATE TABLE IF NOT EXISTS review_responses (
     consumed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS proposal_requests (
+    request_id TEXT PRIMARY KEY,
+    request_input_digest TEXT NOT NULL,
+    job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+    status TEXT NOT NULL CHECK (status IN
+        ('awaiting_candidate_proposal','proposal_response_sealed',
+         'consumed','failed')),
+    body_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(job_id, request_input_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_requests_job
+    ON proposal_requests(job_id, request_id);
+CREATE TABLE IF NOT EXISTS proposal_responses (
+    response_id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL UNIQUE REFERENCES proposal_requests(request_id),
+    response_digest TEXT NOT NULL UNIQUE,
+    response_blob_sha256 TEXT NOT NULL,
+    source_mode TEXT NOT NULL CHECK (source_mode IN ('manual_import','simulated')),
+    status TEXT NOT NULL CHECK (status IN ('proposal_response_sealed','consumed')),
+    body_json TEXT NOT NULL,
+    materialization_json TEXT,
+    consumed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS qualification_input_views (
+    view_id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL REFERENCES claims(claim_id),
+    input_digest TEXT NOT NULL UNIQUE,
+    view_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS review_authorizations (
+    authorization_id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL REFERENCES claims(claim_id),
+    qualification_view_id TEXT NOT NULL
+        REFERENCES qualification_input_views(view_id),
+    body_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 """
 
@@ -671,7 +714,8 @@ class CaseStore:
                 schema_version TEXT NOT NULL,
                 state TEXT NOT NULL CHECK (state IN
                     ('saved','projected','awaiting_authorized_analysis',
-                     'response_sealed','consumed','failed','insufficient')),
+                     'response_sealed','consumed','failed','insufficient',
+                     'awaiting_candidate_proposal','proposal_response_sealed')),
                 body_json TEXT NOT NULL,
                 failure_json TEXT,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -705,6 +749,50 @@ class CaseStore:
                 consumed_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS proposal_requests (
+                request_id TEXT PRIMARY KEY,
+                request_input_digest TEXT NOT NULL,
+                job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+                status TEXT NOT NULL CHECK (status IN
+                    ('awaiting_candidate_proposal','proposal_response_sealed',
+                     'consumed','failed')),
+                body_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(job_id, request_input_digest)
+            );
+            CREATE INDEX IF NOT EXISTS idx_proposal_requests_job
+                ON proposal_requests(job_id, request_id);
+            CREATE TABLE IF NOT EXISTS proposal_responses (
+                response_id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL UNIQUE REFERENCES proposal_requests(request_id),
+                response_digest TEXT NOT NULL UNIQUE,
+                response_blob_sha256 TEXT NOT NULL,
+                source_mode TEXT NOT NULL CHECK (source_mode IN
+                    ('manual_import','simulated')),
+                status TEXT NOT NULL CHECK (status IN
+                    ('proposal_response_sealed','consumed')),
+                body_json TEXT NOT NULL,
+                materialization_json TEXT,
+                consumed_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS qualification_input_views (
+                view_id TEXT PRIMARY KEY,
+                claim_id TEXT NOT NULL REFERENCES claims(claim_id),
+                input_digest TEXT NOT NULL UNIQUE,
+                view_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS review_authorizations (
+                authorization_id TEXT PRIMARY KEY,
+                claim_id TEXT NOT NULL REFERENCES claims(claim_id),
+                qualification_view_id TEXT NOT NULL
+                    REFERENCES qualification_input_views(view_id),
+                body_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
         """)
         columns = {row[1] for row in self._conn.execute(
@@ -746,6 +834,41 @@ class CaseStore:
         if prior_generation < 6:
             self._migrate_review_requests_v6()
         self._conn.commit()
+        if prior_generation < 7:
+            self._migrate_workflow_states_v7()
+        self._conn.commit()
+
+    def _migrate_workflow_states_v7(self) -> None:
+        """扩展候选阶段状态；保留既有v1 job与外键引用。"""
+        sql = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='workflow_jobs'").fetchone()
+        if sql is not None and "awaiting_candidate_proposal" in (sql[0] or ""):
+            return
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._conn.executescript("""
+                CREATE TABLE workflow_jobs_v7 (
+                    job_id TEXT PRIMARY KEY,
+                    input_digest TEXT NOT NULL UNIQUE,
+                    schema_version TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK (state IN
+                        ('saved','projected','awaiting_authorized_analysis',
+                         'response_sealed','consumed','failed','insufficient',
+                         'awaiting_candidate_proposal',
+                         'proposal_response_sealed')),
+                    body_json TEXT NOT NULL,
+                    failure_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO workflow_jobs_v7
+                    SELECT * FROM workflow_jobs;
+                DROP TABLE workflow_jobs;
+                ALTER TABLE workflow_jobs_v7 RENAME TO workflow_jobs;
+            """)
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
 
     def _migrate_attachment_objects_v5(self) -> None:
         """将v4按路径/媒体拆出的同blob行归并为单一内容对象。"""
@@ -1657,6 +1780,39 @@ class CaseStore:
             raise RuntimeError("工作流job/request bundle持久化不完整")
         return stored
 
+    def add_candidate_workflow_bundle(self, item: dict,
+                                      requests: list[dict]) -> dict:
+        """将v2 job与全部候选提出请求置于同一SQLite事务。"""
+        required = {"schema_version", "job_id", "input_digest", "state"}
+        if not required <= set(item) or not isinstance(requests, list) \
+                or not requests:
+            raise ValueError("候选job/request bundle不完整")
+        body = {key: value for key, value in item.items()
+                if key not in {"state", "failure", "created_at", "updated_at"}}
+        body_json = _strict_json_dumps(body, label="候选工作流job")
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO workflow_jobs("
+                "job_id,input_digest,schema_version,state,body_json,failure_json) "
+                "VALUES (?,?,?,?,?,NULL)",
+                (item["job_id"], item["input_digest"], item["schema_version"],
+                 item["state"], body_json))
+            for request in requests:
+                request_body = _strict_json_dumps(
+                    {key: value for key, value in request.items()
+                     if key != "status"}, label="候选提出请求")
+                self._conn.execute(
+                    "INSERT INTO proposal_requests("
+                    "request_id,request_input_digest,job_id,status,body_json) "
+                    "VALUES (?,?,?,?,?)",
+                    (request["request_id"], request["request_input_digest"],
+                     request["job_id"], request["status"], request_body))
+        stored = self.get_workflow_job(item["job_id"])
+        if stored is None or len(self.fetch_proposal_requests(
+                item["job_id"])) != len(requests):
+            raise RuntimeError("候选job/request bundle持久化不完整")
+        return stored
+
     def get_workflow_job(self, job_id: str) -> dict | None:
         row = self._conn.execute(
             "SELECT * FROM workflow_jobs WHERE job_id=?", (job_id,)).fetchone()
@@ -1764,6 +1920,277 @@ class CaseStore:
             "SELECT * FROM review_requests WHERE job_id=? ORDER BY request_id",
             (job_id,)).fetchall()
         return [self._decode_review_request(row) for row in rows]
+
+    @staticmethod
+    def _decode_proposal_request(row) -> dict | None:
+        if row is None:
+            return None
+        stored = dict(row)
+        body = json.loads(stored.pop("body_json"))
+        body.update({
+            "status": stored["status"],
+            "created_at": stored["created_at"],
+            "updated_at": stored["updated_at"],
+        })
+        return body
+
+    def get_proposal_request(self, request_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM proposal_requests WHERE request_id=?",
+            (request_id,)).fetchone()
+        return self._decode_proposal_request(row)
+
+    def fetch_proposal_requests(self, job_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM proposal_requests WHERE job_id=? ORDER BY request_id",
+            (job_id,)).fetchall()
+        return [self._decode_proposal_request(row) for row in rows]
+
+    @staticmethod
+    def _decode_proposal_response(row) -> dict | None:
+        if row is None:
+            return None
+        stored = dict(row)
+        body = json.loads(stored.pop("body_json"))
+        materialization = stored.pop("materialization_json")
+        body.update({
+            "response_blob_sha256": stored["response_blob_sha256"],
+            "source_mode": stored["source_mode"],
+            "status": stored["status"],
+            "created_at": stored["created_at"],
+            "updated_at": stored["updated_at"],
+            "consumed_at": stored["consumed_at"],
+        })
+        if materialization is not None:
+            body["materialization"] = json.loads(materialization)
+        return body
+
+    def add_proposal_response(self, item: dict) -> dict:
+        body_json = _strict_json_dumps(
+            {key: value for key, value in item.items()
+             if key not in {"status", "response_blob_sha256", "source_mode"}},
+            label="候选提出返回")
+        with self.immediate_transaction():
+            request = self._conn.execute(
+                "SELECT job_id,status FROM proposal_requests WHERE request_id=?",
+                (item["request_id"],)).fetchone()
+            if request is None or request["status"] != "awaiting_candidate_proposal":
+                raise ValueError("候选请求不存在或不处于待执行状态")
+            self._conn.execute(
+                "INSERT INTO proposal_responses("
+                "response_id,request_id,response_digest,response_blob_sha256,"
+                "source_mode,status,body_json) VALUES (?,?,?,?,?,?,?)",
+                (item["response_id"], item["request_id"],
+                 item["response_digest"], item["response_blob_sha256"],
+                 item["source_mode"], item["status"], body_json))
+            self._conn.execute(
+                "UPDATE proposal_requests SET status='proposal_response_sealed',"
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE request_id=?", (item["request_id"],))
+            remaining = self._conn.execute(
+                "SELECT COUNT(*) FROM proposal_requests WHERE job_id=? "
+                "AND status='awaiting_candidate_proposal'",
+                (request["job_id"],)).fetchone()[0]
+            if not remaining:
+                self._conn.execute(
+                    "UPDATE workflow_jobs SET state='proposal_response_sealed',"
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                    "WHERE job_id=?", (request["job_id"],))
+        stored = self.get_proposal_response(item["response_id"])
+        if stored is None:
+            raise RuntimeError("候选提出返回持久化失败")
+        return stored
+
+    def get_proposal_response(self, response_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM proposal_responses WHERE response_id=?",
+            (response_id,)).fetchone()
+        return self._decode_proposal_response(row)
+
+    def get_proposal_response_for_request(self, request_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM proposal_responses WHERE request_id=?",
+            (request_id,)).fetchone()
+        return self._decode_proposal_response(row)
+
+    def get_qualification_input_view(self, view_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM qualification_input_views WHERE view_id=?",
+            (view_id,)).fetchone()
+        if row is None:
+            return None
+        value = dict(row)
+        value["view"] = json.loads(value.pop("view_json"))
+        return value
+
+    def get_review_authorization(self, authorization_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT body_json FROM review_authorizations "
+            "WHERE authorization_id=?", (authorization_id,)).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["body_json"])
+
+    def materialize_candidate_response_atomic(
+            self, *, response_id: str, request_id: str, job_id: str,
+            plans: list[dict], candidate_statuses: list[dict],
+            review_request_builder) -> dict:
+        """原子登记Claim、资格视图、授权及v2专业请求。"""
+        with self.immediate_transaction():
+            response = self._conn.execute(
+                "SELECT status,materialization_json FROM proposal_responses "
+                "WHERE response_id=? AND request_id=?",
+                (response_id, request_id)).fetchone()
+            if response is None:
+                raise KeyError("候选返回不存在")
+            if response["status"] == "consumed":
+                if response["materialization_json"] is None:
+                    raise StoreIntegrityError("已消费候选缺少物化清单")
+                return json.loads(response["materialization_json"])
+            if response["status"] != "proposal_response_sealed":
+                raise ValueError("候选返回状态不可消费")
+            claim_ids: list[str] = []
+            view_ids: list[str] = []
+            authorization_ids: list[str] = []
+            review_request_ids: list[str] = []
+            gap_ids: list[str] = []
+            for plan in plans:
+                claim = plan["claim"]
+                claim_ids.append(claim["claim_id"])
+                existing = self._conn.execute(
+                    "SELECT * FROM claims WHERE claim_id=?",
+                    (claim["claim_id"],)).fetchone()
+                if existing is None:
+                    self._conn.execute(
+                        "INSERT INTO claims(claim_id,source_id,locator_kind,"
+                        "locator_start,locator_end,locator_ref,excerpt_sha256,"
+                        "excerpt_text,interpretation,subject_scope,"
+                        "interpretation_attempt,input_digest,content_digest) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        tuple(claim[key] for key in (
+                            "claim_id", "source_id", "locator_kind",
+                            "locator_start", "locator_end", "locator_ref",
+                            "excerpt_sha256", "excerpt_text", "interpretation",
+                            "subject_scope", "interpretation_attempt",
+                            "input_digest", "content_digest")))
+                elif dict(existing).get("content_digest") != claim["content_digest"]:
+                    raise StoreIntegrityError("同claim_id已登记不同候选内容")
+                qualification = plan.get("qualification")
+                if qualification is not None:
+                    existing_qual = self._conn.execute(
+                        "SELECT * FROM qualifications WHERE qual_id=?",
+                        (qualification["qual_id"],)).fetchone()
+                    if existing_qual is None:
+                        self._conn.execute(
+                            "INSERT INTO qualifications(qual_id,claim_id,"
+                            "source_judgment,identity_judgment,time_judgment,"
+                            "independence_judgment,allowed_uses,cannot_prove,"
+                            "review_attempt,status,created_at) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                            (qualification["qual_id"], qualification["claim_id"],
+                             qualification["source_judgment"],
+                             qualification["identity_judgment"],
+                             qualification["time_judgment"],
+                             qualification["independence_judgment"],
+                             qualification["allowed_uses"],
+                             qualification["cannot_prove"],
+                             qualification["review_attempt"],
+                             qualification["status"],
+                             qualification["created_at"]))
+                gap = plan.get("gap")
+                if gap is not None:
+                    gap_ids.append(gap["gap_id"])
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO gaps(gap_id,gap_type,"
+                        "affected_criteria,pipeline_fault,investigation,unconfirmed) "
+                        "VALUES (?,?,?,?,?,?)",
+                        (gap["gap_id"], gap["gap_type"],
+                         _strict_json_dumps(gap["affected_criteria"],
+                                            label="候选缺口准则"),
+                         int(gap["pipeline_fault"]), gap["investigation"],
+                         _strict_json_dumps(gap["unconfirmed"],
+                                            label="候选缺口未确认项")))
+                view_id = plan["qualification_view_id"]
+                view_ids.append(view_id)
+                view_json = _strict_json_dumps(
+                    plan["qualification_view"], label="资格输入视图")
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO qualification_input_views("
+                    "view_id,claim_id,input_digest,view_json) VALUES (?,?,?,?)",
+                    (view_id, claim["claim_id"],
+                     plan["qualification_view"]["input_digest"], view_json))
+                stored_view = self._conn.execute(
+                    "SELECT view_json FROM qualification_input_views WHERE view_id=?",
+                    (view_id,)).fetchone()
+                if stored_view is None or stored_view["view_json"] != view_json:
+                    raise StoreIntegrityError("资格输入视图内容身份冲突")
+                authorization = plan.get("authorization")
+                if authorization is not None:
+                    authorization_ids.append(authorization["authorization_id"])
+                    authorization_json = _strict_json_dumps(
+                        authorization, label="首次复核授权")
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO review_authorizations("
+                        "authorization_id,claim_id,qualification_view_id,body_json) "
+                        "VALUES (?,?,?,?)",
+                        (authorization["authorization_id"], claim["claim_id"],
+                         view_id, authorization_json))
+                    stored_auth = self._conn.execute(
+                        "SELECT body_json FROM review_authorizations "
+                        "WHERE authorization_id=?",
+                        (authorization["authorization_id"],)).fetchone()
+                    if stored_auth is None or stored_auth["body_json"] != authorization_json:
+                        raise StoreIntegrityError("首次复核授权内容身份冲突")
+                    review_request = review_request_builder(
+                        job_id=job_id, authorization=authorization)
+                    review_request_ids.append(review_request["request_id"])
+                    request_json = _strict_json_dumps(
+                        {key: value for key, value in review_request.items()
+                         if key != "status"}, label="v2专业复核请求")
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO review_requests("
+                        "request_id,request_input_digest,job_id,status,body_json) "
+                        "VALUES (?,?,?,?,?)",
+                        (review_request["request_id"],
+                         review_request["request_input_digest"], job_id,
+                         review_request["status"], request_json))
+            materialization = {
+                "claim_ids": claim_ids,
+                "qualification_view_ids": view_ids,
+                "authorization_ids": authorization_ids,
+                "review_request_ids": review_request_ids,
+                "gap_ids": gap_ids,
+                "candidate_statuses": candidate_statuses,
+            }
+            materialization_json = _strict_json_dumps(
+                materialization, label="候选物化清单")
+            self._conn.execute(
+                "UPDATE proposal_responses SET status='consumed',"
+                "materialization_json=?,consumed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),"
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE response_id=? AND status='proposal_response_sealed'",
+                (materialization_json, response_id))
+            self._conn.execute(
+                "UPDATE proposal_requests SET status='consumed',"
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE request_id=? AND status='proposal_response_sealed'",
+                (request_id,))
+            remaining = self._conn.execute(
+                "SELECT status FROM proposal_requests WHERE job_id=? "
+                "AND status!='consumed' ORDER BY request_id", (job_id,)).fetchall()
+            if any(row["status"] == "awaiting_candidate_proposal" for row in remaining):
+                state = "awaiting_candidate_proposal"
+            elif remaining:
+                state = "proposal_response_sealed"
+            elif review_request_ids:
+                state = "awaiting_authorized_analysis"
+            else:
+                state = "insufficient"
+            self._conn.execute(
+                "UPDATE workflow_jobs SET state=?,"
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE job_id=?",
+                (state, job_id))
+            return materialization
 
     @staticmethod
     def _decode_review_response(row) -> dict | None:

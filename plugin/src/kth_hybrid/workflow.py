@@ -11,6 +11,15 @@ from .aggregation_profiles import get_aggregation_profile
 from .contracts import sha256_hex
 from .intake import inspect_attachment
 from .journal import CommitRejected, Journal
+from .proposal_requests import (
+    AWAITING as AWAITING_PROPOSAL,
+    ProposalQueue,
+    ProposalQueueRejected,
+    build_proposal_request,
+    validate_approved_catalog,
+    validate_evaluation_inputs,
+)
+from .qualification import resolve_case_basis_proof_bindings
 from .review_queue import (
     AWAITING,
     ReviewQueue,
@@ -24,6 +33,8 @@ from .store import BlobStore, CaseStore
 
 JOB_SCHEMA = "kth-local.workflow-job.v1"
 JOB_INPUT_SCHEMA = "kth-local.workflow-job-input.v1"
+JOB_SCHEMA_V2 = "kth-local.workflow-job.v2"
+JOB_INPUT_SCHEMA_V2 = "kth-local.workflow-job-input.v2"
 MAX_ATTACHMENT_FILES = 256
 MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024
 MAX_ATTACHMENT_BATCH_BYTES = 256 * 1024 * 1024
@@ -78,6 +89,8 @@ class LocalWorkflow:
         self.store = CaseStore(self.db_path)
         self.journal = Journal(self.db_path)
         self.reviews = ReviewQueue(self.store, self.blobs, self.journal)
+        self.proposals = ProposalQueue(
+            self.store, self.blobs, self.journal, self.reviews)
 
     def initialize_case(self, *, subject_legal_name: str,
                         subject_aliases: list[str], evidence_cutoff: str,
@@ -515,10 +528,179 @@ class LocalWorkflow:
                     f"workflow-create既有bundle封账被拒：{exc}") from exc
         return self.status(job_id)
 
+    def create_candidate_job(self, *, evaluation_inputs: dict,
+                             proposal_specs: list[dict], catalog: dict,
+                             resume_failed_creation: bool = False) -> dict:
+        """建立v2候选提出job；无Provider时停在候选待执行。"""
+        if not isinstance(resume_failed_creation, bool):
+            raise WorkflowRejected("resume_failed_creation必须是显式布尔值")
+        try:
+            evaluation = validate_evaluation_inputs(evaluation_inputs)
+        except ProposalQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
+        if not isinstance(proposal_specs, list) or not proposal_specs \
+                or len(proposal_specs) > MAX_REVIEW_SPECS:
+            raise WorkflowRejected("proposal_specs必须是有界非空列表")
+        _require_bounded_json(
+            proposal_specs, label="proposal_specs",
+            max_bytes=MAX_REVIEW_SPECS_BYTES,
+            max_depth=MAX_REVIEW_SPEC_DEPTH)
+        try:
+            catalog_digest = validate_approved_catalog(catalog)
+        except ProposalQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
+        current = self.store.get_case_basis()
+        if current is None or not isinstance(current.get("version"), int):
+            raise WorkflowRejected("CaseBasis尚未初始化")
+        case_basis = self.store.get_case_basis_version(current["version"])
+        if evaluation["assessment_unit"].get("subject_scope") != \
+                case_basis["subject_legal_name"] \
+                or evaluation["financing_entity"].get("subject_scope") != \
+                case_basis["subject_legal_name"]:
+            raise WorkflowRejected("evaluation_inputs主体范围与CaseBasis不一致")
+        case_basis_body = {key: copy.deepcopy(value)
+                           for key, value in case_basis.items()
+                           if key != "created_at"}
+        case_basis_digest = _digest(case_basis_body, label="CaseBasis")
+        proofs, proof_error = resolve_case_basis_proof_bindings(
+            case_basis, self.store, self.blobs)
+        if proof_error or proofs is None:
+            raise WorkflowRejected(
+                f"CaseBasis证明不可核验：{proof_error or '无绑定'}")
+        case_basis_proof_digest = _digest(
+            proofs, label="CaseBasis proofs")
+        payloads = []
+        sources = {}
+        projections = {}
+        output_contract = {
+            "schema_version": "proposal_response.v1",
+            "candidate_schema_version": "claim_candidate.v1",
+            "max_candidates": 512,
+            "forbidden_fields": [
+                "final_decision", "investment_recommendation", "level",
+                "maturity_level", "native_disposition", "result_id"],
+        }
+        required_spec = {
+            "source_id", "blob_sha256", "projection_id", "locator", "quote",
+            "purpose", "output_schema",
+        }
+        for spec in proposal_specs:
+            if not isinstance(spec, dict) or set(spec) != required_spec:
+                raise WorkflowRejected("proposal spec字段集合非法")
+            source = self.store.fetch_one(
+                "sources", "source_id", spec.get("source_id"))
+            projection = self.store.get_text_projection(
+                spec.get("projection_id"))
+            if source is None or source.get("blob_sha256") != spec.get("blob_sha256"):
+                raise WorkflowRejected("proposal source/blob引用不一致")
+            if projection is None or projection.get("status") != "projected" \
+                    or projection.get("source_id") != source["source_id"] \
+                    or projection.get("source_blob_sha256") != source["blob_sha256"] \
+                    or projection.get("locator") != spec.get("locator"):
+                raise WorkflowRejected("proposal projection/locator引用不一致")
+            quote = self.blobs.read_bytes(
+                projection["text_blob_sha256"]).decode("utf-8")
+            if quote != spec.get("quote") or sha256_hex(
+                    quote.encode("utf-8")) != projection.get("text_sha256"):
+                raise WorkflowRejected("proposal quote与持久化投影不一致")
+            for field in ("purpose", "output_schema"):
+                if not isinstance(spec.get(field), str) or not spec[field].strip():
+                    raise WorkflowRejected(f"proposal {field}不能为空")
+            if spec["output_schema"] != "proposal_response.v1":
+                raise WorkflowRejected("proposal output_schema不是批准v1合同")
+            payloads.append({
+                "source_id": source["source_id"],
+                "blob_sha256": source["blob_sha256"],
+                "projection_id": projection["projection_id"],
+                "locator": copy.deepcopy(projection["locator"]),
+                "quote": quote,
+                "quote_sha256": projection["text_sha256"],
+                "case_basis_version": case_basis["version"],
+                "case_basis_digest": case_basis_digest,
+                "case_basis_proof_digest": case_basis_proof_digest,
+                "evaluation_inputs": copy.deepcopy(evaluation),
+                "catalog_sha256": catalog["wheel_sha256"],
+                "catalog_digest": catalog_digest,
+                "purpose": spec["purpose"],
+                "output_schema": spec["output_schema"],
+                "output_contract": copy.deepcopy(output_contract),
+            })
+            sources[source["source_id"]] = {
+                "source_id": source["source_id"],
+                "blob_sha256": source["blob_sha256"],
+                "byte_length": source["byte_length"],
+            }
+            projections[projection["projection_id"]] = {
+                key: copy.deepcopy(projection[key]) for key in (
+                    "projection_id", "source_id", "source_blob_sha256",
+                    "locator", "text_sha256", "tool")}
+        input_payload = {
+            "schema_version": JOB_INPUT_SCHEMA_V2,
+            "sources": sorted(sources.values(), key=lambda item: item["source_id"]),
+            "projections": sorted(
+                projections.values(), key=lambda item: item["projection_id"]),
+            "case_basis": copy.deepcopy(case_basis_body),
+            "case_basis_digest": case_basis_digest,
+            "case_basis_proof_digest": case_basis_proof_digest,
+            "evaluation_inputs": copy.deepcopy(evaluation),
+            "catalog_sha256": catalog["wheel_sha256"],
+            "catalog_digest": catalog_digest,
+            "proposal_request_input_digests": sorted(
+                _digest(payload, label="proposal request input")
+                for payload in payloads),
+        }
+        input_digest = _digest(input_payload, label="workflow job v2 input")
+        job_id = f"JOB2::{input_digest}"
+        requests = sorted(
+            (build_proposal_request(job_id=job_id, payload=payload)
+             for payload in payloads),
+            key=lambda item: item["request_id"])
+        # build_proposal_request的输入摘要仅覆盖payload；用实际值替换，防止实现漂移。
+        input_payload["proposal_request_input_digests"] = sorted(
+            item["request_input_digest"] for item in requests)
+        input_digest = _digest(input_payload, label="workflow job v2 input")
+        job_id = f"JOB2::{input_digest}"
+        requests = sorted(
+            (build_proposal_request(job_id=job_id, payload=payload)
+             for payload in payloads),
+            key=lambda item: item["request_id"])
+        job = {
+            "schema_version": JOB_SCHEMA_V2,
+            "input_schema_version": JOB_INPUT_SCHEMA_V2,
+            "job_id": job_id,
+            "input_digest": input_digest,
+            "state": AWAITING_PROPOSAL,
+            **{key: copy.deepcopy(value) for key, value in input_payload.items()
+               if key != "schema_version"},
+            "proposal_request_ids": [item["request_id"] for item in requests],
+        }
+        existing = self.store.get_workflow_job(job_id)
+        if existing is None:
+            task_key = f"workflow-create-v2:{job_id}"
+            self.journal.ensure_task(task_key, input_digest)
+            state = self.journal.task_state(task_key)
+            if state["state"] == "failed" and not resume_failed_creation:
+                raise WorkflowRejected("workflow-create-v2失败，必须显式恢复")
+            claim = self.journal.claim(task_key, "local-workflow-v2", input_digest)
+            try:
+                validated = [self.proposals.validate_request(item)
+                             for item in requests]
+                self.store.add_candidate_workflow_bundle(job, validated)
+                self.journal.commit(claim, job_id)
+            except Exception as exc:
+                try:
+                    self.journal.record_failure(claim, str(exc))
+                except CommitRejected:
+                    pass
+                raise
+        return self.status(job_id)
+
     def status(self, job_id: str) -> dict:
         job = self.store.get_workflow_job(job_id)
         if job is None:
             raise WorkflowRejected(f"工作流job不存在：{job_id}")
+        if job.get("schema_version") == JOB_SCHEMA_V2:
+            return self._status_v2(job)
         required = {
             "schema_version", "job_id", "input_digest", "state", "sources",
             "projections", "case_basis", "case_basis_digest",
@@ -565,6 +747,49 @@ class LocalWorkflow:
                 or any(item["job_id"] != job_id for item in requests):
             raise WorkflowRejected("workflow job与review request身份闭包不一致")
         job["review_requests"] = requests
+        return job
+
+    def _status_v2(self, job: dict) -> dict:
+        required = {
+            "schema_version", "input_schema_version", "job_id", "input_digest",
+            "state", "sources", "projections", "case_basis",
+            "case_basis_digest", "case_basis_proof_digest", "evaluation_inputs",
+            "catalog_sha256", "proposal_request_input_digests",
+            "catalog_digest",
+            "proposal_request_ids", "created_at", "updated_at",
+        }
+        if not required <= set(job) or set(job) - (required | {"failure"}):
+            raise WorkflowRejected("workflow job v2字段集合非法")
+        if job["input_schema_version"] != JOB_INPUT_SCHEMA_V2:
+            raise WorkflowRejected("workflow job v2输入schema非法")
+        try:
+            validate_evaluation_inputs(job["evaluation_inputs"])
+        except ProposalQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
+        input_payload = {
+            "schema_version": JOB_INPUT_SCHEMA_V2,
+            "sources": copy.deepcopy(job["sources"]),
+            "projections": copy.deepcopy(job["projections"]),
+            "case_basis": copy.deepcopy(job["case_basis"]),
+            "case_basis_digest": job["case_basis_digest"],
+            "case_basis_proof_digest": job["case_basis_proof_digest"],
+            "evaluation_inputs": copy.deepcopy(job["evaluation_inputs"]),
+            "catalog_sha256": job["catalog_sha256"],
+            "catalog_digest": job["catalog_digest"],
+            "proposal_request_input_digests": copy.deepcopy(
+                job["proposal_request_input_digests"]),
+        }
+        digest = _digest(input_payload, label="workflow job v2 input")
+        if job["input_digest"] != digest or job["job_id"] != f"JOB2::{digest}":
+            raise WorkflowRejected("workflow job v2内容身份无法重建")
+        requests = [self.proposals.get_request(request_id)
+                    for request_id in job["proposal_request_ids"]]
+        if sorted(item["request_input_digest"] for item in requests) != \
+                job["proposal_request_input_digests"] \
+                or any(item["job_id"] != job["job_id"] for item in requests):
+            raise WorkflowRejected("workflow job v2与proposal request闭包不一致")
+        job["proposal_requests"] = requests
+        job["review_requests"] = self.store.fetch_review_requests(job["job_id"])
         return job
 
     def resume_failed_job(self, job_id: str) -> dict:

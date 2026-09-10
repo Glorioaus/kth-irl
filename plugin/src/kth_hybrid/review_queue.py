@@ -14,6 +14,8 @@ from .store import BlobStore, CaseStore
 
 REQUEST_SCHEMA = "review_request.v1"
 RESPONSE_SCHEMA = "review_response.v1"
+REQUEST_SCHEMA_V2 = "review_request.v2"
+RESPONSE_SCHEMA_V2 = "review_response.v2"
 AWAITING = "awaiting_authorized_analysis"
 _ALLOWED_SOURCE_MODES = {"manual_import", "simulated", "runtime_provider"}
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -181,6 +183,28 @@ def build_request(*, job_id: str, payload: dict) -> dict:
     return {**body, "request_id": request_id, "status": AWAITING}
 
 
+def _authorization_digest(authorization: dict) -> str:
+    body = {key: copy.deepcopy(value) for key, value in authorization.items()
+            if key != "authorization_id"}
+    return _digest(body, label="review authorization")
+
+
+def build_authorized_request(*, job_id: str, authorization: dict) -> dict:
+    body = {
+        "schema_version": REQUEST_SCHEMA_V2,
+        "job_id": job_id,
+        "authorization_id": authorization.get("authorization_id"),
+        "authorization": copy.deepcopy(authorization),
+        "output_schema": RESPONSE_SCHEMA_V2,
+    }
+    input_digest = _digest(
+        {key: value for key, value in body.items() if key != "schema_version"},
+        label="authorized review request input")
+    identified = {**body, "request_input_digest": input_digest}
+    request_id = f"REVIEWREQ2::{_digest(identified, label='authorized review request')}"
+    return {**identified, "request_id": request_id, "status": AWAITING}
+
+
 def _find_forbidden_key(value: Any, *, depth: int = 0) -> str | None:
     if depth > 24:
         raise ReviewQueueRejected("review response嵌套深度超过24")
@@ -208,7 +232,88 @@ class ReviewQueue:
         self.blobs = blobs
         self.journal = journal
 
+    materialize_authorization_from_v1 = None
+
+    def validate_authorization(self, authorization: dict) -> dict:
+        required = {
+            "schema_version", "authorization_id", "claim_id", "source_id",
+            "blob_sha256", "projection_id", "locator", "quote_sha256",
+            "case_basis_version", "case_basis_digest",
+            "case_basis_proof_digest", "qualification_id",
+            "qualification_digest", "qualification_input_view_id",
+            "qualification_input_view", "canonical_criterion",
+            "dimension_id", "criterion_id", "evidence_class",
+            "requested_use", "allowed_uses", "evaluation_inputs",
+            "method_versions", "proposal_response_id", "proposal_source_mode",
+            "proposal_producer", "purpose", "output_contract",
+        }
+        if not isinstance(authorization, dict) \
+                or authorization.get("schema_version") != \
+                "review_authorization.v1" or set(authorization) != required:
+            raise ReviewQueueRejected("review authorization schema非法")
+        if "result_id" in authorization:
+            raise ReviewQueueRejected("review authorization不得绑定既有result_id")
+        authorization_id = authorization.get("authorization_id")
+        if authorization_id != f"REVAUTH::{_authorization_digest(authorization)}":
+            raise ReviewQueueRejected("review authorization内容身份无法重建")
+        view = authorization.get("qualification_input_view")
+        if not isinstance(view, dict) \
+                or authorization.get("qualification_input_view_id") != \
+                f"QUALVIEW::{view.get('input_digest')}":
+            raise ReviewQueueRejected("review authorization资格输入视图身份非法")
+        view_body = {key: value for key, value in view.items()
+                     if key != "input_digest"}
+        view_digest = sha256_hex(json.dumps(
+            view_body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        if view.get("input_digest") != view_digest:
+            raise ReviewQueueRejected("review authorization资格输入视图摘要不一致")
+        stored_qualification = view.get("stored_qualification")
+        if not isinstance(stored_qualification, dict) \
+                or stored_qualification.get("qual_id") != \
+                authorization.get("qualification_id"):
+            raise ReviewQueueRejected("review authorization资格记录引用不一致")
+        from .contracts import qualification_content_digest
+
+        if qualification_content_digest(stored_qualification) != \
+                authorization.get("qualification_digest"):
+            raise ReviewQueueRejected("review authorization资格摘要不一致")
+        if _digest((view.get("proof_bindings") or {}).get("case_basis"),
+                   label="CaseBasis proofs") != \
+                authorization.get("case_basis_proof_digest"):
+            raise ReviewQueueRejected("review authorization证明摘要不一致")
+        if authorization.get("requested_use") not in (
+                authorization.get("allowed_uses") or []):
+            raise ReviewQueueRejected("review authorization requested_use越权")
+        criterion = authorization.get("canonical_criterion")
+        if not isinstance(criterion, dict) \
+                or criterion.get("criterion_id") != authorization.get("criterion_id") \
+                or criterion.get("dimension") != authorization.get("dimension_id") \
+                or authorization.get("evidence_class") not in (
+                    criterion.get("eligible_evidence_classes") or []):
+            raise ReviewQueueRejected("review authorization canonical准则/证据类不一致")
+        if authorization.get("method_versions") != (
+                authorization.get("evaluation_inputs") or {}).get(
+                    "method_versions"):
+            raise ReviewQueueRejected("review authorization方法版本冻结不一致")
+        return copy.deepcopy(authorization)
+
+    def build_authorized_request(self, *, job_id: str,
+                                 authorization: dict) -> dict:
+        authorization = self.validate_authorization(authorization)
+        return build_authorized_request(
+            job_id=job_id, authorization=authorization)
+
     def validate_request(self, request: dict) -> dict:
+        if request.get("schema_version") == REQUEST_SCHEMA_V2:
+            if request.get("status") != AWAITING:
+                raise ReviewQueueRejected("review request v2初始状态非法")
+            authorization = self.validate_authorization(
+                request.get("authorization"))
+            expected = build_authorized_request(
+                job_id=request.get("job_id"), authorization=authorization)
+            if expected != request:
+                raise ReviewQueueRejected("review request v2内容身份无法重建")
+            return copy.deepcopy(request)
         if request.get("schema_version") != REQUEST_SCHEMA \
                 or request.get("status") != AWAITING:
             raise ReviewQueueRejected("review request schema或初始状态非法")
@@ -230,11 +335,17 @@ class ReviewQueue:
         request = self.store.get_review_request(request_id)
         if request is None:
             raise ReviewQueueRejected(f"review request不存在：{request_id}")
-        payload = {key: copy.deepcopy(value) for key, value in request.items()
-                   if key not in {"schema_version", "job_id", "request_id",
-                                  "request_input_digest", "status",
-                                  "created_at", "updated_at"}}
-        expected = build_request(job_id=request.get("job_id"), payload=payload)
+        if request.get("schema_version") == REQUEST_SCHEMA_V2:
+            expected = build_authorized_request(
+                job_id=request.get("job_id"),
+                authorization=self.validate_authorization(
+                    request.get("authorization")))
+        else:
+            payload = {key: copy.deepcopy(value) for key, value in request.items()
+                       if key not in {"schema_version", "job_id", "request_id",
+                                      "request_input_digest", "status",
+                                      "created_at", "updated_at"}}
+            expected = build_request(job_id=request.get("job_id"), payload=payload)
         for field in expected:
             if field == "status":
                 continue
@@ -284,7 +395,11 @@ class ReviewQueue:
             "output_schema", "decision", "evidence_class", "findings",
             "citations",
         }
-        if set(response) != required or response.get("schema_version") != RESPONSE_SCHEMA:
+        expected_response_schema = (
+            RESPONSE_SCHEMA_V2 if request.get("schema_version") == REQUEST_SCHEMA_V2
+            else RESPONSE_SCHEMA)
+        if set(response) != required \
+                or response.get("schema_version") != expected_response_schema:
             raise ReviewQueueRejected("review response schema或字段集合非法")
         if response.get("request_id") != request_id \
                 or response.get("request_input_digest") != \
@@ -318,8 +433,11 @@ class ReviewQueue:
             citations, label="review response citations",
             max_bytes=MAX_CITATIONS_BYTES, max_depth=MAX_JSON_DEPTH,
             max_items=MAX_CITATIONS * (len(_CITATION_FIELDS) + 1) + 1)
+        citation_source = (request.get("authorization")
+                           if request.get("schema_version") == REQUEST_SCHEMA_V2
+                           else request)
         expected_citation = {
-            key: copy.deepcopy(request[key]) for key in _CITATION_FIELDS
+            key: copy.deepcopy(citation_source[key]) for key in _CITATION_FIELDS
         }
         if not citations \
                 or any(not isinstance(item, dict)
@@ -357,7 +475,7 @@ class ReviewQueue:
             "output_schema", "decision", "evidence_class", "findings",
             "citations", "source_mode",
         )}
-        if normalized["schema_version"] != RESPONSE_SCHEMA:
+        if normalized["schema_version"] not in {RESPONSE_SCHEMA, RESPONSE_SCHEMA_V2}:
             raise ReviewQueueRejected("review response封存schema非法")
         digest = _digest(normalized, label="review response")
         if response.get("response_digest") != digest \

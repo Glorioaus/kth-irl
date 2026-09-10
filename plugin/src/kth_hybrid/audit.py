@@ -114,8 +114,8 @@ def _verify_projection(claim: dict, blob_data: bytes) -> str | None:
             if not member:
                 return "zip 成员定位缺 member"
             with zipfile.ZipFile(io.BytesIO(blob_data)) as archive:
-                member_data = archive.read(member)
-            projection = extract_docx_paragraphs(member_data)
+                archive.getinfo(member)
+            projection = extract_docx_paragraphs(blob_data)
             paragraph = locator_ref.get("paragraph")
             rows = [p for p in projection.locators if p["paragraph"] == paragraph]
             if not rows:

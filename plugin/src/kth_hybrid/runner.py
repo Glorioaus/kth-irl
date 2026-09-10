@@ -984,8 +984,8 @@ def _projection_excerpt(blobs: BlobStore, source: dict, locator_ref: dict):
         import zipfile
 
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            member_data = archive.read(locator_ref["member"])
-        projection = extract_docx_paragraphs(member_data)
+            archive.getinfo(locator_ref["member"])
+        projection = extract_docx_paragraphs(data)
         for row in projection.locators:
             if row["paragraph"] == locator_ref.get("paragraph"):
                 return row
