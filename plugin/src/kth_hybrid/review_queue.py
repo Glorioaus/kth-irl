@@ -16,6 +16,12 @@ REQUEST_SCHEMA = "review_request.v1"
 RESPONSE_SCHEMA = "review_response.v1"
 AWAITING = "awaiting_authorized_analysis"
 _ALLOWED_SOURCE_MODES = {"manual_import", "simulated", "runtime_provider"}
+MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_FINDINGS_BYTES = 256 * 1024
+MAX_FINDINGS_ITEMS = 512
+MAX_CITATIONS = 64
+MAX_CITATIONS_BYTES = 256 * 1024
+MAX_JSON_DEPTH = 24
 _PRODUCER_KINDS_BY_MODE = {
     "manual_import": {"authorized_human", "human", "manual_import"},
     "simulated": {"simulated", "simulated_test"},
@@ -46,6 +52,28 @@ def _canonical_bytes(value: Any, *, label: str) -> bytes:
 
 def _digest(value: Any, *, label: str) -> str:
     return sha256_hex(_canonical_bytes(value, label=label))
+
+
+def _validate_json_limits(value: Any, *, label: str, max_bytes: int,
+                          max_depth: int, max_items: int | None = None) -> None:
+    stack = [(value, 1, frozenset())]
+    item_count = 0
+    while stack:
+        item, depth, ancestors = stack.pop()
+        item_count += 1
+        if depth > max_depth:
+            raise ReviewQueueRejected(f"{label}深度超过上限{max_depth}")
+        if max_items is not None and item_count > max_items:
+            raise ReviewQueueRejected(f"{label}条目超过上限{max_items}")
+        if isinstance(item, (dict, list)):
+            identity = id(item)
+            if identity in ancestors:
+                raise ReviewQueueRejected(f"{label}包含循环引用")
+            nested = ancestors | {identity}
+            children = item.values() if isinstance(item, dict) else item
+            stack.extend((child, depth + 1, nested) for child in children)
+    if len(_canonical_bytes(value, label=label)) > max_bytes:
+        raise ReviewQueueRejected(f"{label}序列化字节超过上限{max_bytes}")
 
 
 def request_input_payload(*, spec: dict, case_basis: dict,
@@ -180,7 +208,7 @@ class ReviewQueue:
         self.blobs = blobs
         self.journal = journal
 
-    def add_request(self, request: dict) -> dict:
+    def validate_request(self, request: dict) -> dict:
         if request.get("schema_version") != REQUEST_SCHEMA \
                 or request.get("status") != AWAITING:
             raise ReviewQueueRejected("review request schema或初始状态非法")
@@ -192,6 +220,10 @@ class ReviewQueue:
         )
         if expected != request:
             raise ReviewQueueRejected("review request内容身份无法重建")
+        return copy.deepcopy(request)
+
+    def add_request(self, request: dict) -> dict:
+        request = self.validate_request(request)
         return self.store.add_review_request(request)
 
     def get_request(self, request_id: str) -> dict:
@@ -212,26 +244,10 @@ class ReviewQueue:
         return request
 
     def _refresh_job_state(self, job_id: str) -> None:
-        job = self.store.get_workflow_job(job_id)
-        if job is None:
-            raise ReviewQueueRejected(f"workflow job不存在：{job_id}")
-        if job["state"] == "failed":
-            return
-        requests = self.store.fetch_review_requests(job_id)
-        states = [item["status"] for item in requests]
-        if not states:
-            return
-        if "failed" in states:
-            state = "failed"
-        elif AWAITING in states:
-            state = AWAITING
-        elif "response_sealed" in states:
-            state = "response_sealed"
-        elif all(value == "consumed" for value in states):
-            state = "consumed"
-        else:
-            raise ReviewQueueRejected("review request状态组合非法")
-        self.store.set_workflow_job_state(job_id, state)
+        try:
+            self.store.refresh_workflow_job_state(job_id)
+        except (KeyError, ValueError, RuntimeError) as exc:
+            raise ReviewQueueRejected(str(exc)) from exc
 
     def resume_failed_job(self, job_id: str) -> None:
         job = self.store.get_workflow_job(job_id)
@@ -239,21 +255,11 @@ class ReviewQueue:
             raise ReviewQueueRejected(f"workflow job不存在：{job_id}")
         if job["state"] != "failed":
             raise ReviewQueueRejected("只有failed job需要显式恢复")
-        requests = self.store.fetch_review_requests(job_id)
-        states = [item["status"] for item in requests]
-        if not states:
-            raise ReviewQueueRejected("failed job没有可恢复的review request")
-        if "failed" in states:
-            state = "failed"
-        elif AWAITING in states:
-            state = AWAITING
-        elif "response_sealed" in states:
-            state = "response_sealed"
-        elif all(item == "consumed" for item in states):
-            state = "consumed"
-        else:
-            raise ReviewQueueRejected("failed job的review状态组合非法")
-        self.store.set_workflow_job_state(job_id, state)
+        try:
+            self.store.refresh_workflow_job_state(
+                job_id, resume_failed=True)
+        except (KeyError, ValueError, RuntimeError) as exc:
+            raise ReviewQueueRejected(str(exc)) from exc
 
     def seal_response(self, request_id: str, response: dict, *,
                       source_mode: str,
@@ -267,6 +273,9 @@ class ReviewQueue:
         request = self.get_request(request_id)
         if not isinstance(response, dict):
             raise ReviewQueueRejected("review response必须是对象")
+        _validate_json_limits(
+            response, label="review response", max_bytes=MAX_RESPONSE_BYTES,
+            max_depth=MAX_JSON_DEPTH)
         forbidden = _find_forbidden_key(response)
         if forbidden is not None:
             raise ReviewQueueRejected(f"review response含越权禁止字段：{forbidden}")
@@ -297,11 +306,22 @@ class ReviewQueue:
                 or not isinstance(response.get("evidence_class"), str) \
                 or not response["evidence_class"].strip():
             raise ReviewQueueRejected("review response受控判断字段非法")
+        _validate_json_limits(
+            response["findings"], label="review response findings",
+            max_bytes=MAX_FINDINGS_BYTES, max_depth=MAX_JSON_DEPTH,
+            max_items=MAX_FINDINGS_ITEMS)
         citations = response.get("citations")
+        if not isinstance(citations, list) or len(citations) > MAX_CITATIONS:
+            raise ReviewQueueRejected(
+                f"review response citations条目超过上限{MAX_CITATIONS}")
+        _validate_json_limits(
+            citations, label="review response citations",
+            max_bytes=MAX_CITATIONS_BYTES, max_depth=MAX_JSON_DEPTH,
+            max_items=MAX_CITATIONS * (len(_CITATION_FIELDS) + 1) + 1)
         expected_citation = {
             key: copy.deepcopy(request[key]) for key in _CITATION_FIELDS
         }
-        if not isinstance(citations, list) or not citations \
+        if not citations \
                 or any(not isinstance(item, dict)
                        or set(item) != _CITATION_FIELDS
                        or item != expected_citation for item in citations):

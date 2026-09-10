@@ -21,7 +21,7 @@ from threading import RLock
 
 from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
 
-_SCHEMA_VERSION = "kth-hybrid.store.v5"
+_SCHEMA_VERSION = "kth-hybrid.store.v6"
 
 
 def _strict_json_dumps(value, *, label: str) -> str:
@@ -326,13 +326,14 @@ CREATE TABLE IF NOT EXISTS workflow_jobs (
 );
 CREATE TABLE IF NOT EXISTS review_requests (
     request_id TEXT PRIMARY KEY,
-    request_input_digest TEXT NOT NULL UNIQUE,
+    request_input_digest TEXT NOT NULL,
     job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
     status TEXT NOT NULL CHECK (status IN
         ('awaiting_authorized_analysis','response_sealed','consumed','failed')),
     body_json TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(job_id, request_input_digest)
 );
 CREATE INDEX IF NOT EXISTS idx_review_requests_job
     ON review_requests(job_id, request_id);
@@ -477,7 +478,14 @@ class CaseStore:
             self._conn.execute("COMMIT")
 
     def _migrate(self) -> None:
-        """已建库增量迁移：保留R1数据并升级本地工作流至store.v5。"""
+        """已建库增量迁移：保留R1数据并升级本地工作流至store.v6。"""
+        version_row = self._conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        prior_version = version_row[0] if version_row else "kth-hybrid.store.v0"
+        try:
+            prior_generation = int(str(prior_version).rsplit(".v", 1)[1])
+        except (IndexError, ValueError):
+            prior_generation = 0
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS case_basis (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -671,13 +679,14 @@ class CaseStore:
             );
             CREATE TABLE IF NOT EXISTS review_requests (
                 request_id TEXT PRIMARY KEY,
-                request_input_digest TEXT NOT NULL UNIQUE,
+                request_input_digest TEXT NOT NULL,
                 job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
                 status TEXT NOT NULL CHECK (status IN
                     ('awaiting_authorized_analysis','response_sealed','consumed','failed')),
                 body_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(job_id, request_input_digest)
             );
             CREATE INDEX IF NOT EXISTS idx_review_requests_job
                 ON review_requests(job_id, request_id);
@@ -731,7 +740,11 @@ class CaseStore:
         if "source_id" not in alias_columns:
             self._conn.execute(
                 "ALTER TABLE attachment_aliases ADD COLUMN source_id TEXT")
-        self._migrate_attachment_objects_v5()
+        if prior_generation < 5:
+            self._migrate_attachment_objects_v5()
+        self._conn.commit()
+        if prior_generation < 6:
+            self._migrate_review_requests_v6()
         self._conn.commit()
 
     def _migrate_attachment_objects_v5(self) -> None:
@@ -754,22 +767,30 @@ class CaseStore:
             self._conn.execute(
                 f"DELETE FROM attachment_aliases WHERE attachment_id IN "
                 f"({placeholders})", old_ids)
-            chosen = next(
+            canonical = next(
                 (row for row in group
                  if row["attachment_id"] == canonical_id), None)
-            if chosen is None:
-                chosen = next(
-                    (row for row in group
-                     if row["status"] == "saved" and row["source_id"]),
-                    group[0])
+            best = next(
+                (row for row in group
+                 if row["status"] == "saved" and row["source_id"]),
+                canonical or group[0])
+            if canonical is None:
                 self._conn.execute(
                     "UPDATE attachment_imports SET attachment_id=? "
                     "WHERE attachment_id=?",
-                    (canonical_id, chosen["attachment_id"]))
+                    (canonical_id, best["attachment_id"]))
             self._conn.execute(
                 "DELETE FROM attachment_imports WHERE blob_sha256=? "
                 "AND attachment_id<>?", (blob_sha256, canonical_id))
-
+            if canonical is not None and best["attachment_id"] != canonical_id:
+                self._conn.execute(
+                    "UPDATE attachment_imports SET origin_path=?,byte_length=?,"
+                    "original_filename=?,media_type=?,status=?,error=?,"
+                    "import_id=?,source_id=? WHERE attachment_id=?",
+                    (best["origin_path"], best["byte_length"],
+                     best["original_filename"], best["media_type"],
+                     best["status"], best["error"], best["import_id"],
+                     best["source_id"], canonical_id))
             aliases_by_path: dict[str, dict] = {}
             for row in group:
                 aliases_by_path[row["origin_path"]] = {
@@ -780,6 +801,7 @@ class CaseStore:
                     "error": row["error"],
                     "import_id": row["import_id"],
                     "source_id": row["source_id"],
+                    "created_at": row["created_at"],
                 }
             for alias in existing_aliases:
                 prior = aliases_by_path.get(alias["origin_path"], {})
@@ -791,6 +813,7 @@ class CaseStore:
                     "error": alias["error"],
                     "import_id": alias["import_id"],
                     "source_id": alias.get("source_id") or prior.get("source_id"),
+                    "created_at": alias["created_at"],
                 }
             for alias in aliases_by_path.values():
                 identity = {
@@ -807,16 +830,71 @@ class CaseStore:
                 self._conn.execute(
                     "INSERT INTO attachment_aliases("
                     "alias_id,attachment_id,origin_path,original_filename,"
-                    "media_type,status,error,import_id,source_id) "
-                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    "media_type,status,error,import_id,source_id,created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (f"ATTALIAS::{alias_digest}", canonical_id,
                      alias["origin_path"], alias["original_filename"],
                      alias["media_type"], alias["status"], alias["error"],
-                     alias["import_id"], alias["source_id"]),
+                     alias["import_id"], alias["source_id"],
+                     alias["created_at"]),
                 )
         self._conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_imports_content "
             "ON attachment_imports(blob_sha256)")
+
+    def _migrate_review_requests_v6(self) -> None:
+        """移除v5跨job的request_input_digest全局唯一约束。"""
+        global_digest_unique = False
+        for index in self._conn.execute(
+                "PRAGMA index_list(review_requests)").fetchall():
+            if not index[2]:
+                continue
+            columns = [row[2] for row in self._conn.execute(
+                f"PRAGMA index_info({index[1]})").fetchall()]
+            if columns == ["request_input_digest"]:
+                global_digest_unique = True
+                break
+        if not global_digest_unique:
+            return
+        self._conn.commit()
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._conn.execute("""
+                CREATE TABLE review_requests_v6 (
+                    request_id TEXT PRIMARY KEY,
+                    request_input_digest TEXT NOT NULL,
+                    job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+                    status TEXT NOT NULL CHECK (status IN
+                        ('awaiting_authorized_analysis','response_sealed',
+                         'consumed','failed')),
+                    body_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT
+                        (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    updated_at TEXT NOT NULL DEFAULT
+                        (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    UNIQUE(job_id, request_input_digest)
+                )
+            """)
+            self._conn.execute(
+                "INSERT INTO review_requests_v6 SELECT * FROM review_requests")
+            self._conn.execute("DROP TABLE review_requests")
+            self._conn.execute(
+                "ALTER TABLE review_requests_v6 RENAME TO review_requests")
+            self._conn.execute(
+                "CREATE INDEX idx_review_requests_job "
+                "ON review_requests(job_id,request_id)")
+            self._conn.execute("COMMIT")
+        except Exception:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
+        violations = self._conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise StoreIntegrityError(
+                f"store.v6迁移后外键引用不完整：{len(violations)}项")
 
     # ---- 阶段与运行 ----
 
@@ -1543,6 +1621,42 @@ class CaseStore:
             raise RuntimeError("工作流job持久化失败")
         return stored
 
+    def add_workflow_bundle(self, item: dict,
+                            requests: list[dict]) -> dict:
+        """将一个新job及其全部review request置于同一SQLite事务。"""
+        required = {"schema_version", "job_id", "input_digest", "state"}
+        if not required <= set(item) or not isinstance(requests, list) \
+                or not requests:
+            raise ValueError("工作流job/request bundle不完整")
+        body = {key: value for key, value in item.items()
+                if key not in {"state", "failure", "created_at", "updated_at"}}
+        body_json = _strict_json_dumps(body, label="工作流job")
+        failure = item.get("failure")
+        failure_json = (_strict_json_dumps(failure, label="工作流失败")
+                        if failure is not None else None)
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO workflow_jobs("
+                "job_id,input_digest,schema_version,state,body_json,failure_json) "
+                "VALUES (?,?,?,?,?,?)",
+                (item["job_id"], item["input_digest"], item["schema_version"],
+                 item["state"], body_json, failure_json))
+            for request in requests:
+                request_body = _strict_json_dumps(
+                    {key: value for key, value in request.items()
+                     if key != "status"}, label="专业复核请求")
+                self._conn.execute(
+                    "INSERT INTO review_requests("
+                    "request_id,request_input_digest,job_id,status,body_json) "
+                    "VALUES (?,?,?,?,?)",
+                    (request["request_id"], request["request_input_digest"],
+                     request["job_id"], request["status"], request_body))
+        stored = self.get_workflow_job(item["job_id"])
+        if stored is None or len(self.fetch_review_requests(
+                item["job_id"])) != len(requests):
+            raise RuntimeError("工作流job/request bundle持久化不完整")
+        return stored
+
     def get_workflow_job(self, job_id: str) -> dict | None:
         row = self._conn.execute(
             "SELECT * FROM workflow_jobs WHERE job_id=?", (job_id,)).fetchone()
@@ -1563,6 +1677,53 @@ class CaseStore:
                 "WHERE job_id=?", (state, failure_json, job_id))
         if cur.rowcount != 1:
             raise KeyError(f"工作流job {job_id} 不存在")
+
+    def refresh_workflow_job_state(self, job_id: str, *,
+                                   resume_failed: bool = False) -> str:
+        """同一BEGIN IMMEDIATE内读取request并单调更新job状态。"""
+        ranks = {
+            "awaiting_authorized_analysis": 1,
+            "response_sealed": 2,
+            "consumed": 3,
+        }
+        with self.immediate_transaction():
+            job = self._conn.execute(
+                "SELECT state FROM workflow_jobs WHERE job_id=?",
+                (job_id,)).fetchone()
+            if job is None:
+                raise KeyError(f"工作流job {job_id} 不存在")
+            current = job["state"]
+            rows = self._conn.execute(
+                "SELECT status FROM review_requests WHERE job_id=? "
+                "ORDER BY request_id", (job_id,)).fetchall()
+            states = [row["status"] for row in rows]
+            if not states:
+                raise ValueError("workflow job没有review request")
+            if "failed" in states:
+                desired = "failed"
+            elif "awaiting_authorized_analysis" in states:
+                desired = "awaiting_authorized_analysis"
+            elif "response_sealed" in states:
+                desired = "response_sealed"
+            elif all(state == "consumed" for state in states):
+                desired = "consumed"
+            else:
+                raise ValueError("review request状态组合非法")
+            if current == "failed" and not resume_failed:
+                return current
+            if current in ranks and desired in ranks \
+                    and ranks[desired] < ranks[current]:
+                return current
+            clear_failure = resume_failed and desired != "failed"
+            cur = self._conn.execute(
+                "UPDATE workflow_jobs SET state=?,"
+                "failure_json=CASE WHEN ? THEN NULL ELSE failure_json END,"
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE job_id=? AND state=?",
+                (desired, int(clear_failure), job_id, current))
+            if cur.rowcount != 1:
+                raise RuntimeError("workflow job条件状态转换失败")
+            return desired
 
     @staticmethod
     def _decode_review_request(row) -> dict | None:

@@ -25,6 +25,9 @@ PDF_TOOL = "PyPDF2 3.0.1"
 DOCX_TOOL = "python-docx 1.2.0"
 TEXT_TOOL = "utf-8(stdlib)"
 SUPPORTED_ATTACHMENT_SUFFIXES = frozenset({".pdf", ".docx", ".txt", ".md"})
+DOCX_MAX_MEMBERS = 2048
+DOCX_MAX_TOTAL_UNCOMPRESSED = 128 * 1024 * 1024
+DOCX_MAX_MEMBER_RATIO = 500
 
 # zip 安全边界（防压缩炸弹）
 ZIP_MAX_TOTAL_UNCOMPRESSED = 256 * 1024 * 1024
@@ -433,6 +436,28 @@ def extract_docx_paragraphs(data: bytes) -> TextProjection:
 
     import docx
 
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        infos = archive.infolist()
+        if len(infos) > DOCX_MAX_MEMBERS:
+            raise IntakeRejected(
+                f"DOCX成员数超过上限：{len(infos)}>{DOCX_MAX_MEMBERS}")
+        total = 0
+        for info in infos:
+            normalized = info.filename.replace("\\", "/")
+            parts = [part for part in normalized.split("/")
+                     if part not in {"", "."}]
+            if any(part == ".." for part in parts) or ":" in normalized[:2]:
+                raise IntakeRejected(f"DOCX成员路径逃逸：{info.filename!r}")
+            total += info.file_size
+            if total > DOCX_MAX_TOTAL_UNCOMPRESSED:
+                raise IntakeRejected(
+                    "DOCX解压总量超过上限："
+                    f"{total}>{DOCX_MAX_TOTAL_UNCOMPRESSED}")
+            if info.file_size \
+                    and info.file_size / max(info.compress_size, 1) > \
+                    DOCX_MAX_MEMBER_RATIO:
+                raise IntakeRejected(
+                    f"DOCX成员压缩比超过上限：{info.filename!r}")
     projection = TextProjection(tool=DOCX_TOOL, locator_kind="docx_paragraph")
     document = docx.Document(io.BytesIO(data))
     for para_no, para in enumerate(document.paragraphs, start=1):

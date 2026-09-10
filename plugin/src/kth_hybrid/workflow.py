@@ -25,6 +25,11 @@ from .store import BlobStore, CaseStore
 JOB_SCHEMA = "kth-local.workflow-job.v1"
 JOB_INPUT_SCHEMA = "kth-local.workflow-job-input.v1"
 MAX_ATTACHMENT_FILES = 256
+MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024
+MAX_ATTACHMENT_BATCH_BYTES = 256 * 1024 * 1024
+MAX_REVIEW_SPECS = 512
+MAX_REVIEW_SPECS_BYTES = 2 * 1024 * 1024
+MAX_REVIEW_SPEC_DEPTH = 24
 
 
 class WorkflowRejected(RuntimeError):
@@ -42,6 +47,24 @@ def _canonical_bytes(value, *, label: str) -> bytes:
 
 def _digest(value, *, label: str) -> str:
     return sha256_hex(_canonical_bytes(value, label=label))
+
+
+def _require_bounded_json(value, *, label: str, max_bytes: int,
+                          max_depth: int) -> None:
+    stack = [(value, 1, frozenset())]
+    while stack:
+        item, depth, ancestors = stack.pop()
+        if depth > max_depth:
+            raise WorkflowRejected(f"{label}深度超过上限{max_depth}")
+        if isinstance(item, (dict, list, tuple)):
+            identity = id(item)
+            if identity in ancestors:
+                raise WorkflowRejected(f"{label}包含循环引用")
+            nested = ancestors | {identity}
+            children = item.values() if isinstance(item, dict) else item
+            stack.extend((child, depth + 1, nested) for child in children)
+    if len(_canonical_bytes(value, label=label)) > max_bytes:
+        raise WorkflowRejected(f"{label}序列化字节超过上限{max_bytes}")
 
 
 class LocalWorkflow:
@@ -99,18 +122,41 @@ class LocalWorkflow:
                 or len(paths) > MAX_ATTACHMENT_FILES:
             raise WorkflowRejected(
                 f"附件必须是1至{MAX_ATTACHMENT_FILES}项的明确有限文件列表")
-        results = []
+        prepared = []
+        declared_total = 0
         for raw_path in paths:
             path = Path(raw_path)
             try:
                 resolved = str(path.resolve(strict=True))
                 if not path.is_file():
                     raise OSError("不是普通文件")
-                data = path.read_bytes()
+                size = path.stat().st_size
             except (OSError, ValueError) as exc:
                 raise WorkflowRejected(f"附件路径读取失败：{path}：{exc}") from exc
+            if size > MAX_ATTACHMENT_BYTES:
+                raise WorkflowRejected(
+                    f"附件单文件字节超过上限{MAX_ATTACHMENT_BYTES}：{path}")
+            declared_total += size
+            if declared_total > MAX_ATTACHMENT_BATCH_BYTES:
+                raise WorkflowRejected(
+                    "附件批次总字节超过上限"
+                    f"{MAX_ATTACHMENT_BATCH_BYTES}")
+            prepared.append((path, resolved, size))
+        inspected = []
+        actual_total = 0
+        for path, resolved, declared_size in prepared:
+            data = path.read_bytes()
+            if len(data) != declared_size or len(data) > MAX_ATTACHMENT_BYTES:
+                raise WorkflowRejected(f"附件读取期间大小变化或超过单文件上限：{path}")
+            actual_total += len(data)
+            if actual_total > MAX_ATTACHMENT_BATCH_BYTES:
+                raise WorkflowRejected(
+                    "附件批次读取后总字节超过上限"
+                    f"{MAX_ATTACHMENT_BATCH_BYTES}")
+            inspected.append((path, resolved, data, inspect_attachment(path.name, data)))
+        results = []
+        for path, resolved, data, inspection in inspected:
             blob_sha256 = sha256_hex(data)
-            inspection = inspect_attachment(path.name, data)
             existing = self.store.get_attachment_import(
                 origin_path=resolved, blob_sha256=blob_sha256,
                 media_type=inspection.media_type)
@@ -333,6 +379,13 @@ class LocalWorkflow:
             raise WorkflowRejected("assessment unit缺少scope_id")
         if not isinstance(review_specs, list) or not review_specs:
             raise WorkflowRejected("job至少需要一项专业复核请求输入")
+        if len(review_specs) > MAX_REVIEW_SPECS:
+            raise WorkflowRejected(
+                f"review_specs条目超过上限{MAX_REVIEW_SPECS}")
+        _require_bounded_json(
+            review_specs, label="review_specs",
+            max_bytes=MAX_REVIEW_SPECS_BYTES,
+            max_depth=MAX_REVIEW_SPEC_DEPTH)
         try:
             profile = get_aggregation_profile(profile_id)
         except (TypeError, ValueError) as exc:
@@ -421,9 +474,10 @@ class LocalWorkflow:
             self.journal.ensure_task(task_key, input_digest)
             claim = self.journal.claim(task_key, "local-workflow", input_digest)
             try:
-                self.store.add_workflow_job(job)
-                for request in requests:
-                    self.reviews.add_request(request)
+                validated_requests = [
+                    self.reviews.validate_request(request)
+                    for request in requests]
+                self.store.add_workflow_bundle(job, validated_requests)
                 self.journal.commit(claim, job_id)
             except Exception as exc:
                 try:
