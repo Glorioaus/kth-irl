@@ -218,9 +218,11 @@ def test_role_rejects_text_unknown_evidence_and_nested_authority(changes):
         validate_role_attempt(_attempt(**changes), _view())
 
 
-def test_confirmation_revalidates_full_candidate_and_target():
+def test_legacy_candidate_is_readable_but_confirmation_is_restricted():
     view = _view()
     candidate = validate_role_attempt(_attempt(), view)
+    assert candidate["schema_version"] == "kth-hybrid.offline-role-attempt.v2"
+    assert candidate["candidate_id"] == "PRO-C1"
     target = candidate["review_target"]
     confirmation = {"schema_version": "kth-hybrid.role-confirmation.v2",
                     "confirmation_id": "CONF-1", "candidate_id": candidate["candidate_id"],
@@ -231,13 +233,9 @@ def test_confirmation_revalidates_full_candidate_and_target():
                     "decision": "does_not_support", "reviewer": "human",
                     "review_basis": "受控复核", "evidence_refs": candidate["evidence_refs"],
                     **target}
-    review = confirm_role_candidate(candidate, confirmation, dimension_id="BRL", view=view)
-    assert review["decision"] == "does_not_support"
-    for field, value in (("input_digest", "other"), ("subject_scope", "Other"),
-                         ("scope_id", "OTHER"), ("quote_sha256", "c" * 64)):
-        with pytest.raises(ValueError):
-            confirm_role_candidate(candidate, {**confirmation, field: value},
-                                   dimension_id="BRL", view=view)
+    with pytest.raises(ValueError, match="legacy_restricted"):
+        confirm_role_candidate(
+            candidate, confirmation, dimension_id="BRL", view=view)
     with pytest.raises(ValueError, match="候选|越权"):
         confirm_role_candidate({"candidate_id": "PRO-C1", "final_decision": "YES"},
                                confirmation, dimension_id="BRL", view=view)
