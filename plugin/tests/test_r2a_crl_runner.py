@@ -161,6 +161,28 @@ def test_dimension_scope_must_equal_frozen_case_subject(tmp_path):
             tmp_path, catalog=catalog, case_basis=basis, scope="Other-Company")
 
 
+def test_crl_allowed_review_ids_freezes_exact_selector_without_case_scan(tmp_path):
+    basis, catalog = _seed_reviewed_case(tmp_path)
+    case = CaseStore(tmp_path / "records.sqlite3")
+    try:
+        case.add_crl_evidence_review(
+            "CRL-OTHER", case_basis_version=1, claim_id="C",
+            criterion_id="CRL1-C1", quote_sha256=sha256_hex(
+                "Company-A identifies market demand. Published 2026-07-01.".encode()),
+            decision="does_not_support", findings={"market_need_hypothesis": False},
+            subject_scope="Company-A", support_scope="仅支持CRL1-C1",
+            reviewer="other-job", review_basis="另一job受控复核")
+    finally:
+        case.close()
+
+    result = runner.run_crl_dimension_slice(
+        tmp_path, catalog=catalog, case_basis=basis, scope="Company-A",
+        allowed_review_ids={"CRL-1"})
+
+    assert result["frozen_inputs"]["review_selector"]["allowed_review_ids"] == ["CRL-1"]
+    assert [item["review_id"] for item in result["frozen_inputs"]["reviews"]] == ["CRL-1"]
+
+
 def test_dimension_trace_rechecks_frozen_claim_and_source(tmp_path):
     basis, catalog = _seed_reviewed_case(tmp_path)
     result = runner.run_crl_dimension_slice(

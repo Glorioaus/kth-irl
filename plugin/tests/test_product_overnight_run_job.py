@@ -107,11 +107,12 @@ def _evaluation_inputs() -> dict:
     }
 
 
-def _candidate_job(workflow: LocalWorkflow, tmp_path):
+def _candidate_job(workflow: LocalWorkflow, tmp_path, *, tag="default"):
     docx = pytest.importorskip("docx")
-    path = tmp_path / "qualified.docx"
+    path = tmp_path / f"qualified-{tag}.docx"
     document = docx.Document()
-    document.add_paragraph(f"{SUBJECT}已完成实验室组件集成测试，组件共同产生预期结果。")
+    document.add_paragraph(
+        f"{SUBJECT}已完成实验室组件集成测试，组件共同产生预期结果。材料{tag}。")
     document.save(path)
     imported = workflow.import_attachments([path])[0]
     projection = next(item for item in workflow.project_sources(
@@ -138,7 +139,10 @@ def _candidate_job(workflow: LocalWorkflow, tmp_path):
     )
 
 
-def _consume_full_trl_path(workflow: LocalWorkflow, job: dict) -> None:
+def _consume_full_trl_path(workflow: LocalWorkflow, job: dict, *,
+                           source_mode="manual_import") -> None:
+    allow_simulated = source_mode == "simulated"
+    producer_kind = "simulated" if allow_simulated else "authorized_human"
     proposal = workflow.proposals.get_request(job["proposal_request_ids"][0])
     candidate = {
         "quote": proposal["quote"],
@@ -160,11 +164,11 @@ def _consume_full_trl_path(workflow: LocalWorkflow, job: dict) -> None:
             "schema_version": "proposal_response.v1",
             "request_id": proposal["request_id"],
             "request_input_digest": proposal["request_input_digest"],
-            "producer": {"producer_id": "human-proposer-e3",
-                         "producer_kind": "authorized_human"},
+            "producer": {"producer_id": "proposer-e3-" + source_mode,
+                         "producer_kind": producer_kind},
             "output_schema": proposal["output_schema"],
             "candidates": [candidate],
-        }, source_mode="manual_import")
+        }, source_mode=source_mode, allow_simulated=allow_simulated)
     consumed = workflow.proposals.consume_response(
         sealed["response_id"], worker_id="e3-proposal",
         catalog=build_catalog_from_wheel())
@@ -178,8 +182,8 @@ def _consume_full_trl_path(workflow: LocalWorkflow, job: dict) -> None:
             "schema_version": "review_response.v2",
             "request_id": request["request_id"],
             "request_input_digest": request["request_input_digest"],
-            "producer": {"producer_id": "human-reviewer-e3",
-                         "producer_kind": "authorized_human"},
+            "producer": {"producer_id": "reviewer-e3-" + source_mode,
+                         "producer_kind": producer_kind},
             "output_schema": request["output_schema"],
             "decision": "supports",
             "evidence_class": "test_record",
@@ -195,8 +199,8 @@ def _consume_full_trl_path(workflow: LocalWorkflow, job: dict) -> None:
                 "environment_kind": "laboratory",
             },
             "citations": [citation],
-        }, source_mode="manual_import")
-    workflow.reviews.consume_response(
+        }, source_mode=source_mode, allow_simulated=allow_simulated)
+    return workflow.reviews.consume_response(
         sealed_review["response_id"], worker_id="e3-review")
 
 
@@ -322,3 +326,42 @@ def test_run_job_rejects_runtime_runner_version_drift_before_trl_execution(
     assert {row["dimension_id"] for row in
             workflow.store.fetch_workflow_job_dimension_outputs(job["job_id"])} == {
                 "BRL", "CRL"}
+
+
+def test_run_job_filters_other_job_materializations_during_resume(workflow, tmp_path):
+    job_a = _candidate_job(workflow, tmp_path, tag="A")
+    job_b = _candidate_job(workflow, tmp_path, tag="B")
+    _consume_full_trl_path(workflow, job_a, source_mode="manual_import")
+    consumed_b = _consume_full_trl_path(
+        workflow, job_b, source_mode="simulated")
+    workflow.materialize_review_response(
+        consumed_b["response_id"], worker_id="quality-b-materialize")
+
+    with pytest.raises(LocalWorkflowCrash, match="CRL维度登记后"):
+        workflow.run_job(job_a["job_id"], crash_after_dimension="CRL")
+    resumed = workflow.run_job(job_a["job_id"])
+
+    trl = next(row for row in resumed["dimension_outputs"]
+               if row["dimension_id"] == "TRL")
+    result = json.loads(workflow.blobs.read_bytes(
+        workflow.store.get_dimension_result_by_id(trl["result_id"])[
+            "result_blob_sha256"]).decode("utf-8"))
+    review_ids = result["traceability"]["review_refs"]
+    assert review_ids
+    assert all(workflow.store.get_workflow_review_materialization(review_id)[
+        "job_id"] == job_a["job_id"] for review_id in review_ids)
+    assert resumed["source_modes"] == ["manual_import"]
+    assert workflow.store.fetch_workflow_job_dimension_outputs(job_b["job_id"]) == []
+
+
+def test_manifest_blob_crash_never_leaves_manifest_frozen_without_artifacts(
+        workflow, tmp_path):
+    job = _candidate_job(workflow, tmp_path)
+    _consume_full_trl_path(workflow, job)
+
+    with pytest.raises(LocalWorkflowCrash, match="manifest工件blob落盘后"):
+        workflow.run_job(job["job_id"], crash_after_manifest_blobs=True)
+
+    assert workflow.store.get_workflow_job(job["job_id"])["state"] == "evaluated"
+    assert workflow.store.get_workflow_job_artifacts(job["job_id"]) is None
+    assert workflow.run_job(job["job_id"])["state"] == "completed"

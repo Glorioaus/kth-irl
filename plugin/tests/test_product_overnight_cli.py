@@ -15,6 +15,7 @@ import pytest
 import kth_hybrid.cli as cli_module
 from kth_hybrid.aggregation_profiles import (
     CURRENT_AGGREGATION_PROFILE_ID,
+    get_evaluation_method_contract,
     get_aggregation_profile,
 )
 from kth_hybrid.aggregate import (
@@ -60,7 +61,8 @@ FRL_APPLICABILITY = {
 }
 
 
-def _run(*args: str, ok: bool = True) -> subprocess.CompletedProcess[str]:
+def _run(*args: str, ok: bool = True,
+         timeout: int = 300) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC)
     bootstrap = (
@@ -72,7 +74,7 @@ def _run(*args: str, ok: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [sys.executable, "-I", "-c", bootstrap, *args],
         cwd=PLUGIN_ROOT, env=env, text=True, capture_output=True,
-        encoding="utf-8", timeout=30,
+        encoding="utf-8", timeout=timeout,
     )
     if ok:
         assert result.returncode == 0, result.stderr
@@ -99,7 +101,8 @@ def _provenance_binding_value(index: dict, package: Path, binding: dict):
 def _write_docx(path: Path) -> None:
     docx = pytest.importorskip("docx")
     document = docx.Document()
-    document.add_paragraph("技术样机已经完成受控验证。")
+    document.add_paragraph(
+        f"{SUBJECT}技术样机已经完成受控验证，组件共同产生预期结果。")
     document.save(path)
 
 
@@ -174,11 +177,8 @@ def _job_file(tmp_path: Path, imported: dict, projection: dict) -> Path:
                 "profile_id": profile["profile_id"],
                 "profile_digest": profile["profile_digest"],
             },
-            "method_versions": {
-                "candidate_proposal": "kth-local.candidate-proposal.v1",
-                "qualification": "kth-hybrid.qualification.v4",
-                "professional_review": "kth-local.professional-review.v2",
-            },
+            "method_versions": get_evaluation_method_contract(
+                CURRENT_AGGREGATION_PROFILE_ID),
         },
         "proposal_specs": [{
             "source_id": imported["source_id"],
@@ -233,6 +233,34 @@ def _valid_proposal_response(request: dict) -> dict:
     }
 
 
+def _valid_review_response(request: dict) -> dict:
+    authorization = request["authorization"]
+    citation = {key: authorization[key] for key in (
+        "source_id", "blob_sha256", "projection_id", "locator", "quote_sha256")}
+    return {
+        "schema_version": "review_response.v2",
+        "request_id": request["request_id"],
+        "request_input_digest": request["request_input_digest"],
+        "producer": {"producer_id": "human-reviewer-cli",
+                     "producer_kind": "authorized_human"},
+        "output_schema": request["output_schema"],
+        "decision": "supports",
+        "evidence_class": "test_record",
+        "findings": {
+            "components_integrated_in_lab": True,
+            "project_specific": True,
+            "configuration_id": "CFG-CLI-TRL4",
+            "system_boundary": "实验室组件集成系统",
+            "test_environment": "实验室",
+            "test_method": "受控组件集成测试",
+            "measured_results": "组件共同产生预期结果",
+            "requirements_thresholds": "组件集成阈值已满足",
+            "environment_kind": "laboratory",
+        },
+        "citations": [citation],
+    }
+
+
 def test_cli_mechanical_path_waits_without_provider_and_never_selects_latest(tmp_path):
     case_dir, _, _, job = _created_job(tmp_path)
     job_id = job["job_id"]
@@ -253,6 +281,53 @@ def test_cli_mechanical_path_waits_without_provider_and_never_selects_latest(tmp
     _run("status", "--case-dir", str(case_dir), ok=False)
     _run("run", "--case-dir", str(case_dir), ok=False)
     _run("resume", "--case-dir", str(case_dir), ok=False)
+
+
+def test_cli_run_executes_exact_job_then_traces_persisted_manifest_and_view(tmp_path):
+    case_dir, imported, _projection, job = _created_job(tmp_path)
+    with CaseStore(case_dir / "records.sqlite3") as store:
+        with store._conn:
+            store._conn.execute(
+                "UPDATE sources SET source_family='news-media', "
+                "retrieved_at='2026-09-08T00:00:00Z', "
+                "capture_status='raw_capture_validated' WHERE source_id=?",
+                (imported["source_id"],),
+            )
+    proposal = job["proposal_requests"][0]
+    proposal_file = tmp_path / "proposal-response.json"
+    proposal_file.write_text(json.dumps(
+        _valid_proposal_response(proposal), ensure_ascii=False), encoding="utf-8")
+    sealed_proposal = _json(_run(
+        "review", "import", "--case-dir", str(case_dir),
+        "--request-id", proposal["request_id"], "--response-file", str(proposal_file),
+        "--source-mode", "manual_import"))
+    _run("review", "consume", "--case-dir", str(case_dir),
+         "--response-id", sealed_proposal["response_id"], "--worker-id", "cli-proposal")
+    review = next(item for item in _json(_run(
+        "review", "list", "--case-dir", str(case_dir), "--job-id", job["job_id"]))
+        if item["request_id"].startswith("REVIEWREQ2::"))
+    review_file = tmp_path / "review-response.json"
+    review_file.write_text(json.dumps(
+        _valid_review_response(review), ensure_ascii=False), encoding="utf-8")
+    sealed_review = _json(_run(
+        "review", "import", "--case-dir", str(case_dir),
+        "--request-id", review["request_id"], "--response-file", str(review_file),
+        "--source-mode", "manual_import"))
+    _run("review", "consume", "--case-dir", str(case_dir),
+         "--response-id", sealed_review["response_id"], "--worker-id", "cli-review")
+
+    completed = _json(_run(
+        "run", "--case-dir", str(case_dir), "--job-id", job["job_id"]))
+
+    assert completed["state"] == "completed"
+    assert len(completed["dimension_outputs"]) == 6
+    artifacts = completed["artifacts"]
+    for object_id, kind in ((artifacts["manifest_id"], "aggregation_manifest"),
+                            (artifacts["view_id"], "offline_dimension_view")):
+        trace = _json(_run(
+            "trace", "--case-dir", str(case_dir), "--result-id", object_id))
+        assert trace["kind"] == kind
+        assert trace["ok"] is True
 
 
 def test_cli_rejects_legacy_v1_job_input_without_falling_back(tmp_path):
