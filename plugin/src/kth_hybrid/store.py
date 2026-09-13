@@ -27,7 +27,7 @@ from .contracts import (
     sha256_hex,
 )
 
-_SCHEMA_VERSION = "kth-hybrid.store.v7"
+_SCHEMA_VERSION = "kth-hybrid.store.v9"
 WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA = "workflow_review_materialization.v1"
 _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS = {
     "schema_version", "job_id", "request_id", "request_input_digest",
@@ -399,7 +399,8 @@ CREATE TABLE IF NOT EXISTS workflow_jobs (
     state TEXT NOT NULL CHECK (state IN
         ('saved','projected','awaiting_authorized_analysis','response_sealed',
          'consumed','failed','insufficient','awaiting_candidate_proposal',
-         'proposal_response_sealed')),
+         'proposal_response_sealed','reviews_consumed','evidence_materialized',
+         'evaluating','evaluated','manifest_frozen','completed')),
     body_json TEXT NOT NULL,
     failure_json TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -418,6 +419,30 @@ CREATE TABLE IF NOT EXISTS review_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_review_requests_job
     ON review_requests(job_id, request_id);
+CREATE TABLE IF NOT EXISTS workflow_job_dimension_outputs (
+    job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+    dimension_id TEXT NOT NULL CHECK (dimension_id IN
+        ('CRL','BRL','TRL','IPRL','TMRL','FRL')),
+    result_id TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    trace_digest TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (job_id, dimension_id),
+    UNIQUE (job_id, result_id)
+);
+CREATE TABLE IF NOT EXISTS workflow_job_artifacts (
+    job_id TEXT PRIMARY KEY REFERENCES workflow_jobs(job_id),
+    manifest_id TEXT NOT NULL,
+    manifest_digest TEXT NOT NULL,
+    manifest_blob_sha256 TEXT NOT NULL,
+    view_id TEXT NOT NULL,
+    view_digest TEXT NOT NULL,
+    view_blob_sha256 TEXT NOT NULL,
+    source_modes_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE (manifest_id),
+    UNIQUE (view_id)
+);
 CREATE TABLE IF NOT EXISTS review_responses (
     response_id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL UNIQUE REFERENCES review_requests(request_id),
@@ -935,6 +960,9 @@ class CaseStore:
         if prior_generation < 8:
             self._migrate_dimension_reviews_v8()
         self._conn.commit()
+        if prior_generation < 9:
+            self._migrate_workflow_outputs_v9()
+        self._conn.commit()
 
     def _migrate_workflow_states_v7(self) -> None:
         """扩展候选阶段状态；保留既有v1 job与外键引用。"""
@@ -1033,6 +1061,71 @@ class CaseStore:
             """)
         finally:
             self._conn.execute("PRAGMA foreign_keys=ON")
+
+    def _migrate_workflow_outputs_v9(self) -> None:
+        """扩展v2工作流的可恢复执行状态与精确输出登记表。"""
+        sql = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='workflow_jobs'").fetchone()
+        needs_states = sql is None or "manifest_frozen" not in (sql[0] or "")
+        if needs_states:
+            self._conn.execute("PRAGMA foreign_keys=OFF")
+            try:
+                self._conn.executescript("""
+                    CREATE TABLE workflow_jobs_v9 (
+                        job_id TEXT PRIMARY KEY,
+                        input_digest TEXT NOT NULL UNIQUE,
+                        schema_version TEXT NOT NULL,
+                        state TEXT NOT NULL CHECK (state IN
+                            ('saved','projected','awaiting_authorized_analysis',
+                             'response_sealed','consumed','failed','insufficient',
+                             'awaiting_candidate_proposal',
+                             'proposal_response_sealed','reviews_consumed',
+                             'evidence_materialized','evaluating','evaluated',
+                             'manifest_frozen','completed')),
+                        body_json TEXT NOT NULL,
+                        failure_json TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    INSERT INTO workflow_jobs_v9 SELECT * FROM workflow_jobs;
+                    DROP TABLE workflow_jobs;
+                    ALTER TABLE workflow_jobs_v9 RENAME TO workflow_jobs;
+                """)
+            finally:
+                self._conn.execute("PRAGMA foreign_keys=ON")
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS workflow_job_dimension_outputs (
+                job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+                dimension_id TEXT NOT NULL CHECK (dimension_id IN
+                    ('CRL','BRL','TRL','IPRL','TMRL','FRL')),
+                result_id TEXT NOT NULL,
+                input_digest TEXT NOT NULL,
+                trace_digest TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT
+                    (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                PRIMARY KEY (job_id, dimension_id),
+                UNIQUE (job_id, result_id)
+            );
+            CREATE TABLE IF NOT EXISTS workflow_job_artifacts (
+                job_id TEXT PRIMARY KEY REFERENCES workflow_jobs(job_id),
+                manifest_id TEXT NOT NULL,
+                manifest_digest TEXT NOT NULL,
+                manifest_blob_sha256 TEXT NOT NULL,
+                view_id TEXT NOT NULL,
+                view_digest TEXT NOT NULL,
+                view_blob_sha256 TEXT NOT NULL,
+                source_modes_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT
+                    (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE (manifest_id),
+                UNIQUE (view_id)
+            );
+        """)
+        violations = self._conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise StoreIntegrityError(
+                f"store.v9迁移后外键引用不完整：{len(violations)}项")
 
     def _migrate_attachment_objects_v5(self) -> None:
         """将v4按路径/媒体拆出的同blob行归并为单一内容对象。"""
@@ -2065,6 +2158,102 @@ class CaseStore:
                 "WHERE job_id=?", (state, failure_json, job_id))
         if cur.rowcount != 1:
             raise KeyError(f"工作流job {job_id} 不存在")
+
+    @staticmethod
+    def _decode_workflow_dimension_output(row) -> dict | None:
+        return dict(row) if row is not None else None
+
+    def fetch_workflow_job_dimension_outputs(self, job_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT job_id,dimension_id,result_id,input_digest,trace_digest,created_at "
+            "FROM workflow_job_dimension_outputs WHERE job_id=? "
+            "ORDER BY dimension_id", (job_id,)).fetchall()
+        return [self._decode_workflow_dimension_output(row) for row in rows]
+
+    def get_workflow_job_dimension_output(self, job_id: str,
+                                          dimension_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT job_id,dimension_id,result_id,input_digest,trace_digest,created_at "
+            "FROM workflow_job_dimension_outputs WHERE job_id=? AND dimension_id=?",
+            (job_id, dimension_id)).fetchone()
+        return self._decode_workflow_dimension_output(row)
+
+    def add_workflow_job_dimension_output(
+            self, *, job_id: str, dimension_id: str, result_id: str,
+            input_digest: str, trace_digest: str) -> dict:
+        """登记已实际重核trace的精确维度结果；不提供latest替换语义。"""
+        values = (job_id, dimension_id, result_id, input_digest, trace_digest)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("workflow维度输出身份字段必须为非空字符串")
+        with self.immediate_transaction():
+            existing = self.get_workflow_job_dimension_output(job_id, dimension_id)
+            expected = {
+                "job_id": job_id,
+                "dimension_id": dimension_id,
+                "result_id": result_id,
+                "input_digest": input_digest,
+                "trace_digest": trace_digest,
+            }
+            if existing is None:
+                self._conn.execute(
+                    "INSERT INTO workflow_job_dimension_outputs("
+                    "job_id,dimension_id,result_id,input_digest,trace_digest) "
+                    "VALUES (?,?,?,?,?)", values)
+            elif any(existing[key] != value for key, value in expected.items()):
+                raise StoreIntegrityError("workflow维度输出已登记为不同精确结果")
+        stored = self.get_workflow_job_dimension_output(job_id, dimension_id)
+        if stored is None:
+            raise StoreIntegrityError("workflow维度输出持久化失败")
+        return stored
+
+    def get_workflow_job_artifacts(self, job_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM workflow_job_artifacts WHERE job_id=?", (job_id,)).fetchone()
+        if row is None:
+            return None
+        value = dict(row)
+        value["source_modes"] = json.loads(value.pop("source_modes_json"))
+        return value
+
+    def add_workflow_job_artifacts(
+            self, *, job_id: str, manifest_id: str, manifest_digest: str,
+            manifest_blob_sha256: str, view_id: str, view_digest: str,
+            view_blob_sha256: str, source_modes: list[str]) -> dict:
+        """原子冻结manifest/view blob引用及实际使用的来源模式。"""
+        values = {
+            "job_id": job_id,
+            "manifest_id": manifest_id,
+            "manifest_digest": manifest_digest,
+            "manifest_blob_sha256": manifest_blob_sha256,
+            "view_id": view_id,
+            "view_digest": view_digest,
+            "view_blob_sha256": view_blob_sha256,
+        }
+        if any(not isinstance(value, str) or not value.strip()
+               for value in values.values()):
+            raise ValueError("workflow工件身份字段必须为非空字符串")
+        if not isinstance(source_modes, list) or not source_modes or any(
+                not isinstance(value, str) or not value.strip()
+                for value in source_modes):
+            raise ValueError("workflow来源模式必须为非空字符串列表")
+        source_modes = sorted(set(source_modes))
+        with self.immediate_transaction():
+            existing = self.get_workflow_job_artifacts(job_id)
+            expected = {**values, "source_modes": source_modes}
+            if existing is None:
+                self._conn.execute(
+                    "INSERT INTO workflow_job_artifacts("
+                    "job_id,manifest_id,manifest_digest,manifest_blob_sha256,"
+                    "view_id,view_digest,view_blob_sha256,source_modes_json) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (*values.values(), _strict_json_dumps(
+                        source_modes, label="workflow来源模式")))
+            elif any(existing[key] != value for key, value in expected.items()):
+                raise StoreIntegrityError("workflow工件已登记为不同冻结对象")
+        stored = self.get_workflow_job_artifacts(job_id)
+        if stored is None:
+            raise StoreIntegrityError("workflow工件持久化失败")
+        return stored
 
     def refresh_workflow_job_state(self, job_id: str, *,
                                    resume_failed: bool = False) -> str:

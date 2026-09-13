@@ -7,7 +7,13 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+from .aggregate import (
+    build_offline_dimension_view,
+    freeze_aggregation_manifest,
+    validate_offline_dimension_view,
+)
 from .aggregation_profiles import get_aggregation_profile
+from .audit import trace_crl_dimension, trace_dimension_result
 from .contracts import sha256_hex
 from .intake import inspect_attachment
 from .journal import CommitRejected, Journal
@@ -15,6 +21,7 @@ from .proposal_requests import (
     AWAITING as AWAITING_PROPOSAL,
     ProposalQueue,
     ProposalQueueRejected,
+    approved_catalog,
     build_proposal_request,
     validate_approved_catalog,
     validate_evaluation_input_bindings,
@@ -30,6 +37,14 @@ from .review_queue import (
     request_input_payload,
 )
 from .store import BlobStore, CaseStore
+from .runner import (
+    run_brl_dimension_slice,
+    run_crl_dimension_slice,
+    run_frl_dimension_slice,
+    run_iprl_dimension_slice,
+    run_tmrl_dimension_slice,
+    run_trl_dimension_slice,
+)
 
 
 JOB_SCHEMA = "kth-local.workflow-job.v1"
@@ -46,6 +61,10 @@ MAX_REVIEW_SPEC_DEPTH = 24
 
 class WorkflowRejected(RuntimeError):
     """工作流输入、状态或持久化关系不满足受控合同。"""
+
+
+class LocalWorkflowCrash(RuntimeError):
+    """仅供恢复测试在已持久化边界明确中断本地工作流。"""
 
 
 def _canonical_bytes(value, *, label: str) -> bytes:
@@ -813,7 +832,307 @@ class LocalWorkflow:
             raise WorkflowRejected("workflow job v2与proposal request闭包不一致")
         job["proposal_requests"] = requests
         job["review_requests"] = self.store.fetch_review_requests(job["job_id"])
+        job["dimension_outputs"] = self.store.fetch_workflow_job_dimension_outputs(
+            job["job_id"])
+        job["artifacts"] = self.store.get_workflow_job_artifacts(job["job_id"])
+        if job["artifacts"] is not None:
+            job["source_modes"] = copy.deepcopy(job["artifacts"]["source_modes"])
+        else:
+            modes = []
+            for request in requests:
+                response = self.store.get_proposal_response_for_request(
+                    request["request_id"])
+                if response is not None:
+                    modes.append(response["source_mode"])
+            for request in job["review_requests"]:
+                response = self.store.get_review_response_for_request(
+                    request["request_id"])
+                if response is not None:
+                    modes.append(response["source_mode"])
+            if modes:
+                job["source_modes"] = sorted(set(modes))
         return job
+
+    @staticmethod
+    def _trace_digest(report: dict) -> str:
+        if not isinstance(report, dict) or report.get("ok") is not True:
+            raise WorkflowRejected("维度结果trace未通过，禁止登记workflow输出")
+        return _digest(report, label="workflow维度trace")
+
+    def _revalidate_v2_execution_inputs(self, job: dict) -> tuple[dict, dict]:
+        """在运行前从存储重核冻结输入；调用方声明不是执行事实。"""
+        catalog = approved_catalog()
+        try:
+            catalog_digest = validate_approved_catalog(catalog)
+            evaluation = validate_evaluation_inputs(job["evaluation_inputs"])
+        except ProposalQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
+        if catalog.get("wheel_sha256") != job.get("catalog_sha256") \
+                or catalog_digest != job.get("catalog_digest"):
+            raise WorkflowRejected("workflow job冻结catalog与当前批准目录不一致")
+        try:
+            profile = get_aggregation_profile(evaluation["profile"]["profile_id"])
+        except (TypeError, ValueError) as exc:
+            raise WorkflowRejected(f"workflow job profile未登记：{exc}") from exc
+        if evaluation["profile"] != {key: profile[key] for key in (
+                "profile_id", "profile_digest")}:
+            raise WorkflowRejected("workflow job profile正文或摘要不一致")
+        frozen_basis = job.get("case_basis")
+        if not isinstance(frozen_basis, dict) or not isinstance(
+                frozen_basis.get("version"), int):
+            raise WorkflowRejected("workflow job缺少冻结CaseBasis版本")
+        live_basis = self.store.get_case_basis_version(frozen_basis["version"])
+        if live_basis is None:
+            raise WorkflowRejected("workflow job冻结CaseBasis版本已不存在")
+        live_body = {key: copy.deepcopy(value) for key, value in live_basis.items()
+                     if key != "created_at"}
+        if live_body != frozen_basis or _digest(live_body, label="CaseBasis") != \
+                job.get("case_basis_digest"):
+            raise WorkflowRejected("workflow job冻结CaseBasis正文或身份已变化")
+        proofs, proof_error = resolve_case_basis_proof_bindings(
+            live_basis, self.store, self.blobs)
+        if proof_error or proofs is None or _digest(
+                proofs, label="CaseBasis proofs") != \
+                job.get("case_basis_proof_digest"):
+            raise WorkflowRejected(
+                f"workflow job CaseBasis证明不可核验：{proof_error or '绑定变化'}")
+        try:
+            evaluation_proofs = validate_evaluation_input_bindings(
+                evaluation, case=self.store, blobs=self.blobs,
+                subject_scope=live_basis["subject_legal_name"])
+        except ProposalQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
+        if evaluation_proofs != job.get("evaluation_input_proof_bindings"):
+            raise WorkflowRejected("workflow job评估输入证明与冻结视图不一致")
+        return catalog, live_basis
+
+    def _verify_registered_dimension_output(self, job_id: str,
+                                            dimension_id: str) -> dict | None:
+        row = self.store.get_workflow_job_dimension_output(job_id, dimension_id)
+        if row is None:
+            return None
+        report = (trace_crl_dimension(self.store, self.blobs, row["result_id"])
+                  if dimension_id == "CRL" else
+                  trace_dimension_result(self.store, self.blobs, row["result_id"]))
+        trace_digest = self._trace_digest(report)
+        if row["input_digest"] != report.get("input_digest") \
+                or row["trace_digest"] != trace_digest:
+            raise WorkflowRejected("已登记workflow维度输出与精确trace不一致")
+        return row
+
+    def _run_and_register_dimension(self, *, job: dict, catalog: dict,
+                                    case_basis: dict, dimension_id: str) -> dict:
+        existing = self._verify_registered_dimension_output(
+            job["job_id"], dimension_id)
+        if existing is not None:
+            return existing
+        evaluation = job["evaluation_inputs"]
+        scope = case_basis["subject_legal_name"]
+        try:
+            if dimension_id == "CRL":
+                result = run_crl_dimension_slice(
+                    self.case_dir, catalog=catalog, case_basis=case_basis,
+                    scope=scope)
+            elif dimension_id == "FRL":
+                result = run_frl_dimension_slice(
+                    self.case_dir, catalog=catalog, case_basis=case_basis,
+                    scope=scope, financing_entity=evaluation["financing_entity"],
+                    applicability_policy=evaluation["frl_applicability"])
+            else:
+                runners = {
+                    "BRL": run_brl_dimension_slice,
+                    "TRL": run_trl_dimension_slice,
+                    "IPRL": run_iprl_dimension_slice,
+                    "TMRL": run_tmrl_dimension_slice,
+                }
+                result = runners[dimension_id](
+                    self.case_dir, catalog=catalog, case_basis=case_basis,
+                    scope=scope, assessment_unit=evaluation["assessment_unit"])
+        except Exception as exc:
+            raise WorkflowRejected(
+                f"{dimension_id}维度runner系统失败：{type(exc).__name__}: {exc}") from exc
+        if not isinstance(result, dict) or result.get("result_id") is None \
+                or result.get("input_digest") is None:
+            raise WorkflowRejected(f"{dimension_id}维度runner未返回精确结果身份")
+        if result.get("dimension", {}).get("product_status") == \
+                "execution_failed":
+            raise WorkflowRejected(
+                f"{dimension_id}维度runner报告系统执行失败，不能登记为业务insufficient")
+        report = (trace_crl_dimension(self.store, self.blobs, result["result_id"])
+                  if dimension_id == "CRL" else
+                  trace_dimension_result(self.store, self.blobs, result["result_id"]))
+        trace_digest = self._trace_digest(report)
+        if report.get("input_digest") != result["input_digest"]:
+            raise WorkflowRejected(f"{dimension_id}维度runner结果与trace输入不一致")
+        try:
+            return self.store.add_workflow_job_dimension_output(
+                job_id=job["job_id"], dimension_id=dimension_id,
+                result_id=result["result_id"], input_digest=result["input_digest"],
+                trace_digest=trace_digest)
+        except Exception as exc:
+            raise WorkflowRejected(
+                f"{dimension_id}维度输出登记失败：{type(exc).__name__}: {exc}") from exc
+
+    def _source_modes_for_job(self, job_id: str) -> list[str]:
+        modes = []
+        for request in self.store.fetch_proposal_requests(job_id):
+            response = self.store.get_proposal_response_for_request(
+                request["request_id"])
+            if response is not None:
+                modes.append(response["source_mode"])
+        for request in self.store.fetch_review_requests(job_id):
+            response = self.store.get_review_response_for_request(
+                request["request_id"])
+            if response is not None:
+                modes.append(response["source_mode"])
+        if not modes:
+            raise WorkflowRejected("workflow job未封存任何来源模式，不能冻结输出工件")
+        return sorted(set(modes))
+
+    def _verify_registered_artifacts(self, *, job: dict) -> dict | None:
+        artifacts = self.store.get_workflow_job_artifacts(job["job_id"])
+        if artifacts is None:
+            return None
+        try:
+            manifest = json.loads(self.blobs.read_bytes(
+                artifacts["manifest_blob_sha256"]).decode("utf-8"))
+            expected_manifest = freeze_aggregation_manifest(
+                self.store, self.blobs,
+                {row["dimension_id"]: row["result_id"] for row in
+                 self.store.fetch_workflow_job_dimension_outputs(job["job_id"])},
+                profile_id=job["evaluation_inputs"]["profile"]["profile_id"])
+            if manifest != expected_manifest \
+                    or manifest.get("manifest_id") != artifacts["manifest_id"] \
+                    or manifest.get("manifest_digest") != artifacts["manifest_digest"]:
+                raise WorkflowRejected("已登记workflow manifest无法按精确输出重建")
+            view = json.loads(self.blobs.read_bytes(
+                artifacts["view_blob_sha256"]).decode("utf-8"))
+            expected_view = build_offline_dimension_view(
+                self.store, self.blobs, manifest)
+            validate_offline_dimension_view(view)
+            if view != expected_view or view.get("view_id") != artifacts["view_id"] \
+                    or view.get("input_digest") != artifacts["view_digest"]:
+                raise WorkflowRejected("已登记workflow view无法按冻结manifest重建")
+            if artifacts["source_modes"] != self._source_modes_for_job(job["job_id"]):
+                raise WorkflowRejected("workflow工件来源模式与封存响应不一致")
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise WorkflowRejected(f"已登记workflow工件不可核验：{exc}") from exc
+        return artifacts
+
+    def run_job(self, job_id: str, *, crash_after_dimension: str | None = None,
+                crash_before_manifest: bool = False) -> dict:
+        """运行精确v2 job：只消费封存输入，实际调用既有六维runner。"""
+        if crash_after_dimension is not None and crash_after_dimension not in {
+                "CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}:
+            raise WorkflowRejected("crash_after_dimension必须是精确六维ID或null")
+        if not isinstance(crash_before_manifest, bool):
+            raise WorkflowRejected("crash_before_manifest必须为显式布尔值")
+        job = self.status(job_id)
+        if job.get("schema_version") != JOB_SCHEMA_V2:
+            raise WorkflowRejected("legacy_restricted：run_job仅运行v2候选job")
+        if job["state"] == "failed":
+            raise WorkflowRejected("workflow job处于failed，必须显式恢复后再运行")
+        proposals = job["proposal_requests"]
+        proposal_states = {request["status"] for request in proposals}
+        if "failed" in proposal_states:
+            self.store.set_workflow_job_state(job_id, "failed", failure={
+                "stage": "proposal", "reason": "候选提出请求处于系统失败状态"})
+            raise WorkflowRejected("候选提出请求失败，未写入业务insufficient")
+        if "awaiting_candidate_proposal" in proposal_states:
+            return self.status(job_id)
+        if "proposal_response_sealed" in proposal_states:
+            self.store.set_workflow_job_state(job_id, "proposal_response_sealed")
+            return self.status(job_id)
+        if proposal_states != {"consumed"}:
+            raise WorkflowRejected("候选提出请求状态组合非法")
+        reviews = self.store.fetch_review_requests(job_id)
+        review_states = {request["status"] for request in reviews}
+        if not reviews:
+            return self.status(job_id)
+        if "failed" in review_states:
+            self.store.set_workflow_job_state(job_id, "failed", failure={
+                "stage": "review", "reason": "专业复核请求处于系统失败状态"})
+            raise WorkflowRejected("专业复核请求失败，未写入业务insufficient")
+        if "awaiting_authorized_analysis" in review_states:
+            self.store.set_workflow_job_state(job_id, "awaiting_authorized_analysis")
+            return self.status(job_id)
+        if "response_sealed" in review_states:
+            self.store.set_workflow_job_state(job_id, "response_sealed")
+            return self.status(job_id)
+        if review_states != {"consumed"}:
+            raise WorkflowRejected("专业复核请求状态组合非法")
+        self.store.set_workflow_job_state(job_id, "reviews_consumed")
+        try:
+            for request in reviews:
+                response = self.store.get_review_response_for_request(
+                    request["request_id"])
+                if response is None or response.get("status") != "consumed":
+                    raise WorkflowRejected("已消费专业请求缺少封存response")
+                self.materialize_review_response(
+                    response["response_id"], worker_id="workflow-run-job")
+        except Exception as exc:
+            self.store.set_workflow_job_state(job_id, "failed", failure={
+                "stage": "materialize", "reason": str(exc)})
+            if isinstance(exc, WorkflowRejected):
+                raise
+            raise WorkflowRejected(f"专业复核物化失败：{exc}") from exc
+        self.store.set_workflow_job_state(job_id, "evidence_materialized")
+        try:
+            catalog, case_basis = self._revalidate_v2_execution_inputs(job)
+            self.store.set_workflow_job_state(job_id, "evaluating")
+            for dimension_id in ("CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"):
+                self._run_and_register_dimension(
+                    job=job, catalog=catalog, case_basis=case_basis,
+                    dimension_id=dimension_id)
+                if crash_after_dimension == dimension_id:
+                    raise LocalWorkflowCrash(
+                        f"workflow job在{dimension_id}维度登记后受控中断")
+            self.store.set_workflow_job_state(job_id, "evaluated")
+            if crash_before_manifest:
+                raise LocalWorkflowCrash("workflow job在manifest冻结前受控中断")
+            artifacts = self._verify_registered_artifacts(job=job)
+            if artifacts is None:
+                result_ids = {row["dimension_id"]: row["result_id"] for row in
+                              self.store.fetch_workflow_job_dimension_outputs(job_id)}
+                manifest = freeze_aggregation_manifest(
+                    self.store, self.blobs, result_ids,
+                    profile_id=job["evaluation_inputs"]["profile"]["profile_id"])
+                view = build_offline_dimension_view(self.store, self.blobs, manifest)
+                validate_offline_dimension_view(view)
+                manifest_ref = self.blobs.put_bytes(_canonical_bytes(
+                    manifest, label="workflow manifest"))
+                view_ref = self.blobs.put_bytes(_canonical_bytes(
+                    view, label="workflow view"))
+                rebuilt_manifest = freeze_aggregation_manifest(
+                    self.store, self.blobs, result_ids,
+                    profile_id=job["evaluation_inputs"]["profile"]["profile_id"])
+                rebuilt_view = build_offline_dimension_view(
+                    self.store, self.blobs, rebuilt_manifest)
+                if rebuilt_manifest != manifest or rebuilt_view != view \
+                        or self.blobs.read_bytes(manifest_ref.sha256) != \
+                        _canonical_bytes(manifest, label="workflow manifest") \
+                        or self.blobs.read_bytes(view_ref.sha256) != \
+                        _canonical_bytes(view, label="workflow view"):
+                    raise WorkflowRejected("workflow manifest/view对象或字节重建失败")
+                self.store.set_workflow_job_state(job_id, "manifest_frozen")
+                artifacts = self.store.add_workflow_job_artifacts(
+                    job_id=job_id, manifest_id=manifest["manifest_id"],
+                    manifest_digest=manifest["manifest_digest"],
+                    manifest_blob_sha256=manifest_ref.sha256,
+                    view_id=view["view_id"], view_digest=view["input_digest"],
+                    view_blob_sha256=view_ref.sha256,
+                    source_modes=self._source_modes_for_job(job_id))
+            self._verify_registered_artifacts(job=job)
+            self.store.set_workflow_job_state(job_id, "completed")
+        except LocalWorkflowCrash:
+            raise
+        except Exception as exc:
+            self.store.set_workflow_job_state(job_id, "failed", failure={
+                "stage": "evaluate_or_manifest", "reason": str(exc)})
+            if isinstance(exc, WorkflowRejected):
+                raise
+            raise WorkflowRejected(f"workflow运行系统失败：{exc}") from exc
+        return self.status(job_id)
 
     def resume_failed_job(self, job_id: str) -> dict:
         """按精确job合同恢复本地状态，不派发或自动消费任何专业动作。"""
