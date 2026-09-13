@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from typing import Any
+import unicodedata
 
 from .contracts import sha256_hex
 from .evidence_permissions import validate_evidence_use_license
@@ -29,6 +31,8 @@ MAX_FINDINGS_ITEMS = 512
 MAX_CITATIONS = 64
 MAX_CITATIONS_BYTES = 256 * 1024
 MAX_JSON_DEPTH = 24
+MAX_JSON_DECODE_LAYERS = 16
+MAX_JSON_ESCAPE_DECODE_PASSES = 4
 _PRODUCER_KINDS_BY_MODE = {
     "manual_import": {"authorized_human", "human", "manual_import"},
     "simulated": {"simulated", "simulated_test"},
@@ -45,6 +49,8 @@ _FORBIDDEN_OUTPUT_KEYS = {
 _CITATION_FIELDS = {
     "source_id", "blob_sha256", "projection_id", "locator", "quote_sha256",
 }
+_JSON_COMPATIBLE_ESCAPE = re.compile(
+    r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})')
 
 
 class ReviewQueueRejected(RuntimeError):
@@ -213,22 +219,78 @@ def build_authorized_request(*, job_id: str, authorization: dict) -> dict:
     return {**identified, "request_id": request_id, "status": AWAITING}
 
 
-def _find_forbidden_key(value: Any, *, depth: int = 0) -> str | None:
+def _decode_json_escapes_for_validation(value: str) -> str:
+    simple = {
+        '"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f",
+        "n": "\n", "r": "\r", "t": "\t",
+    }
+    decoded = value
+    for _ in range(MAX_JSON_ESCAPE_DECODE_PASSES):
+        def replace(match):
+            escape = match.group(0)[1:]
+            if escape.startswith("u"):
+                return chr(int(escape[1:], 16))
+            return simple[escape]
+
+        next_value = _JSON_COMPATIBLE_ESCAPE.sub(replace, decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    if _JSON_COMPATIBLE_ESCAPE.search(decoded):
+        raise ReviewQueueRejected("review response JSON转义解码超过4轮")
+    return decoded
+
+
+def _canonical_forbidden_key(value: str) -> str:
+    normalized = unicodedata.normalize(
+        "NFKC", _decode_json_escapes_for_validation(value))
+    return re.sub(r"[\s_-]+", "", normalized.casefold())
+
+
+_FORBIDDEN_OUTPUT_KEY_TOKENS = frozenset(
+    _canonical_forbidden_key(key) for key in _FORBIDDEN_OUTPUT_KEYS)
+
+
+def _find_forbidden_key(value: Any, *, depth: int = 0,
+                        json_layers: int = 0) -> str | None:
     if depth > 24:
         raise ReviewQueueRejected("review response嵌套深度超过24")
     if isinstance(value, dict):
         for key, item in value.items():
-            normalized = str(key).strip().lower().replace("-", "_").replace(" ", "_")
-            if normalized in _FORBIDDEN_OUTPUT_KEYS:
-                return str(key)
-            found = _find_forbidden_key(item, depth=depth + 1)
+            if isinstance(key, str) and _canonical_forbidden_key(key) in \
+                    _FORBIDDEN_OUTPUT_KEY_TOKENS:
+                return key
+            found = _find_forbidden_key(
+                item, depth=depth + 1, json_layers=json_layers)
             if found is not None:
                 return found
     elif isinstance(value, list):
         for item in value:
-            found = _find_forbidden_key(item, depth=depth + 1)
+            found = _find_forbidden_key(
+                item, depth=depth + 1, json_layers=json_layers)
             if found is not None:
                 return found
+    elif isinstance(value, str):
+        normalized = unicodedata.normalize("NFKC", value)
+        stripped = normalized.strip()
+        is_container = (
+            stripped.startswith("{") and stripped.endswith("}")) \
+            or (stripped.startswith("[") and stripped.endswith("]"))
+        is_json_string = stripped.startswith('"') and stripped.endswith('"')
+        if is_container or is_json_string:
+            try:
+                decoded = json.loads(stripped)
+            except json.JSONDecodeError:
+                return None
+            except RecursionError as exc:
+                raise ReviewQueueRejected(
+                    "review response JSON嵌套深度超过24") from exc
+            if isinstance(decoded, (dict, list, str)):
+                if json_layers >= MAX_JSON_DECODE_LAYERS:
+                    raise ReviewQueueRejected(
+                        "review response JSON解码层数超过16层")
+                return _find_forbidden_key(
+                    decoded, depth=depth + 1, json_layers=json_layers + 1)
     return None
 
 
