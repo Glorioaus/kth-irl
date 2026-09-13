@@ -7,6 +7,7 @@ import json
 
 from .catalog import APPROVED_WHEEL_SHA256
 from .contracts import sha256_hex
+from .qualification import RULE_VERSION as QUALIFICATION_RULE_VERSION
 from .kernels.brl import RULE_VERSION as BRL_RULE_VERSION
 from .kernels.crl import RULE_VERSION as CRL_RULE_VERSION
 from .kernels.frl import RULE_VERSION as FRL_RULE_VERSION
@@ -16,6 +17,9 @@ from .kernels.trl import RULE_VERSION as TRL_RULE_VERSION
 
 PROFILE_SCHEMA = "kth-hybrid.aggregation-profile.v1"
 CURRENT_AGGREGATION_PROFILE_NAME = "kth-local-six-dimension-20260910"
+EVALUATION_METHOD_CONTRACT_SCHEMA = "kth-local.evaluation-method-contract.v1"
+CANDIDATE_PROPOSAL_METHOD_VERSION = "kth-local.candidate-proposal.v1"
+PROFESSIONAL_REVIEW_METHOD_VERSION = "kth-local.professional-review.v2"
 
 
 def _content_address(body: dict) -> dict:
@@ -75,3 +79,23 @@ def get_aggregation_profile(profile_id: str) -> dict:
     if profile is None:
         raise ValueError(f"aggregation profile未登记：{profile_id}")
     return copy.deepcopy(profile)
+
+
+def get_evaluation_method_contract(profile_id: str) -> dict:
+    """返回唯一登记的完整求值方法合同，禁止调用方自由拼接版本。"""
+    profile = get_aggregation_profile(profile_id)
+    contract = {
+        "contract_schema": EVALUATION_METHOD_CONTRACT_SCHEMA,
+        "candidate_proposal": CANDIDATE_PROPOSAL_METHOD_VERSION,
+        "qualification": QUALIFICATION_RULE_VERSION,
+        "professional_review": PROFESSIONAL_REVIEW_METHOD_VERSION,
+        "catalog_sha256": profile["catalog_sha256"],
+        "profile_id": profile["profile_id"],
+        "profile_digest": profile["profile_digest"],
+    }
+    for dimension, values in profile["dimensions"].items():
+        prefix = dimension.lower()
+        contract[f"{prefix}_rule_version"] = values["rule_version"]
+        contract[f"{prefix}_result_schema_version"] = \
+            values["result_schema_version"]
+    return copy.deepcopy(contract)

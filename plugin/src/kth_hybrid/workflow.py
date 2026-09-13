@@ -12,7 +12,10 @@ from .aggregate import (
     freeze_aggregation_manifest,
     validate_offline_dimension_view,
 )
-from .aggregation_profiles import get_aggregation_profile
+from .aggregation_profiles import (
+    get_aggregation_profile,
+    get_evaluation_method_contract,
+)
 from .audit import trace_crl_dimension, trace_dimension_result
 from .contracts import sha256_hex
 from .intake import inspect_attachment
@@ -877,6 +880,9 @@ class LocalWorkflow:
         if evaluation["profile"] != {key: profile[key] for key in (
                 "profile_id", "profile_digest")}:
             raise WorkflowRejected("workflow job profile正文或摘要不一致")
+        if evaluation["method_versions"] != get_evaluation_method_contract(
+                profile["profile_id"]):
+            raise WorkflowRejected("workflow job方法合同与登记profile不一致")
         frozen_basis = job.get("case_basis")
         if not isinstance(frozen_basis, dict) or not isinstance(
                 frozen_basis.get("version"), int):
@@ -906,6 +912,40 @@ class LocalWorkflow:
             raise WorkflowRejected("workflow job评估输入证明与冻结视图不一致")
         return catalog, live_basis
 
+    @staticmethod
+    def _verify_runtime_dimension_method(job: dict, dimension_id: str) -> None:
+        """每次实际runner调用前核验动态方法常量，拒绝冻结合同与实现漂移。"""
+        from .kernels.brl import RULE_VERSION as brl_rule_version
+        from .kernels.crl import RULE_VERSION as crl_rule_version
+        from .kernels.frl import RULE_VERSION as frl_rule_version
+        from .kernels.iprl import RULE_VERSION as iprl_rule_version
+        from .kernels.tmrl import RULE_VERSION as tmrl_rule_version
+        from .kernels.trl import RULE_VERSION as trl_rule_version
+
+        runtime_versions = {
+            "CRL": crl_rule_version,
+            "BRL": brl_rule_version,
+            "TRL": trl_rule_version,
+            "IPRL": iprl_rule_version,
+            "TMRL": tmrl_rule_version,
+            "FRL": frl_rule_version,
+        }
+        methods = job["evaluation_inputs"]["method_versions"]
+        profile = get_aggregation_profile(
+            job["evaluation_inputs"]["profile"]["profile_id"])
+        expected_contract = get_evaluation_method_contract(profile["profile_id"])
+        if methods != expected_contract:
+            raise WorkflowRejected("冻结method_versions不再等于登记方法合同")
+        prefix = dimension_id.lower()
+        expected_rule = profile["dimensions"][dimension_id]["rule_version"]
+        expected_schema = profile["dimensions"][dimension_id][
+            "result_schema_version"]
+        if methods[f"{prefix}_rule_version"] != expected_rule \
+                or methods[f"{prefix}_result_schema_version"] != expected_schema \
+                or runtime_versions[dimension_id] != expected_rule:
+            raise WorkflowRejected(
+                f"{dimension_id} runner方法版本与冻结合同或登记profile不一致")
+
     def _verify_registered_dimension_output(self, job_id: str,
                                             dimension_id: str) -> dict | None:
         row = self.store.get_workflow_job_dimension_output(job_id, dimension_id)
@@ -926,6 +966,7 @@ class LocalWorkflow:
             job["job_id"], dimension_id)
         if existing is not None:
             return existing
+        self._verify_runtime_dimension_method(job, dimension_id)
         evaluation = job["evaluation_inputs"]
         scope = case_basis["subject_legal_name"]
         try:
@@ -954,6 +995,14 @@ class LocalWorkflow:
         if not isinstance(result, dict) or result.get("result_id") is None \
                 or result.get("input_digest") is None:
             raise WorkflowRejected(f"{dimension_id}维度runner未返回精确结果身份")
+        profile = get_aggregation_profile(
+            job["evaluation_inputs"]["profile"]["profile_id"])
+        expected = profile["dimensions"][dimension_id]
+        if result.get("schema_version") != expected["result_schema_version"] \
+                or result.get("frozen_inputs", {}).get("rule_version") != \
+                expected["rule_version"]:
+            raise WorkflowRejected(
+                f"{dimension_id} runner输出schema或rule_version与冻结方法合同不一致")
         if result.get("dimension", {}).get("product_status") == \
                 "execution_failed":
             raise WorkflowRejected(
@@ -1027,7 +1076,16 @@ class LocalWorkflow:
             raise WorkflowRejected("crash_after_dimension必须是精确六维ID或null")
         if not isinstance(crash_before_manifest, bool):
             raise WorkflowRejected("crash_before_manifest必须为显式布尔值")
-        job = self.status(job_id)
+        raw_job = self.store.get_workflow_job(job_id)
+        if raw_job is None:
+            raise WorkflowRejected(f"工作流job不存在：{job_id}")
+        try:
+            job = self.status(job_id)
+        except WorkflowRejected as exc:
+            if raw_job.get("schema_version") == JOB_SCHEMA_V2:
+                self.store.set_workflow_job_state(job_id, "failed", failure={
+                    "stage": "read_time_contract", "reason": str(exc)})
+            raise
         if job.get("schema_version") != JOB_SCHEMA_V2:
             raise WorkflowRejected("legacy_restricted：run_job仅运行v2候选job")
         if job["state"] == "failed":

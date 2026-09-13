@@ -8,7 +8,10 @@ from dataclasses import asdict
 from functools import lru_cache
 from typing import Any
 
-from .aggregation_profiles import get_aggregation_profile
+from .aggregation_profiles import (
+    get_aggregation_profile,
+    get_evaluation_method_contract,
+)
 from .catalog import (
     APPROVED_WHEEL_SHA256,
     build_catalog_from_wheel,
@@ -176,11 +179,11 @@ def validate_evaluation_inputs(value: dict) -> dict:
             "profile_id", "profile_digest")}:
         raise ProposalQueueRejected("profile摘要与登记正文不一致")
     methods = value["method_versions"]
-    if not isinstance(methods, dict) or not methods or any(
-            not isinstance(key, str) or not key.strip()
-            or not isinstance(item, str) or not item.strip()
-            for key, item in methods.items()):
-        raise ProposalQueueRejected("method_versions不能为空且必须显式版本化")
+    expected_methods = get_evaluation_method_contract(profile["profile_id"])
+    if methods != expected_methods:
+        raise ProposalQueueRejected(
+            "method_versions必须逐字等于登记的完整方法合同"
+            "（资格、六维规则/结果schema、catalog与profile）")
     _validate_limits(value, label="evaluation_inputs", max_bytes=512 * 1024)
     return copy.deepcopy(value)
 
