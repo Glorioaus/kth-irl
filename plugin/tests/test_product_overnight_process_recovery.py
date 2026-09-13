@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -105,6 +106,7 @@ def _child_script(tmp_path: Path) -> Path:
         emit("started", mode=mode)
         workflow_fault_points = {
             "after_attachment_blob_persisted",
+            "after_attachment_import_record_persisted",
             "after_dimension_output_registered:CRL",
         }
         workflow = LocalWorkflow(
@@ -194,7 +196,7 @@ def _case_snapshot(case_dir: Path) -> dict:
         counts = {}
         for table in (
                 "attachment_imports", "attachment_aliases", "sources",
-                "text_projections", "claims", "qualifications", "workflow_jobs", "proposal_requests",
+                "import_records", "text_projections", "claims", "qualifications", "workflow_jobs", "proposal_requests",
                 "proposal_responses", "review_requests", "review_responses",
                 "workflow_job_dimension_outputs", "workflow_job_artifacts"):
             counts[table] = connection.execute(
@@ -377,7 +379,42 @@ def _prepare_consumed_review(case_dir: Path, files_dir: Path, *, tag: str) -> di
     return job
 
 
-def test_process_crash_after_attachment_blob_recovers_same_attachment_once(tmp_path):
+def test_v2_direct_job_identity_reuses_identical_input_and_separates_changed_request(
+        tmp_path):
+    case_dir = tmp_path / "case-v2-identity"
+    first = _create_candidate_job(case_dir, tmp_path, tag="e4-v2-identity")
+    with LocalWorkflow(case_dir) as workflow:
+        request = workflow.proposals.get_request(first["proposal_request_ids"][0])
+        spec = {
+            "source_id": request["source_id"],
+            "blob_sha256": request["blob_sha256"],
+            "projection_id": request["projection_id"],
+            "locator": copy.deepcopy(request["locator"]),
+            "quote": request["quote"],
+            "purpose": request["purpose"],
+            "output_schema": request["output_schema"],
+        }
+        same = workflow.create_candidate_job(
+            evaluation_inputs=_evaluation_inputs(), proposal_specs=[spec],
+            catalog=build_catalog_from_wheel())
+        changed = workflow.create_candidate_job(
+            evaluation_inputs=_evaluation_inputs(),
+            proposal_specs=[{**spec, "purpose": "同一原件的另一项受控候选用途"}],
+            catalog=build_catalog_from_wheel())
+
+        assert same["job_id"] == first["job_id"]
+        assert changed["job_id"] != first["job_id"]
+        assert workflow.status(first["job_id"])["input_digest"] == \
+            first["input_digest"]
+        assert workflow.store.count_workflow_jobs() == 2
+
+
+@pytest.mark.parametrize("fault_point,expected_before_import_records", [
+    ("after_attachment_blob_persisted", 0),
+    ("after_attachment_import_record_persisted", 1),
+])
+def test_process_crash_after_attachment_persistence_recovers_same_attachment_once(
+        tmp_path, fault_point, expected_before_import_records):
     case_dir = tmp_path / "case-a"
     attachment = tmp_path / "e4-attachment.docx"
     _write_docx(attachment, "E4附件：原件已持久但业务登记前硬退出。")
@@ -385,13 +422,14 @@ def test_process_crash_after_attachment_blob_recovers_same_attachment_once(tmp_p
 
     first = _run_child(tmp_path, case_dir, "import", {
         "paths": [str(attachment)],
-        "fault_point": "after_attachment_blob_persisted",
+        "fault_point": fault_point,
         "exit_code": CHILD_EXIT,
     }, processes)
     assert first.returncode == CHILD_EXIT
     _assert_child_loaded_current_source(first)
     before = _case_snapshot(case_dir)
     assert before["counts"]["attachment_imports"] == 0
+    assert before["counts"]["import_records"] == expected_before_import_records
     assert before["counts"]["sources"] == 0
     assert len(before["blob_ids"]) == 1
 
@@ -409,6 +447,7 @@ def test_process_crash_after_attachment_blob_recovers_same_attachment_once(tmp_p
     assert after["counts"]["attachment_imports"] == 1
     assert after["counts"]["attachment_aliases"] == 1
     assert after["counts"]["sources"] == 1
+    assert after["counts"]["import_records"] == 1
     assert after["blob_ids"] == before["blob_ids"]
     journal = Journal(case_dir / "records.sqlite3")
     try:
@@ -421,6 +460,88 @@ def test_process_crash_after_attachment_blob_recovers_same_attachment_once(tmp_p
         assert state["external_actions"] == 0
         assert state["output_ref"].startswith("ATTALIAS::")
         assert len(journal.takeover_events(task_key)) == 1
+    finally:
+        journal.close()
+
+
+def test_active_local_claim_cannot_be_taken_over_and_persists_owner_lease(tmp_path):
+    journal = Journal(tmp_path / "journal.sqlite3")
+    try:
+        claim = journal.claim("e4-active", "first-worker", "input-e4-active")
+        state = journal.task_state("e4-active")
+        attempt = journal.attempts("e4-active")[0]
+
+        assert state["owner_pid"] == os.getpid()
+        assert state["claimed_at"]
+        assert attempt["owner_pid"] == os.getpid()
+        assert attempt["claimed_at"]
+        with pytest.raises(CommitRejected, match="仍存活|owner_pid|接管"):
+            journal.takeover_stale_claim(
+                "e4-active", "second-worker", "input-e4-active",
+                evidence="不得仅凭字符串接管活跃任务")
+        assert journal.task_state("e4-active")["current_token"] == claim.token
+        assert journal.takeover_events("e4-active") == []
+    finally:
+        journal.close()
+
+
+def test_journal_migrates_legacy_task_lease_columns_without_rewriting_history(tmp_path):
+    db_path = tmp_path / "legacy-journal.sqlite3"
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executescript("""
+            CREATE TABLE tasks (
+                task_key TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                current_token INTEGER,
+                current_worker TEXT,
+                input_id TEXT NOT NULL,
+                output_ref TEXT,
+                external_actions INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '2000-01-01T00:00:00Z'
+            );
+            CREATE TABLE task_attempts (
+                attempt_no INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_key TEXT NOT NULL,
+                token INTEGER NOT NULL,
+                worker_id TEXT NOT NULL,
+                input_id TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                detail TEXT,
+                created_at TEXT NOT NULL DEFAULT '2000-01-01T00:00:00Z'
+            );
+            CREATE TABLE token_sequence (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
+            CREATE TABLE takeover_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_key TEXT NOT NULL,
+                attempt_no INTEGER NOT NULL,
+                worker_id TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT '2000-01-01T00:00:00Z'
+            );
+            INSERT INTO tasks(task_key,state,input_id) VALUES
+                ('legacy-claimed','claimed','legacy-input');
+            INSERT INTO task_attempts(task_key,token,worker_id,input_id,outcome)
+                VALUES('legacy-claimed',1,'legacy-worker','legacy-input','claimed');
+        """)
+        connection.commit()
+    finally:
+        connection.close()
+
+    journal = Journal(db_path)
+    try:
+        state = journal.task_state("legacy-claimed")
+        assert "owner_pid" in state and state["owner_pid"] is None
+        assert "claimed_at" in state and state["claimed_at"] is None
+        attempt = journal.attempts("legacy-claimed")[0]
+        assert "owner_pid" in attempt and attempt["owner_pid"] is None
+        assert "claimed_at" in attempt and attempt["claimed_at"] is None
+        with pytest.raises(CommitRejected, match="owner_pid|历史|不可核验"):
+            journal.takeover_stale_claim(
+                "legacy-claimed", "new-worker", "legacy-input",
+                evidence="旧任务没有可核验本地进程租约")
+        fresh = journal.claim("fresh-after-migration", "fresh-worker", "fresh-input")
+        assert journal.task_state(fresh.task_key)["owner_pid"] == os.getpid()
     finally:
         journal.close()
 
@@ -590,7 +711,22 @@ def test_process_dispatch_unknown_never_auto_consumes_or_redispatches(tmp_path):
     journal = Journal(case_dir / "records.sqlite3")
     try:
         assert journal.task_state(task_key)["state"] == "dispatch_recorded"
-        journal.mark_recovered_unknown(task_key)
+    finally:
+        journal.close()
+
+    with LocalWorkflow(case_dir) as workflow:
+        recovered = workflow.status(job["job_id"])
+        actions = recovered["manual_actions"]
+        assert any(action["task_key"] == task_key
+                   and action["state"] == "outcome_unknown"
+                   and "人工" in action["action"]
+                   for action in actions)
+        assert workflow.run_job(job["job_id"])["state"] == \
+            "proposal_response_sealed"
+        assert workflow.resume_failed_job(job["job_id"])["state"] == \
+            "proposal_response_sealed"
+    journal = Journal(case_dir / "records.sqlite3")
+    try:
         state = journal.task_state(task_key)
         assert state["state"] == "outcome_unknown"
         assert state["external_actions"] == 1

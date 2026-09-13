@@ -10,13 +10,16 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import textwrap
 import threading
 from pathlib import Path
 
 import pytest
 
 from kth_hybrid.contracts import sha256_hex
-from kth_hybrid.journal import CommitRejected, Journal
+from kth_hybrid.journal import Claim, CommitRejected, Journal
 from kth_hybrid.store import BlobStore, CaseStore
 
 SUBJECT_A = "Company-A科技有限公司"
@@ -592,11 +595,38 @@ class TestR104JournalAtomicity:
 
 # ---------- R1-05 恢复 ----------
 
+
+def _claim_then_hard_exit(db_path: Path, *, task_key: str, worker_id: str,
+                          input_id: str) -> None:
+    plugin_src = Path(__file__).resolve().parents[1] / "src"
+    script = textwrap.dedent(f"""
+        import os
+        import sys
+        sys.path.insert(0, {str(plugin_src)!r})
+        from kth_hybrid.journal import Journal
+
+        journal = Journal(sys.argv[1])
+        journal.claim({task_key!r}, {worker_id!r}, {input_id!r})
+        os._exit(0)
+    """)
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(db_path)],
+        capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert result.returncode == 0, result.stderr
+
+
 class TestR105Recovery:
     def test_claim_then_crash_has_controlled_takeover(self, tmp_path):
-        j = Journal(tmp_path / "journal.sqlite3")
+        db_path = tmp_path / "journal.sqlite3"
+        _claim_then_hard_exit(
+            db_path, task_key="task", worker_id="dead-worker", input_id="input")
+        j = Journal(db_path)
         try:
-            dead = j.claim("task", "dead-worker", "input")
+            prior = j.task_state("task")
+            prior_attempt = j.attempts("task")[0]
+            dead = Claim(
+                "task", "dead-worker", prior["current_token"], "input",
+                prior_attempt["attempt_no"])
             # 崩溃：无dispatch（external_actions=0），状态停留claimed
             assert j.task_state("task")["state"] == "claimed"
             takeover = j.takeover_stale_claim(

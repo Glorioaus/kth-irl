@@ -6,7 +6,11 @@ import copy
 import io
 import json
 import sqlite3
+import subprocess
+import sys
+import textwrap
 import time
+from pathlib import Path
 
 import pytest
 import kth_hybrid.intake as intake_module
@@ -553,8 +557,7 @@ def test_job_and_all_requests_roll_back_when_second_request_insert_fails(
         "SELECT COUNT(*) FROM review_requests").fetchone()[0] == 0
 
 
-def test_create_job_recovers_complete_bundle_after_keyboard_interrupt(
-        tmp_path, monkeypatch):
+def test_create_job_recovers_complete_bundle_after_child_hard_exit(tmp_path):
     root = tmp_path / "create-recovery"
     first = LocalWorkflow(root)
     first.initialize_case(
@@ -567,30 +570,49 @@ def test_create_job_recovers_complete_bundle_after_keyboard_interrupt(
     projection = next(row for row in first.project_sources(
         [imported["source_id"]]) if row["status"] == "projected")
     spec = _review_spec(imported, projection)
-    real_commit = first.journal.commit
-
-    def interrupt_after_bundle(claim, output_ref):
-        if claim.task_key.startswith("workflow-create:"):
-            raise KeyboardInterrupt("injected after bundle")
-        return real_commit(claim, output_ref)
-
-    monkeypatch.setattr(first.journal, "commit", interrupt_after_bundle)
-    with pytest.raises(KeyboardInterrupt, match="injected after bundle"):
-        first._create_job_v1_history_fixture(
-            assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
-            method_versions=METHODS, review_specs=[spec])
-    job_id = first.store._conn.execute(
-        "SELECT job_id FROM workflow_jobs").fetchone()[0]
-    input_digest = first.store._conn.execute(
-        "SELECT input_digest FROM workflow_jobs WHERE job_id=?",
-        (job_id,)).fetchone()[0]
-    task_key = f"workflow-create:{job_id}"
-    assert first.journal.task_state(task_key)["state"] == "claimed"
-    assert len(first.store.fetch_review_requests(job_id)) == 1
     first.close()
+
+    payload_path = tmp_path / "create-recovery-payload.json"
+    payload_path.write_text(json.dumps({
+        "assessment_unit": UNIT,
+        "profile_id": CURRENT_AGGREGATION_PROFILE_ID,
+        "method_versions": METHODS,
+        "review_specs": [spec],
+    }, ensure_ascii=False), encoding="utf-8")
+    plugin_src = Path(__file__).resolve().parents[1] / "src"
+    script = textwrap.dedent(f"""
+        import json
+        import os
+        import sys
+        sys.path.insert(0, {str(plugin_src)!r})
+        from kth_hybrid.workflow import LocalWorkflow
+
+        case_dir, payload_path = sys.argv[1:]
+        payload = json.loads(open(payload_path, encoding="utf-8").read())
+        workflow = LocalWorkflow(case_dir)
+        real_commit = workflow.journal.commit
+        def crash_after_bundle(claim, output_ref):
+            if claim.task_key.startswith("workflow-create:"):
+                os._exit(90)
+            return real_commit(claim, output_ref)
+        workflow.journal.commit = crash_after_bundle
+        workflow._create_job_v1_history_fixture(**payload)
+    """)
+    child = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(root), str(payload_path)],
+        capture_output=True, text=True, encoding="utf-8", timeout=60)
+    assert child.returncode == 90, child.stderr
 
     recovered = LocalWorkflow(root)
     try:
+        job_id = recovered.store._conn.execute(
+            "SELECT job_id FROM workflow_jobs").fetchone()[0]
+        input_digest = recovered.store._conn.execute(
+            "SELECT input_digest FROM workflow_jobs WHERE job_id=?",
+            (job_id,)).fetchone()[0]
+        task_key = f"workflow-create:{job_id}"
+        assert recovered.journal.task_state(task_key)["state"] == "claimed"
+        assert len(recovered.store.fetch_review_requests(job_id)) == 1
         result = recovered._create_job_v1_history_fixture(
             assessment_unit=UNIT, profile_id=CURRENT_AGGREGATION_PROFILE_ID,
             method_versions=METHODS, review_specs=[spec])
