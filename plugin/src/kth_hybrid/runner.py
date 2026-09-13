@@ -173,14 +173,26 @@ def _controlled_mapping_review(case: CaseStore, review_id, *, basis_version: int
     }
 
 
+def _normalize_allowed_review_ids(value) -> frozenset[str] | None:
+    """规范化工作流传入的精确review集合；None保留历史Case范围扫描。"""
+    if value is None:
+        return None
+    if not isinstance(value, (set, frozenset, list, tuple)) or any(
+            not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError("allowed_review_ids必须为字符串集合或null")
+    return frozenset(value)
+
+
 def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                             case_basis: dict, scope: str,
+                            allowed_review_ids=None,
                             output_path: Path | str | None = None) -> dict:
     """R2-A：复用R1证据门，验证后原子发布不可变CRL维度结果。"""
     case_dir = Path(case_dir)
     blobs = BlobStore(case_dir / "blobs")
     case = CaseStore(case_dir / "records.sqlite3")
     try:
+        allowed_review_ids = _normalize_allowed_review_ids(allowed_review_ids)
         basis, version = _effective_case_basis(case, case_basis)
         if scope != basis["subject_legal_name"]:
             raise ValueError("CRL维度scope必须等于冻结Case主体，不能接受任意scope")
@@ -194,6 +206,9 @@ def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                                  "reason": f"CaseBasis证明不可核验：{basis_error}"})
                 basis_proofs = None
             for row in case.fetch_crl_evidence_reviews(version):
+                if allowed_review_ids is not None \
+                        and row["review_id"] not in allowed_review_ids:
+                    continue
                 claim = case.fetch_one("claims", "claim_id", row["claim_id"])
                 qual = case.fetch_one("qualifications", "qual_id", qualification_id(row["claim_id"]))
                 source = case.fetch_one("sources", "source_id", claim["source_id"]) if claim else None
@@ -264,6 +279,11 @@ def run_crl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                       "reviews": reviews, "rejected_reviews": rejected,
                       "evidence_bindings": evidence_bindings, "scope": scope,
                       "rule_version": dimension["rule_version"]}
+            if allowed_review_ids is not None:
+                frozen["review_selector"] = {
+                    "schema_version": "kth-local.workflow-review-selector.v1",
+                    "allowed_review_ids": sorted(allowed_review_ids),
+                }
             digest = sha256_hex(json.dumps(frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"CRLR2A::{digest}"
             result = {"schema_version": "kth-hybrid.r2a-crl-dimension.v3",
@@ -506,12 +526,14 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
 def run_frl_dimension_slice(
         case_dir: Path | str, *, catalog: dict, case_basis: dict, scope: str,
         financing_entity: dict, applicability_policy: dict | None = None,
+        allowed_review_ids=None,
         output_path: Path | str | None = None) -> dict:
     """R2-B候选：按融资主体运行FRL，并复用完整资格视图与不可变发布。"""
     case_dir = Path(case_dir)
     blobs = BlobStore(case_dir / "blobs")
     case = CaseStore(case_dir / "records.sqlite3")
     try:
+        allowed_review_ids = _normalize_allowed_review_ids(allowed_review_ids)
         basis, version = _effective_case_basis(case, case_basis)
         if scope != basis["subject_legal_name"]:
             raise ValueError("FRL维度scope必须等于冻结Case主体")
@@ -569,6 +591,9 @@ def run_frl_dimension_slice(
             rows = case.fetch_dimension_evidence_reviews(
                 "FRL", version, entity["financing_entity_id"])
             for row in rows:
+                if allowed_review_ids is not None \
+                        and row["review_id"] not in allowed_review_ids:
+                    continue
                 reason = None
                 if basis_proofs is None:
                     reason = "CaseBasis证明不可核验"
@@ -622,6 +647,11 @@ def run_frl_dimension_slice(
                 "applicability": applicability,
                 "rule_version": dimension["rule_version"],
             }
+            if allowed_review_ids is not None:
+                frozen["review_selector"] = {
+                    "schema_version": "kth-local.workflow-review-selector.v1",
+                    "allowed_review_ids": sorted(allowed_review_ids),
+                }
             digest = sha256_hex(json.dumps(
                 frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"DIMR2::FRL::{digest}"
@@ -739,11 +769,12 @@ def _resolve_tmrl_identity_overlays(
 def _run_assessment_unit_dimension_slice(
         case_dir: Path | str, *, catalog: dict, case_basis: dict, scope: str,
         assessment_unit: dict, dimension_id: str, evaluator,
-        output_name: str) -> dict:
+        output_name: str, allowed_review_ids=None) -> dict:
     case_dir = Path(case_dir)
     blobs = BlobStore(case_dir / "blobs")
     case = CaseStore(case_dir / "records.sqlite3")
     try:
+        allowed_review_ids = _normalize_allowed_review_ids(allowed_review_ids)
         basis, version = _effective_case_basis(case, case_basis)
         if scope != basis["subject_legal_name"]:
             raise ValueError(f"{dimension_id}维度scope必须等于冻结Case主体")
@@ -793,6 +824,9 @@ def _run_assessment_unit_dimension_slice(
             rows = case.fetch_dimension_evidence_reviews(
                 dimension_id, version, raw_scope_id)
             for row in rows:
+                if allowed_review_ids is not None \
+                        and row["review_id"] not in allowed_review_ids:
+                    continue
                 reason = None
                 if basis_proofs is None:
                     reason = "CaseBasis证明不可核验"
@@ -865,6 +899,11 @@ def _run_assessment_unit_dimension_slice(
             }
             if dimension_id == "TMRL":
                 frozen["tmrl_identity_overlays"] = tmrl_identity_overlays
+            if allowed_review_ids is not None:
+                frozen["review_selector"] = {
+                    "schema_version": "kth-local.workflow-review-selector.v1",
+                    "allowed_review_ids": sorted(allowed_review_ids),
+                }
             digest = sha256_hex(json.dumps(
                 frozen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
             result_id_value = f"DIMR2::{dimension_id}::{digest}"
@@ -921,42 +960,46 @@ def _run_assessment_unit_dimension_slice(
 
 def run_brl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                             case_basis: dict, scope: str,
-                            assessment_unit: dict) -> dict:
+                            assessment_unit: dict, allowed_review_ids=None) -> dict:
     """夜间BRL候选Case入口。"""
     return _run_assessment_unit_dimension_slice(
         case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
         assessment_unit=assessment_unit, dimension_id="BRL",
-        evaluator=evaluate_brl_dimension, output_name="brl-dimension-night.json")
+        evaluator=evaluate_brl_dimension, output_name="brl-dimension-night.json",
+        allowed_review_ids=allowed_review_ids)
 
 
 def run_trl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                             case_basis: dict, scope: str,
-                            assessment_unit: dict) -> dict:
+                            assessment_unit: dict, allowed_review_ids=None) -> dict:
     """夜间TRL候选Case入口。"""
     return _run_assessment_unit_dimension_slice(
         case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
         assessment_unit=assessment_unit, dimension_id="TRL",
-        evaluator=evaluate_trl_dimension, output_name="trl-dimension-night.json")
+        evaluator=evaluate_trl_dimension, output_name="trl-dimension-night.json",
+        allowed_review_ids=allowed_review_ids)
 
 
 def run_iprl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                              case_basis: dict, scope: str,
-                             assessment_unit: dict) -> dict:
+                             assessment_unit: dict, allowed_review_ids=None) -> dict:
     """夜间IPRL候选Case入口。"""
     return _run_assessment_unit_dimension_slice(
         case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
         assessment_unit=assessment_unit, dimension_id="IPRL",
-        evaluator=evaluate_iprl_dimension, output_name="iprl-dimension-night.json")
+        evaluator=evaluate_iprl_dimension, output_name="iprl-dimension-night.json",
+        allowed_review_ids=allowed_review_ids)
 
 
 def run_tmrl_dimension_slice(case_dir: Path | str, *, catalog: dict,
                              case_basis: dict, scope: str,
-                             assessment_unit: dict) -> dict:
+                             assessment_unit: dict, allowed_review_ids=None) -> dict:
     """夜间TMRL候选Case入口。"""
     return _run_assessment_unit_dimension_slice(
         case_dir, catalog=catalog, case_basis=case_basis, scope=scope,
         assessment_unit=assessment_unit, dimension_id="TMRL",
-        evaluator=evaluate_tmrl_dimension, output_name="tmrl-dimension-night.json")
+        evaluator=evaluate_tmrl_dimension, output_name="tmrl-dimension-night.json",
+        allowed_review_ids=allowed_review_ids)
 
 
 class CountingSimulatedProvider:

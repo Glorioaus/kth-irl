@@ -946,11 +946,28 @@ class LocalWorkflow:
             raise WorkflowRejected(
                 f"{dimension_id} runner方法版本与冻结合同或登记profile不一致")
 
-    def _verify_registered_dimension_output(self, job_id: str,
-                                            dimension_id: str) -> dict | None:
+    def _verify_registered_dimension_output(
+            self, job_id: str, dimension_id: str,
+            allowed_review_ids: frozenset[str]) -> dict | None:
         row = self.store.get_workflow_job_dimension_output(job_id, dimension_id)
         if row is None:
             return None
+        try:
+            result_row = (self.store.get_crl_dimension_result_by_id(row["result_id"])
+                          if dimension_id == "CRL" else
+                          self.store.get_dimension_result_by_id(row["result_id"]))
+            result = json.loads(self.blobs.read_bytes(
+                result_row["result_blob_sha256"]).decode("utf-8"))
+        except Exception as exc:
+            raise WorkflowRejected(
+                f"已登记workflow维度输出不可读取：{exc}") from exc
+        selector = result.get("frozen_inputs", {}).get("review_selector")
+        expected_selector = {
+            "schema_version": "kth-local.workflow-review-selector.v1",
+            "allowed_review_ids": sorted(allowed_review_ids),
+        }
+        if selector != expected_selector:
+            raise WorkflowRejected("已登记workflow维度输出未冻结本job精确review集合")
         report = (trace_crl_dimension(self.store, self.blobs, row["result_id"])
                   if dimension_id == "CRL" else
                   trace_dimension_result(self.store, self.blobs, row["result_id"]))
@@ -961,9 +978,10 @@ class LocalWorkflow:
         return row
 
     def _run_and_register_dimension(self, *, job: dict, catalog: dict,
-                                    case_basis: dict, dimension_id: str) -> dict:
+                                    case_basis: dict, dimension_id: str,
+                                    allowed_review_ids: frozenset[str]) -> dict:
         existing = self._verify_registered_dimension_output(
-            job["job_id"], dimension_id)
+            job["job_id"], dimension_id, allowed_review_ids)
         if existing is not None:
             return existing
         self._verify_runtime_dimension_method(job, dimension_id)
@@ -973,12 +991,13 @@ class LocalWorkflow:
             if dimension_id == "CRL":
                 result = run_crl_dimension_slice(
                     self.case_dir, catalog=catalog, case_basis=case_basis,
-                    scope=scope)
+                    scope=scope, allowed_review_ids=allowed_review_ids)
             elif dimension_id == "FRL":
                 result = run_frl_dimension_slice(
                     self.case_dir, catalog=catalog, case_basis=case_basis,
                     scope=scope, financing_entity=evaluation["financing_entity"],
-                    applicability_policy=evaluation["frl_applicability"])
+                    applicability_policy=evaluation["frl_applicability"],
+                    allowed_review_ids=allowed_review_ids)
             else:
                 runners = {
                     "BRL": run_brl_dimension_slice,
@@ -988,7 +1007,8 @@ class LocalWorkflow:
                 }
                 result = runners[dimension_id](
                     self.case_dir, catalog=catalog, case_basis=case_basis,
-                    scope=scope, assessment_unit=evaluation["assessment_unit"])
+                    scope=scope, assessment_unit=evaluation["assessment_unit"],
+                    allowed_review_ids=allowed_review_ids)
         except Exception as exc:
             raise WorkflowRejected(
                 f"{dimension_id}维度runner系统失败：{type(exc).__name__}: {exc}") from exc
@@ -1038,6 +1058,34 @@ class LocalWorkflow:
             raise WorkflowRejected("workflow job未封存任何来源模式，不能冻结输出工件")
         return sorted(set(modes))
 
+    def _materialized_review_ids_for_job(self, job_id: str,
+                                         reviews: list[dict]) -> frozenset[str]:
+        """从本job已消费response逐字重建物化review闭包，拒绝Case范围替代。"""
+        review_ids = []
+        for request in reviews:
+            response = self.store.get_review_response_for_request(
+                request["request_id"])
+            if response is None or response.get("status") != "consumed":
+                raise WorkflowRejected("已消费专业请求缺少封存response")
+            materialization = self.materialize_review_response(
+                response["response_id"], worker_id="workflow-run-job")
+            review_id = materialization["review_id"]
+            sidecar = self.store.get_workflow_review_materialization(review_id)
+            review = self.store.get_dimension_evidence_review(review_id)
+            if sidecar is None or sidecar.get("job_id") != job_id \
+                    or review is None:
+                raise WorkflowRejected("workflow物化review未闭合于当前job")
+            try:
+                self.reviews.validate_workflow_materialization_trusted(
+                    sidecar, review=review)
+            except ReviewQueueRejected as exc:
+                raise WorkflowRejected(
+                    f"workflow物化review读时不可核验：{exc}") from exc
+            review_ids.append(review_id)
+        if len(review_ids) != len(set(review_ids)):
+            raise WorkflowRejected("workflow job物化review集合重复")
+        return frozenset(review_ids)
+
     def _verify_registered_artifacts(self, *, job: dict) -> dict | None:
         artifacts = self.store.get_workflow_job_artifacts(job["job_id"])
         if artifacts is None:
@@ -1069,13 +1117,16 @@ class LocalWorkflow:
         return artifacts
 
     def run_job(self, job_id: str, *, crash_after_dimension: str | None = None,
-                crash_before_manifest: bool = False) -> dict:
+                crash_before_manifest: bool = False,
+                crash_after_manifest_blobs: bool = False) -> dict:
         """运行精确v2 job：只消费封存输入，实际调用既有六维runner。"""
         if crash_after_dimension is not None and crash_after_dimension not in {
                 "CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"}:
             raise WorkflowRejected("crash_after_dimension必须是精确六维ID或null")
         if not isinstance(crash_before_manifest, bool):
             raise WorkflowRejected("crash_before_manifest必须为显式布尔值")
+        if not isinstance(crash_after_manifest_blobs, bool):
+            raise WorkflowRejected("crash_after_manifest_blobs必须为显式布尔值")
         raw_job = self.store.get_workflow_job(job_id)
         if raw_job is None:
             raise WorkflowRejected(f"工作流job不存在：{job_id}")
@@ -1121,13 +1172,8 @@ class LocalWorkflow:
             raise WorkflowRejected("专业复核请求状态组合非法")
         self.store.set_workflow_job_state(job_id, "reviews_consumed")
         try:
-            for request in reviews:
-                response = self.store.get_review_response_for_request(
-                    request["request_id"])
-                if response is None or response.get("status") != "consumed":
-                    raise WorkflowRejected("已消费专业请求缺少封存response")
-                self.materialize_review_response(
-                    response["response_id"], worker_id="workflow-run-job")
+            allowed_review_ids = self._materialized_review_ids_for_job(
+                job_id, reviews)
         except Exception as exc:
             self.store.set_workflow_job_state(job_id, "failed", failure={
                 "stage": "materialize", "reason": str(exc)})
@@ -1141,7 +1187,8 @@ class LocalWorkflow:
             for dimension_id in ("CRL", "BRL", "TRL", "IPRL", "TMRL", "FRL"):
                 self._run_and_register_dimension(
                     job=job, catalog=catalog, case_basis=case_basis,
-                    dimension_id=dimension_id)
+                    dimension_id=dimension_id,
+                    allowed_review_ids=allowed_review_ids)
                 if crash_after_dimension == dimension_id:
                     raise LocalWorkflowCrash(
                         f"workflow job在{dimension_id}维度登记后受控中断")
@@ -1172,8 +1219,10 @@ class LocalWorkflow:
                         or self.blobs.read_bytes(view_ref.sha256) != \
                         _canonical_bytes(view, label="workflow view"):
                     raise WorkflowRejected("workflow manifest/view对象或字节重建失败")
-                self.store.set_workflow_job_state(job_id, "manifest_frozen")
-                artifacts = self.store.add_workflow_job_artifacts(
+                if crash_after_manifest_blobs:
+                    raise LocalWorkflowCrash(
+                        "workflow job在manifest工件blob落盘后受控中断")
+                artifacts = self.store.freeze_workflow_job_artifacts(
                     job_id=job_id, manifest_id=manifest["manifest_id"],
                     manifest_digest=manifest["manifest_digest"],
                     manifest_blob_sha256=manifest_ref.sha256,

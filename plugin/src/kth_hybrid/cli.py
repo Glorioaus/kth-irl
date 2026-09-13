@@ -389,6 +389,38 @@ def _find_audit_artifact(case_dir: Path, *, object_id: str,
 
 
 def _trace_aggregation_artifact(case_dir: Path, object_id: str) -> dict:
+    with CaseStore(case_dir / "records.sqlite3") as case:
+        artifacts = case.get_workflow_job_artifacts_by_object(object_id)
+        if artifacts is not None:
+            blobs = BlobStore(case_dir / "blobs")
+            try:
+                manifest = json.loads(blobs.read_bytes(
+                    artifacts["manifest_blob_sha256"]).decode("utf-8"))
+                view = json.loads(blobs.read_bytes(
+                    artifacts["view_blob_sha256"]).decode("utf-8"))
+                rebuilt_view = build_offline_dimension_view(case, blobs, manifest)
+                validate_offline_dimension_view(view)
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+                raise CliRejected(f"workflow聚合工件blob不可核验：{exc}") from exc
+            if manifest.get("manifest_id") != artifacts["manifest_id"] \
+                    or manifest.get("manifest_digest") != artifacts["manifest_digest"] \
+                    or view.get("view_id") != artifacts["view_id"] \
+                    or view.get("input_digest") != artifacts["view_digest"] \
+                    or rebuilt_view != view:
+                raise CliRejected("workflow聚合工件与同Case精确结果重建不一致")
+            if object_id.startswith("AGGMAN::"):
+                return {
+                    "kind": "aggregation_manifest", "object_id": object_id,
+                    "ok": True, "broken": [], "job_id": artifacts["job_id"],
+                    "storage": "workflow_job_artifacts",
+                    "manifest": manifest, "rebuilt_view_id": rebuilt_view["view_id"],
+                }
+            return {
+                "kind": "offline_dimension_view", "object_id": object_id,
+                "manifest_id": manifest["manifest_id"], "ok": True,
+                "broken": [], "job_id": artifacts["job_id"],
+                "storage": "workflow_job_artifacts", "view": view,
+            }
     if object_id.startswith("AGGMAN::"):
         path, manifest = _find_audit_artifact(
             case_dir, object_id=object_id, id_field="manifest_id",
@@ -832,10 +864,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         elif args.command == "status":
             result = workflow.status(args.job_id)
         elif args.command == "run":
-            result = workflow.status(args.job_id)
+            result = workflow.run_job(args.job_id)
             state = result["state"]
-            if state == "failed":
-                raise CliRejected("job处于failed；必须使用resume并显式指定job-id")
             next_actions = {
                 "awaiting_candidate_proposal": "等待受控候选提出返回",
                 "proposal_response_sealed": "显式消费已封存的候选提出返回",
@@ -857,10 +887,11 @@ def _dispatch(args: argparse.Namespace) -> int:
             elif args.review_command == "export-request":
                 if args.request_id.startswith("PROPOSALREQ::"):
                     request = workflow.proposals.get_request(args.request_id)
-                elif args.request_id.startswith("REVIEWREQ::"):
+                elif args.request_id.startswith(("REVIEWREQ::", "REVIEWREQ2::")):
                     request = workflow.reviews.get_request(args.request_id)
                 else:
-                    raise CliRejected("复核请求ID必须为PROPOSALREQ或REVIEWREQ精确ID")
+                    raise CliRejected(
+                        "复核请求ID必须为PROPOSALREQ、REVIEWREQ或REVIEWREQ2精确ID")
                 output = Path(args.output)
                 if output.exists():
                     raise CliRejected(f"复核请求输出文件已存在：{output}")
@@ -876,12 +907,13 @@ def _dispatch(args: argparse.Namespace) -> int:
                     result = workflow.proposals.seal_response(
                         args.request_id, response, source_mode=args.source_mode,
                         allow_simulated=args.allow_simulated)
-                elif args.request_id.startswith("REVIEWREQ::"):
+                elif args.request_id.startswith(("REVIEWREQ::", "REVIEWREQ2::")):
                     result = workflow.reviews.seal_response(
                         args.request_id, response, source_mode=args.source_mode,
                         allow_simulated=args.allow_simulated)
                 else:
-                    raise CliRejected("复核请求ID必须为PROPOSALREQ或REVIEWREQ精确ID")
+                    raise CliRejected(
+                        "复核请求ID必须为PROPOSALREQ、REVIEWREQ或REVIEWREQ2精确ID")
             else:
                 if args.response_id.startswith("PROPOSALRESP::"):
                     result = workflow.proposals.consume_response(

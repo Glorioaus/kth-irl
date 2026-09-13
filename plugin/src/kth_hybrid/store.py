@@ -2215,6 +2215,23 @@ class CaseStore:
         value["source_modes"] = json.loads(value.pop("source_modes_json"))
         return value
 
+    def get_workflow_job_artifacts_by_object(self, object_id: str) -> dict | None:
+        if not isinstance(object_id, str) or not object_id.strip():
+            raise ValueError("workflow工件对象ID必须为非空字符串")
+        column = ("manifest_id" if object_id.startswith("AGGMAN::")
+                  else "view_id" if object_id.startswith("OFFLINE6::")
+                  else None)
+        if column is None:
+            return None
+        row = self._conn.execute(
+            f"SELECT * FROM workflow_job_artifacts WHERE {column}=?", (object_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        value = dict(row)
+        value["source_modes"] = json.loads(value.pop("source_modes_json"))
+        return value
+
     def add_workflow_job_artifacts(
             self, *, job_id: str, manifest_id: str, manifest_digest: str,
             manifest_blob_sha256: str, view_id: str, view_digest: str,
@@ -2253,6 +2270,64 @@ class CaseStore:
         stored = self.get_workflow_job_artifacts(job_id)
         if stored is None:
             raise StoreIntegrityError("workflow工件持久化失败")
+        return stored
+
+    def freeze_workflow_job_artifacts(
+            self, *, job_id: str, manifest_id: str, manifest_digest: str,
+            manifest_blob_sha256: str, view_id: str, view_digest: str,
+            view_blob_sha256: str, source_modes: list[str]) -> dict:
+        """同一立即事务登记工件并进入manifest_frozen，禁止两者出现裂缝。"""
+        values = {
+            "job_id": job_id,
+            "manifest_id": manifest_id,
+            "manifest_digest": manifest_digest,
+            "manifest_blob_sha256": manifest_blob_sha256,
+            "view_id": view_id,
+            "view_digest": view_digest,
+            "view_blob_sha256": view_blob_sha256,
+        }
+        if any(not isinstance(value, str) or not value.strip()
+               for value in values.values()):
+            raise ValueError("workflow冻结工件身份字段必须为非空字符串")
+        if not isinstance(source_modes, list) or not source_modes or any(
+                not isinstance(value, str) or not value.strip()
+                for value in source_modes):
+            raise ValueError("workflow冻结来源模式必须为非空字符串列表")
+        source_modes = sorted(set(source_modes))
+        with self.immediate_transaction():
+            job = self._conn.execute(
+                "SELECT state FROM workflow_jobs WHERE job_id=?", (job_id,)).fetchone()
+            if job is None:
+                raise KeyError(f"工作流job {job_id} 不存在")
+            existing = self.get_workflow_job_artifacts(job_id)
+            expected = {**values, "source_modes": source_modes}
+            if existing is None:
+                if job["state"] != "evaluated":
+                    raise StoreIntegrityError(
+                        "workflow工件只能从evaluated状态原子冻结")
+                self._conn.execute(
+                    "INSERT INTO workflow_job_artifacts("
+                    "job_id,manifest_id,manifest_digest,manifest_blob_sha256,"
+                    "view_id,view_digest,view_blob_sha256,source_modes_json) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (*values.values(), _strict_json_dumps(
+                        source_modes, label="workflow冻结来源模式")))
+                self._conn.execute(
+                    "UPDATE workflow_jobs SET state='manifest_frozen',"
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                    "WHERE job_id=? AND state='evaluated'", (job_id,))
+            elif any(existing[key] != value for key, value in expected.items()):
+                raise StoreIntegrityError("workflow冻结工件已登记为不同对象")
+            elif job["state"] == "evaluated":
+                self._conn.execute(
+                    "UPDATE workflow_jobs SET state='manifest_frozen',"
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                    "WHERE job_id=? AND state='evaluated'", (job_id,))
+            elif job["state"] not in {"manifest_frozen", "completed"}:
+                raise StoreIntegrityError("workflow既有工件对应的job状态非法")
+        stored = self.get_workflow_job_artifacts(job_id)
+        if stored is None:
+            raise StoreIntegrityError("workflow冻结工件持久化失败")
         return stored
 
     def refresh_workflow_job_state(self, job_id: str, *,
