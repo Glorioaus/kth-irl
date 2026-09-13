@@ -818,11 +818,19 @@ class LocalWorkflow:
     def _with_manual_actions(self, job: dict) -> dict:
         actions = []
         for task in self.journal.unresolved_external_actions():
+            if task["state"] == "dispatch_recorded":
+                action = (
+                    "等待本地owner进程完成或退出；不得自动接管、重派或消费"
+                )
+            else:
+                action = (
+                    "必须人工确认已派发动作的外部结果；不得自动接管、重派或消费"
+                )
             actions.append({
                 "task_key": task["task_key"],
                 "state": task["state"],
                 "external_actions": task["external_actions"],
-                "action": "必须人工确认已派发动作的外部结果；不得自动接管、重派或消费",
+                "action": action,
             })
         job["manual_actions"] = actions
         return job

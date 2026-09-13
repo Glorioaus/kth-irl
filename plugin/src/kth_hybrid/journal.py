@@ -397,12 +397,22 @@ class Journal:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def mark_recovered_unknown(self, task_key: str) -> None:
+    def mark_recovered_unknown(
+            self, task_key: str, *, manual_recovery_evidence: str | None = None
+    ) -> None:
         """恢复期保守解释：dispatch 已落账但无持久结果 → outcome_unknown。"""
-        self.recover_dispatched_unknown(task_key=task_key)
+        self.recover_dispatched_unknown(
+            task_key=task_key,
+            manual_recovery_evidence=manual_recovery_evidence)
 
-    def recover_dispatched_unknown(self, *, task_key: str | None = None) -> list[dict]:
-        """将恢复时未封账的已派发任务保守冻结为 unknown，并返回新冻结项。"""
+    def recover_dispatched_unknown(
+            self, *, task_key: str | None = None,
+            manual_recovery_evidence: str | None = None) -> list[dict]:
+        """仅在 owner 已退出或旧无 PID 且有人工证据时，将派发任务冻结为 unknown。"""
+        if manual_recovery_evidence is not None and (
+                not isinstance(manual_recovery_evidence, str)
+                or not manual_recovery_evidence.strip()):
+            raise CommitRejected("人工恢复证据必须是非空字符串")
         with self._write_txn():
             where = "state='dispatch_recorded'"
             parameters: tuple = ()
@@ -412,27 +422,51 @@ class Journal:
             rows = self._conn.execute(
                 "SELECT * FROM tasks WHERE " + where + " ORDER BY task_key",
                 parameters).fetchall()
-            if rows:
-                task_keys = [row["task_key"] for row in rows]
+            recovered: list[tuple[sqlite3.Row, str]] = []
+            for row in rows:
+                owner_pid = row["owner_pid"]
+                if owner_pid is None:
+                    if manual_recovery_evidence is not None:
+                        recovered.append((
+                            row,
+                            "legacy_missing_owner_pid_manual_evidence",
+                        ))
+                    continue
+                try:
+                    owner_exited = self._owner_pid_exited(owner_pid)
+                except CommitRejected:
+                    owner_exited = False
+                if owner_exited:
+                    recovered.append((row, "owner_pid_exit_confirmed"))
+            if recovered:
+                task_keys = [row["task_key"] for row, _reason in recovered]
+                placeholders = ",".join("?" for _ in task_keys)
                 self._conn.execute(
                     "UPDATE tasks SET state='outcome_unknown', "
                     "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
-                    "WHERE " + where,
-                    parameters)
-                placeholders = ",".join("?" for _ in task_keys)
-                self._conn.execute(
-                    "UPDATE task_attempts SET outcome='outcome_unknown', "
-                    "detail=COALESCE(detail,'') || 'recovered:dispatch_recorded;' "
                     f"WHERE task_key IN ({placeholders}) "
-                    "AND outcome='dispatch_recorded'",
+                    "AND state='dispatch_recorded'",
                     task_keys,
                 )
-            return [dict(row) for row in rows]
+                for row, reason in recovered:
+                    detail = f"recovered:dispatch_recorded:{reason};"
+                    if reason == "legacy_missing_owner_pid_manual_evidence":
+                        detail += f"manual_evidence:{manual_recovery_evidence};"
+                    self._conn.execute(
+                        "UPDATE task_attempts SET outcome='outcome_unknown', "
+                        "detail=COALESCE(detail,'') || ? "
+                        "WHERE task_key=? AND outcome='dispatch_recorded'",
+                        (detail, row["task_key"]),
+                    )
+            return [{
+                **dict(row),
+                "recovery_judgment": reason,
+            } for row, reason in recovered]
 
     def unresolved_external_actions(self) -> list[dict]:
-        """返回必须人工确认的 unknown 外部动作；不提供自动接管入口。"""
+        """返回等待或人工确认的外部动作；不提供自动接管入口。"""
         rows = self._conn.execute(
-            "SELECT * FROM tasks WHERE state='outcome_unknown' "
+            "SELECT * FROM tasks WHERE state IN ('dispatch_recorded','outcome_unknown') "
             "AND external_actions>0 ORDER BY task_key").fetchall()
         return [dict(row) for row in rows]
 
