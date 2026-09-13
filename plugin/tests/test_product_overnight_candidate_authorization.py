@@ -12,7 +12,7 @@ from kth_hybrid.aggregation_profiles import (
     CURRENT_AGGREGATION_PROFILE_ID,
     get_aggregation_profile,
 )
-from kth_hybrid.audit import _verify_projection
+from kth_hybrid.audit import _excerpt_bytes_for_claim, _verify_projection
 from kth_hybrid.catalog import build_catalog_from_wheel
 from kth_hybrid.contracts import qualification_content_digest, sha256_hex
 from kth_hybrid.proposal_requests import (
@@ -25,6 +25,7 @@ from kth_hybrid.review_queue import (
     build_authorized_request,
     build_request,
 )
+from kth_hybrid.runner import _sealed_excerpt_bytes
 from kth_hybrid.workflow import LocalWorkflow, WorkflowRejected
 
 
@@ -248,6 +249,33 @@ def test_docx_zip_member_trace_rebuild_uses_complete_sealed_document(
     }
     assert _verify_projection(
         claim, workflow.blobs.read_bytes(imported["blob_sha256"])) is None
+
+
+def test_docx_candidate_consumption_reprojects_complete_document_for_runner_excerpt(
+        workflow, tmp_path, catalog):
+    imported, projection = _source_projection(workflow, tmp_path)
+    job = _create_candidate_job(workflow, catalog, imported, projection)
+    request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+    sealed = workflow.proposals.seal_response(
+        request["request_id"], _response(request), source_mode="manual_import")
+    consumed = workflow.proposals.consume_response(
+        sealed["response_id"], worker_id="candidate-consumer", catalog=catalog)
+    claim = workflow.store.fetch_one(
+        "claims", "claim_id", consumed["materialization"]["claim_ids"][0])
+    source = workflow.store.fetch_one("sources", "source_id", imported["source_id"])
+
+    excerpt = _excerpt_bytes_for_claim(workflow.blobs, claim, source)
+    runner_excerpt, runner_hash, runner_text, *_rest = _sealed_excerpt_bytes(
+        workflow.blobs, source, {
+            "locator_kind": claim["locator_kind"],
+            "locator_ref": json.loads(claim["locator_ref"]),
+        })
+
+    expected = projection["text"].encode("utf-8")
+    assert excerpt == expected
+    assert runner_excerpt == expected
+    assert runner_text == projection["text"]
+    assert runner_hash == claim["excerpt_sha256"] == projection["text_sha256"]
 
 
 def test_v2_job_identity_changes_with_complete_evaluation_input(

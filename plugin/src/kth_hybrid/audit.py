@@ -155,8 +155,10 @@ def _excerpt_bytes_for_claim(blobs, claim_row, source_row):
 
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                member = archive.read(locator_ref["member"])
-            for row in extract_docx_paragraphs(member).locators:
+                archive.getinfo(locator_ref["member"])
+            # locator 的 member 用于锁定 DOCX 容器中的受控部分；段落投影
+            # 必须始终由完整封存 DOCX 重建，不能把单个 XML 成员误当 DOCX。
+            for row in extract_docx_paragraphs(data).locators:
                 if row["paragraph"] == locator_ref.get("paragraph"):
                     return row["text"].encode("utf-8")
         except Exception:
