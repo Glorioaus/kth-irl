@@ -13,20 +13,51 @@ import sys
 import pytest
 
 import kth_hybrid.cli as cli_module
-from kth_hybrid.aggregation_profiles import CURRENT_AGGREGATION_PROFILE_ID
+from kth_hybrid.aggregation_profiles import (
+    CURRENT_AGGREGATION_PROFILE_ID,
+    get_aggregation_profile,
+)
 from kth_hybrid.aggregate import (
     build_offline_dimension_view,
     freeze_aggregation_manifest,
 )
-from kth_hybrid.contracts import sha256_hex
-from kth_hybrid.evidence_permissions import build_evidence_use_license
+from kth_hybrid.proposal_requests import candidate_claim_id
 from kth_hybrid.store import BlobStore, CaseStore
-from kth_hybrid.workflow import LocalWorkflow
 from test_product_overnight_profiles import profile_case as aggregation_case
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SRC = PLUGIN_ROOT / "src"
+SUBJECT = "合成主体有限公司"
+UNIT = {
+    "scope_id": "UNIT-SYNTHETIC-CURRENT",
+    "subject_scope": SUBJECT,
+    "unit_kind": "company",
+    "unit_label": "合成主体当前Case公司级单元",
+    "scope_id_ref": {"kind": "field_reference", "path": "case:units.json#/scope_id"},
+    "subject_ref": {"kind": "field_reference", "path": "case:units.json#/subject"},
+    "unit_kind_ref": {"kind": "field_reference", "path": "case:units.json#/kind"},
+    "unit_label_ref": {"kind": "field_reference", "path": "case:units.json#/label"},
+}
+FINANCING = {
+    "financing_entity_id": "FIN-SYNTHETIC",
+    "subject_scope": SUBJECT,
+    "assessment_unit_refs": [UNIT["scope_id"]],
+    "entity_ref": {"kind": "field_reference", "path": "case:financing.json#/entity"},
+    "subject_ref": {"kind": "field_reference", "path": "case:financing.json#/subject"},
+    "assessment_units_ref": {
+        "kind": "field_reference", "path": "case:financing.json#/units"},
+}
+FRL_APPLICABILITY = {
+    "external_financing_planned": False,
+    "financing_entity_id": FINANCING["financing_entity_id"],
+    "subject_scope": SUBJECT,
+    "external_financing_planned_ref": {
+        "kind": "field_reference", "path": "case:frl.json#/planned"},
+    "financing_entity_ref": {
+        "kind": "field_reference", "path": "case:frl.json#/entity"},
+    "subject_ref": {"kind": "field_reference", "path": "case:frl.json#/subject"},
+}
 
 
 def _run(*args: str, ok: bool = True) -> subprocess.CompletedProcess[str]:
@@ -62,87 +93,81 @@ def _write_docx(path: Path) -> None:
     document.save(path)
 
 
+def _write_json(path: Path, value: dict) -> None:
+    path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+
+
 def _case_and_projection(tmp_path: Path):
     case_dir = tmp_path / "case"
+    identity_file = tmp_path / "identity.json"
+    units_file = tmp_path / "units.json"
+    financing_file = tmp_path / "financing.json"
+    frl_file = tmp_path / "frl.json"
+    _write_json(identity_file, {"subject": SUBJECT})
+    _write_json(units_file, {
+        "scope_id": UNIT["scope_id"], "subject": SUBJECT,
+        "kind": UNIT["unit_kind"], "label": UNIT["unit_label"],
+    })
+    _write_json(financing_file, {
+        "entity": FINANCING["financing_entity_id"], "subject": SUBJECT,
+        "units": FINANCING["assessment_unit_refs"],
+    })
+    _write_json(frl_file, {
+        "planned": False, "entity": FINANCING["financing_entity_id"],
+        "subject": SUBJECT,
+    })
     created = _json(_run(
         "case", "create", "--case-dir", str(case_dir),
-        "--subject-legal-name", "合成主体有限公司",
-        "--subject-alias", "合成主体",
+        "--subject-legal-name", SUBJECT,
         "--evidence-cutoff", "2026-09-09T00:00:00Z",
-        "--subject-source-basis", "synthetic:test",
+        "--subject-source-basis", json.dumps({
+            "kind": "field_reference", "path": "case:identity.json#/subject",
+            "status": "claimed",
+        }, ensure_ascii=False),
     ))
     assert created["version"] == 1
     source_file = tmp_path / "source.docx"
     _write_docx(source_file)
     imported = _json(_run(
         "intake", "add", "--case-dir", str(case_dir),
-        "--file", str(source_file), "--file", str(source_file),
+        "--file", str(identity_file), "--file", str(units_file),
+        "--file", str(financing_file), "--file", str(frl_file),
+        "--file", str(source_file),
     ))
-    assert len(imported) == 2
-    assert imported[0]["attachment_id"] == imported[1]["attachment_id"]
+    source = next(item for item in imported
+                  if item["origin_path"] == str(source_file))
     projected = _json(_run(
         "project", "--case-dir", str(case_dir),
-        "--source-id", imported[0]["source_id"],
+        "--source-id", source["source_id"],
     ))
     projection = next(item for item in projected if item["status"] == "projected")
-    return case_dir, imported[0], projection
+    return case_dir, source, projection
 
 
 def _job_file(tmp_path: Path, imported: dict, projection: dict) -> Path:
-    unit = {
-        "scope_id": "UNIT-A", "subject_scope": "合成主体有限公司",
-        "unit_kind": "company", "unit_label": "合成主体",
-    }
-    quote_digest = sha256_hex(projection["text"].encode("utf-8"))
-    qualification_body = {
-        "claim": {
-            "claim_id": "CLAIM-SOURCE-1", "excerpt_sha256": quote_digest,
-            "subject_scope": "合成主体有限公司",
-        },
-        "outcome": {"allowed_uses": ["technology_readiness"]},
-    }
-    qualification_view = {
-        **qualification_body,
-        "input_digest": sha256_hex(json.dumps(
-            qualification_body, ensure_ascii=False,
-            sort_keys=True).encode("utf-8")),
-    }
-    binding = {
-        "review": {
-            "review_id": "REV-SOURCE-1", "criterion_id": "TRL4-C1",
-            "claim_id": "CLAIM-SOURCE-1", "quote_sha256": quote_digest,
-            "evidence_class": "technical_validation",
-            "subject_scope": "合成主体有限公司",
-            "support_scope": "TRL4-C1",
-        },
-        "qualification_view": qualification_view,
-    }
-    license_item = build_evidence_use_license(
-        dimension_id="TRL", result_id="DIMR2::TRL::" + "1" * 64,
-        binding=binding,
-        criterion={
-            "criterion_id": "TRL4-C1", "dimension": "TRL",
-            "evidence_classes": ["technical_validation"],
-        },
-        scope_id="UNIT-A",
-    )
+    profile = get_aggregation_profile(CURRENT_AGGREGATION_PROFILE_ID)
     payload = {
-        "assessment_unit": unit,
-        "profile_id": CURRENT_AGGREGATION_PROFILE_ID,
-        "method_versions": {
-            "candidate_method": "kth-local.candidate.v1",
-            "qualification_method": "kth-hybrid.qualification.v2",
+        "evaluation_inputs": {
+            "assessment_unit": UNIT,
+            "financing_entity": FINANCING,
+            "frl_applicability": FRL_APPLICABILITY,
+            "profile": {
+                "profile_id": profile["profile_id"],
+                "profile_digest": profile["profile_digest"],
+            },
+            "method_versions": {
+                "candidate_proposal": "kth-local.candidate-proposal.v1",
+                "qualification": "kth-hybrid.qualification.v4",
+                "professional_review": "kth-local.professional-review.v2",
+            },
         },
-        "review_specs": [{
+        "proposal_specs": [{
             "source_id": imported["source_id"],
             "blob_sha256": imported["blob_sha256"],
             "projection_id": projection["projection_id"],
             "locator": projection["locator"], "quote": projection["text"],
-            "dimension_id": "TRL", "criterion_id": "TRL4-C1",
-            "scope_id": "UNIT-A", "license": license_item,
-            "requested_use": "technology_readiness",
-            "purpose": "判断引文是否支持指定TRL准则",
-            "output_schema": "kth-local.review-output.trl.v1",
+            "purpose": "从精确文本投影提出待资格核验的准则候选",
+            "output_schema": "proposal_response.v1",
         }],
     }
     path = tmp_path / "job.json"
@@ -159,24 +184,33 @@ def _created_job(tmp_path: Path):
     return case_dir, imported, projection, job
 
 
-def _valid_response(request: dict) -> dict:
+def _valid_proposal_response(request: dict) -> dict:
+    candidate = {
+        "quote": request["quote"],
+        "quote_sha256": request["quote_sha256"],
+        "locator": request["locator"],
+        "interpretation": "该主体已完成受控技术样机验证。",
+        "subject_scope": SUBJECT,
+        "dimension_id": "TRL",
+        "criterion_id": "TRL4-C1",
+        "mapping": {
+            "criterion_id": "TRL4-C1",
+            "evidence_class": "test_record",
+            "requested_use": "third_party_reported_fact",
+        },
+    }
+    candidate["claim_id"] = candidate_claim_id(
+        source_id=request["source_id"], candidate=candidate)
     return {
-        "schema_version": "review_response.v1",
+        "schema_version": "proposal_response.v1",
         "request_id": request["request_id"],
         "request_input_digest": request["request_input_digest"],
         "producer": {
-            "producer_id": "human-reviewer-01",
+            "producer_id": "human-proposer-01",
             "producer_kind": "authorized_human",
         },
         "output_schema": request["output_schema"],
-        "decision": "supports",
-        "evidence_class": "technical_validation",
-        "findings": {"summary": "引文支持指定准则，后续仍由规则内核求值。"},
-        "citations": [{
-            key: request[key] for key in (
-                "source_id", "blob_sha256", "projection_id", "locator",
-                "quote_sha256")
-        }],
+        "candidates": [candidate],
     }
 
 
@@ -187,16 +221,37 @@ def test_cli_mechanical_path_waits_without_provider_and_never_selects_latest(tmp
     status = _json(_run(
         "status", "--case-dir", str(case_dir), "--job-id", job_id))
     assert status["job_id"] == job_id
-    assert status["state"] == "awaiting_authorized_analysis"
+    assert job_id.startswith("JOB2::")
+    assert status["state"] == "awaiting_candidate_proposal"
+    assert len(status["proposal_requests"]) == 1
+    assert status["review_requests"] == []
     ran = _json(_run(
         "run", "--case-dir", str(case_dir), "--job-id", job_id))
-    assert ran["state"] == "awaiting_authorized_analysis"
+    assert ran["state"] == "awaiting_candidate_proposal"
     assert ran["provider_calls"] == 0
-    assert ran["next_action"] == "等待已授权的专业复核返回"
+    assert ran["next_action"] == "等待受控候选提出返回"
 
     _run("status", "--case-dir", str(case_dir), ok=False)
     _run("run", "--case-dir", str(case_dir), ok=False)
     _run("resume", "--case-dir", str(case_dir), ok=False)
+
+
+def test_cli_rejects_legacy_v1_job_input_without_falling_back(tmp_path):
+    case_dir, _, _, _job = _created_job(tmp_path)
+    legacy_input = tmp_path / "legacy-job.json"
+    legacy_input.write_text(json.dumps({
+        "assessment_unit": {"scope_id": "UNIT-LEGACY"},
+        "profile_id": "legacy-profile",
+        "method_versions": {"legacy": "v1"},
+        "review_specs": [],
+    }, ensure_ascii=False), encoding="utf-8")
+
+    rejected = _run(
+        "job", "create", "--case-dir", str(case_dir),
+        "--input", str(legacy_input), ok=False)
+
+    assert "legacy_restricted" in rejected.stderr
+    assert "workflow-job.v1" in rejected.stderr
 
 
 def test_resume_requires_exact_failed_job_and_calls_controlled_resume(tmp_path):
@@ -207,19 +262,20 @@ def test_resume_requires_exact_failed_job_and_calls_controlled_resume(tmp_path):
     resumed = _json(_run(
         "resume", "--case-dir", str(case_dir), "--job-id", job["job_id"]))
     assert resumed["job_id"] == job["job_id"]
-    assert resumed["state"] == "awaiting_authorized_analysis"
+    assert resumed["state"] == "awaiting_candidate_proposal"
     _run(
         "resume", "--case-dir", str(case_dir), "--job-id", job["job_id"],
         ok=False,
     )
 
 
-def test_review_commands_enforce_source_mode_and_lifecycle(tmp_path):
+def test_review_commands_route_candidate_request_by_exact_id_and_lifecycle(tmp_path):
     case_dir, _, _, job = _created_job(tmp_path)
     listed = _json(_run(
         "review", "list", "--case-dir", str(case_dir),
         "--job-id", job["job_id"]))
     request = listed[0]
+    assert request["request_id"].startswith("PROPOSALREQ::")
     request_file = tmp_path / "request.json"
     _run(
         "review", "export-request", "--case-dir", str(case_dir),
@@ -228,12 +284,12 @@ def test_review_commands_enforce_source_mode_and_lifecycle(tmp_path):
 
     response_file = tmp_path / "response.json"
     response_file.write_text(
-        json.dumps(_valid_response(request), ensure_ascii=False), encoding="utf-8")
+        json.dumps(_valid_proposal_response(request), ensure_ascii=False), encoding="utf-8")
     _run(
         "review", "import", "--case-dir", str(case_dir),
         "--request-id", request["request_id"], "--response-file", str(response_file),
         "--source-mode", "runtime_provider", ok=False)
-    simulated = _valid_response(request)
+    simulated = _valid_proposal_response(request)
     simulated["producer"] = {
         "producer_id": "simulator-01", "producer_kind": "simulated"}
     response_file.write_text(json.dumps(simulated, ensure_ascii=False), encoding="utf-8")
@@ -243,13 +299,13 @@ def test_review_commands_enforce_source_mode_and_lifecycle(tmp_path):
         "--source-mode", "simulated", ok=False)
 
     response_file.write_text(
-        json.dumps(_valid_response(request), ensure_ascii=False), encoding="utf-8")
+        json.dumps(_valid_proposal_response(request), ensure_ascii=False), encoding="utf-8")
     sealed = _json(_run(
         "review", "import", "--case-dir", str(case_dir),
         "--request-id", request["request_id"], "--response-file", str(response_file),
         "--source-mode", "manual_import"))
     assert sealed["source_mode"] == "manual_import"
-    assert sealed["status"] == "response_sealed"
+    assert sealed["status"] == "proposal_response_sealed"
     consumed = _json(_run(
         "review", "consume", "--case-dir", str(case_dir),
         "--response-id", sealed["response_id"], "--worker-id", "cli-test"))
@@ -258,8 +314,8 @@ def test_review_commands_enforce_source_mode_and_lifecycle(tmp_path):
 
 def test_review_simulated_requires_both_explicit_mode_and_switch(tmp_path):
     case_dir, _, _, job = _created_job(tmp_path)
-    request = job["review_requests"][0]
-    response = _valid_response(request)
+    request = job["proposal_requests"][0]
+    response = _valid_proposal_response(request)
     response["producer"] = {
         "producer_id": "simulator-01", "producer_kind": "simulated"}
     response_file = tmp_path / "simulated.json"
@@ -273,10 +329,10 @@ def test_review_simulated_requires_both_explicit_mode_and_switch(tmp_path):
 
 def test_trace_routes_exact_workflow_ids_and_rejects_missing_objects(tmp_path):
     case_dir, imported, projection, job = _created_job(tmp_path)
-    request = job["review_requests"][0]
+    request = job["proposal_requests"][0]
     response_file = tmp_path / "response.json"
     response_file.write_text(
-        json.dumps(_valid_response(request), ensure_ascii=False), encoding="utf-8")
+        json.dumps(_valid_proposal_response(request), ensure_ascii=False), encoding="utf-8")
     response = _json(_run(
         "review", "import", "--case-dir", str(case_dir),
         "--request-id", request["request_id"], "--response-file", str(response_file),
@@ -285,8 +341,9 @@ def test_trace_routes_exact_workflow_ids_and_rejects_missing_objects(tmp_path):
     exact_ids = {
         imported["source_id"]: "source",
         projection["projection_id"]: "projection",
-        request["request_id"]: "review_request",
-        response["response_id"]: "review_response",
+        job["job_id"]: "workflow_job",
+        request["request_id"]: "proposal_request",
+        response["response_id"]: "proposal_response",
     }
     for object_id, kind in exact_ids.items():
         traced = _json(_run(
@@ -363,6 +420,7 @@ def test_export_creates_new_verification_package_with_verified_hash_manifest(tmp
     names = {item["path"] for item in manifest["files"]}
     assert {
         "job.json", "status.json", "sources.json", "projections.json",
+        "proposal-requests.json", "proposal-responses.json",
         "review-requests.json", "review-responses.json",
     } <= names
     source_index = json.loads((output / "sources.json").read_text(encoding="utf-8"))
@@ -505,7 +563,7 @@ def test_atomic_publish_removes_own_target_if_rename_reports_after_move(
 def test_review_request_and_verification_export_use_atomic_publish(
         tmp_path, monkeypatch):
     case_dir, _, _, job = _created_job(tmp_path)
-    request = job["review_requests"][0]
+    request = job["proposal_requests"][0]
     writes = []
     directories = []
     real_file = cli_module._atomic_write_file
