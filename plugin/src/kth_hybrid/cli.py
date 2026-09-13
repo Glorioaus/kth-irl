@@ -17,6 +17,12 @@ from typing import Any
 from .aggregate import build_offline_dimension_view, validate_offline_dimension_view
 from .audit import render_trace, trace, trace_crl_dimension, trace_dimension_result
 from .contracts import sha256_hex
+from .proposal_requests import (
+    ProposalQueueRejected,
+    approved_catalog,
+    validate_evaluation_input_bindings,
+)
+from .qualification import resolve_case_basis_proof_bindings
 from .review_queue import ReviewQueueRejected
 from .store import BlobStore, CaseStore
 from .workflow import LocalWorkflow, WorkflowRejected
@@ -61,6 +67,16 @@ def _json_bytes(value: Any) -> bytes:
                            allow_nan=False) + "\n").encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise CliRejected(f"输出不是规范JSON：{exc}") from exc
+
+
+def _canonical_digest(value: Any, *, label: str) -> str:
+    try:
+        body = json.dumps(
+            value, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise CliRejected(f"{label}不是规范JSON：{exc}") from exc
+    return sha256_hex(body)
 
 
 def _load_json_file(path: Path, *, label: str) -> Any:
@@ -211,6 +227,30 @@ def _trace_workflow_object(workflow: LocalWorkflow, object_id: str) -> dict:
         return _trace_source(workflow, object_id)
     if object_id.startswith("PROJ::"):
         return _trace_projection(workflow, object_id)
+    if object_id.startswith("PROPOSALREQ::"):
+        request = workflow.proposals.get_request(object_id)
+        projection = _trace_projection(workflow, request["projection_id"])
+        broken = list(projection["broken"])
+        if request["source_id"] != projection["source"]["source_id"] \
+                or request["blob_sha256"] != projection["source"]["blob_sha256"] \
+                or request["locator"] != projection["projection"]["locator"] \
+                or request["quote_sha256"] != projection["projection"]["text_sha256"]:
+            broken.append("候选请求与来源/投影引用闭包不一致")
+        return {
+            "kind": "proposal_request", "object_id": object_id,
+            "ok": not broken, "broken": broken, "request": request,
+            "source": projection["source"], "projection": projection["projection"],
+        }
+    if object_id.startswith("PROPOSALRESP::"):
+        response = workflow.proposals.get_response(object_id)
+        request_report = _trace_workflow_object(workflow, response["request_id"])
+        return {
+            "kind": "proposal_response", "object_id": object_id,
+            "ok": request_report["ok"], "broken": request_report["broken"],
+            "response": response, "request": request_report["request"],
+            "source": request_report["source"],
+            "projection": request_report["projection"],
+        }
     if object_id.startswith("REVIEWREQ::"):
         request = workflow.reviews.get_request(object_id)
         projection = _trace_projection(workflow, request["projection_id"])
@@ -236,7 +276,7 @@ def _trace_workflow_object(workflow: LocalWorkflow, object_id: str) -> dict:
             "source": request_report["source"],
             "projection": request_report["projection"],
         }
-    if object_id.startswith("JOB::"):
+    if object_id.startswith(("JOB::", "JOB2::")):
         job = workflow.status(object_id)
         return {"kind": "workflow_job", "object_id": object_id, "ok": True,
                 "broken": [], "job": job}
@@ -408,8 +448,8 @@ def cmd_trace(case_dir: Path, result_id: str) -> int:
                   file=sys.stderr)
         return 0 if report["ok"] else 2
     if result_id.startswith((
-            "ATT::", "SRC::", "PROJ::", "REVIEWREQ::", "REVIEWRESP::",
-            "JOB::")):
+            "ATT::", "SRC::", "PROJ::", "PROPOSALREQ::", "PROPOSALRESP::",
+            "REVIEWREQ::", "REVIEWRESP::", "JOB::", "JOB2::")):
         with LocalWorkflow(case_dir) as workflow:
             report = _trace_workflow_object(workflow, result_id)
         _print_json(report)
@@ -510,6 +550,86 @@ def _atomic_publish_directory(path: Path | str,
         raise
 
 
+def _export_case_provenance(workflow: LocalWorkflow, status: dict) -> tuple[
+        dict | None, dict[str, bytes]]:
+    """只导出v2 job冻结且读时重建的Case字段证明原件。"""
+    if status.get("schema_version") != "kth-local.workflow-job.v2":
+        return None, {}
+    case_basis = status.get("case_basis")
+    if not isinstance(case_basis, dict):
+        raise CliRejected("v2核验包缺少冻结CaseBasis")
+    proof_bindings, proof_error = resolve_case_basis_proof_bindings(
+        case_basis, workflow.store, workflow.blobs)
+    if proof_error or proof_bindings is None:
+        raise CliRejected(
+            "v2核验包CaseBasis证明不可核验："
+            + (proof_error or "无绑定"))
+    if _canonical_digest(proof_bindings, label="CaseBasis proofs") != \
+            status.get("case_basis_proof_digest"):
+        raise CliRejected("v2核验包CaseBasis证明摘要与job冻结值不一致")
+    try:
+        evaluation_bindings = validate_evaluation_input_bindings(
+            status["evaluation_inputs"], case=workflow.store,
+            blobs=workflow.blobs,
+            subject_scope=case_basis["subject_legal_name"])
+    except ProposalQueueRejected as exc:
+        raise CliRejected(f"v2核验包评估字段证明不可核验：{exc}") from exc
+    if evaluation_bindings != status.get("evaluation_input_proof_bindings"):
+        raise CliRejected("v2核验包评估字段证明与job冻结值不一致")
+
+    selected: set[tuple[str, str]] = set()
+
+    def collect(value: Any) -> None:
+        if isinstance(value, dict):
+            origin_path = value.get("origin_path")
+            origin_sha256 = value.get("origin_sha256")
+            if isinstance(origin_path, str) and isinstance(origin_sha256, str):
+                selected.add((origin_path, origin_sha256))
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+
+    collect(proof_bindings)
+    collect(evaluation_bindings)
+    records = workflow.store.fetch_all("import_records")
+    index_records = []
+    blobs: dict[str, bytes] = {}
+    for origin_path, origin_sha256 in sorted(selected):
+        matches = [
+            row for row in records
+            if row["kind"] == "case_provenance"
+            and row["origin_path"] == origin_path
+            and row["origin_sha256"] == origin_sha256
+        ]
+        if len(matches) != 1:
+            raise CliRejected("v2核验包字段证明Case provenance记录不唯一或缺失")
+        data = workflow.blobs.read_bytes(origin_sha256)
+        if sha256_hex(data) != origin_sha256:
+            raise CliRejected("v2核验包字段证明原件摘要不一致")
+        relative = f"blobs/{origin_sha256}.bin"
+        blobs[relative] = data
+        index_records.append({
+            "origin_path": origin_path,
+            "origin_sha256": origin_sha256,
+            "byte_length": len(data),
+            "export_blob_path": relative,
+        })
+    return {
+        "schema_version": "kth-local.case-provenance-export.v1",
+        "job_id": status["job_id"],
+        "case_basis_version": case_basis["version"],
+        "case_basis_proof_digest": status["case_basis_proof_digest"],
+        "evaluation_input_proof_bindings": evaluation_bindings,
+        "proof_bindings": {
+            "case_basis": proof_bindings,
+            "evaluation_inputs": evaluation_bindings,
+        },
+        "records": index_records,
+    }, blobs
+
+
 def _export_verification_package(workflow: LocalWorkflow, job_id: str,
                                  output_dir: Path) -> dict:
     if output_dir.exists():
@@ -532,24 +652,38 @@ def _export_verification_package(workflow: LocalWorkflow, job_id: str,
         if not report["ok"]:
             raise CliRejected("核验包投影核验失败：" + "；".join(report["broken"]))
         projections.append({**report["projection"], "text": report["text"]})
-    requests = status["review_requests"]
-    responses = []
-    for request in requests:
+    provenance, provenance_blobs = _export_case_provenance(workflow, status)
+    proposal_requests = status.get("proposal_requests", [])
+    proposal_responses = []
+    for request in proposal_requests:
+        response = workflow.store.get_proposal_response_for_request(
+            request["request_id"])
+        if response is not None:
+            proposal_responses.append(
+                workflow.proposals.get_response(response["response_id"]))
+    review_requests = status["review_requests"]
+    review_responses = []
+    for request in review_requests:
         response = workflow.store.get_review_response_for_request(request["request_id"])
         if response is not None:
-            responses.append(workflow.reviews.get_response(response["response_id"]))
+            review_responses.append(workflow.reviews.get_response(response["response_id"]))
     payloads = {
         "job.json": {key: value for key, value in status.items()
-                     if key != "review_requests"},
+                     if key not in {"proposal_requests", "review_requests"}},
         "status.json": status,
         "sources.json": sources,
         "projections.json": projections,
-        "review-requests.json": requests,
-        "review-responses.json": responses,
+        "proposal-requests.json": proposal_requests,
+        "proposal-responses.json": proposal_responses,
+        "review-requests.json": review_requests,
+        "review-responses.json": review_responses,
     }
+    if provenance is not None:
+        payloads["case-provenance.json"] = provenance
     serialized = {filename: _json_bytes(value)
                   for filename, value in payloads.items()}
     serialized.update(source_blobs)
+    serialized.update(provenance_blobs)
     files = []
     for filename in sorted(serialized):
         data = serialized[filename]
@@ -611,7 +745,7 @@ def _build_parser() -> ChineseArgumentParser:
     job_parser = sub.add_parser("job", help="工作流job操作")
     job_sub = job_parser.add_subparsers(
         dest="job_command", required=True, parser_class=ChineseArgumentParser)
-    job_create = job_sub.add_parser("create", help="从冻结JSON创建job")
+    job_create = job_sub.add_parser("create", help="从候选v2冻结JSON创建job")
     _add_case_dir(job_create)
     job_create.add_argument("--input", required=True)
     job_create.add_argument("--resume-failed-creation", action="store_true")
@@ -679,12 +813,22 @@ def _dispatch(args: argparse.Namespace) -> int:
             result = workflow.project_sources(args.source_id)
         elif args.command == "job":
             payload = _load_json_file(Path(args.input), label="job输入")
-            if not isinstance(payload, dict) or set(payload) != {
-                    "assessment_unit", "profile_id", "method_versions", "review_specs"}:
-                raise CliRejected("job输入字段必须精确包含assessment_unit、profile_id、"
-                                  "method_versions和review_specs")
-            result = workflow.create_job(
-                **payload, resume_failed_creation=args.resume_failed_creation)
+            if not isinstance(payload, dict):
+                raise CliRejected("job输入必须是JSON对象")
+            if set(payload) == {"evaluation_inputs", "proposal_specs"}:
+                result = workflow.create_candidate_job(
+                    **payload, catalog=approved_catalog(),
+                    resume_failed_creation=args.resume_failed_creation)
+            elif set(payload) == {
+                    "assessment_unit", "profile_id", "method_versions",
+                    "review_specs"}:
+                raise CliRejected(
+                    "legacy_restricted：workflow-job.v1仅保留历史读取；"
+                    "CLI新建必须使用workflow-job.v2的evaluation_inputs和proposal_specs")
+            else:
+                raise CliRejected(
+                    "job输入字段必须精确包含evaluation_inputs和proposal_specs；"
+                    "workflow-job.v1输入已legacy_restricted")
         elif args.command == "status":
             result = workflow.status(args.job_id)
         elif args.command == "run":
@@ -693,6 +837,8 @@ def _dispatch(args: argparse.Namespace) -> int:
             if state == "failed":
                 raise CliRejected("job处于failed；必须使用resume并显式指定job-id")
             next_actions = {
+                "awaiting_candidate_proposal": "等待受控候选提出返回",
+                "proposal_response_sealed": "显式消费已封存的候选提出返回",
                 "awaiting_authorized_analysis": "等待已授权的专业复核返回",
                 "response_sealed": "显式消费已封存的专业复核返回",
                 "consumed": "专业返回已消费；等待既有确定性求值输入就绪",
@@ -703,9 +849,18 @@ def _dispatch(args: argparse.Namespace) -> int:
             result = workflow.resume_failed_job(args.job_id)
         elif args.command == "review":
             if args.review_command == "list":
-                result = workflow.status(args.job_id)["review_requests"]
+                status = workflow.status(args.job_id)
+                result = [
+                    *status.get("proposal_requests", []),
+                    *status["review_requests"],
+                ]
             elif args.review_command == "export-request":
-                request = workflow.reviews.get_request(args.request_id)
+                if args.request_id.startswith("PROPOSALREQ::"):
+                    request = workflow.proposals.get_request(args.request_id)
+                elif args.request_id.startswith("REVIEWREQ::"):
+                    request = workflow.reviews.get_request(args.request_id)
+                else:
+                    raise CliRejected("复核请求ID必须为PROPOSALREQ或REVIEWREQ精确ID")
                 output = Path(args.output)
                 if output.exists():
                     raise CliRejected(f"复核请求输出文件已存在：{output}")
@@ -717,12 +872,26 @@ def _dispatch(args: argparse.Namespace) -> int:
             elif args.review_command == "import":
                 response = _load_json_file(Path(args.response_file),
                                            label="review response")
-                result = workflow.reviews.seal_response(
-                    args.request_id, response, source_mode=args.source_mode,
-                    allow_simulated=args.allow_simulated)
+                if args.request_id.startswith("PROPOSALREQ::"):
+                    result = workflow.proposals.seal_response(
+                        args.request_id, response, source_mode=args.source_mode,
+                        allow_simulated=args.allow_simulated)
+                elif args.request_id.startswith("REVIEWREQ::"):
+                    result = workflow.reviews.seal_response(
+                        args.request_id, response, source_mode=args.source_mode,
+                        allow_simulated=args.allow_simulated)
+                else:
+                    raise CliRejected("复核请求ID必须为PROPOSALREQ或REVIEWREQ精确ID")
             else:
-                result = workflow.reviews.consume_response(
-                    args.response_id, worker_id=args.worker_id)
+                if args.response_id.startswith("PROPOSALRESP::"):
+                    result = workflow.proposals.consume_response(
+                        args.response_id, worker_id=args.worker_id,
+                        catalog=approved_catalog())
+                elif args.response_id.startswith("REVIEWRESP::"):
+                    result = workflow.reviews.consume_response(
+                        args.response_id, worker_id=args.worker_id)
+                else:
+                    raise CliRejected("复核返回ID必须为PROPOSALRESP或REVIEWRESP精确ID")
         elif args.command == "export":
             result = _export_verification_package(
                 workflow, args.job_id, Path(args.output_dir))
@@ -738,7 +907,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return _dispatch(args)
-    except (CliRejected, WorkflowRejected, ReviewQueueRejected, KeyError,
+    except (CliRejected, WorkflowRejected, ProposalQueueRejected,
+            ReviewQueueRejected, KeyError,
             ValueError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 3
