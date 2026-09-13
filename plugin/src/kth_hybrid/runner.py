@@ -422,13 +422,31 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
         elif proof_errors:
             reason = "完整资格证明不可核验：" + "；".join(proof_errors)
     permission_binding = case.get_dimension_review_permission(row["review_id"])
+    try:
+        workflow_materialization = case.get_workflow_review_materialization(
+            row["review_id"])
+    except Exception as exc:
+        workflow_materialization = None
+        reason = reason or f"workflow专业复核物化sidecar不可读：{exc}"
     permission_mode = row.get("permission_mode", "legacy_unbound")
     if not reason and permission_mode == "license_v2" \
             and permission_binding is None:
         reason = "用途许可sidecar缺失"
+    elif not reason and permission_mode == "workflow_authorization_v1" \
+            and workflow_materialization is None:
+        reason = "workflow专业复核物化sidecar缺失"
     elif not reason and permission_mode == "legacy_unbound" \
+            and (permission_binding is not None or workflow_materialization is not None):
+        reason = "旧review意外附带权限或workflow物化sidecar"
+    elif not reason and permission_mode not in {
+            "legacy_unbound", "license_v2", "workflow_authorization_v1"}:
+        reason = "维度review permission_mode不受支持"
+    elif not reason and permission_mode == "license_v2" \
+            and workflow_materialization is not None:
+        reason = "license_v2 review意外附带workflow物化sidecar"
+    elif not reason and permission_mode == "workflow_authorization_v1" \
             and permission_binding is not None:
-        reason = "旧review意外附带用途许可sidecar"
+        reason = "workflow物化review意外附带旧用途许可sidecar"
     if not reason and permission_binding is not None:
         try:
             from .evidence_permissions import validate_permission_binding
@@ -454,6 +472,15 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
                     or permission_binding["confirmation"].get("decision") != \
                     row["decision"]:
                 reason = "用途许可sidecar与维度review字段不一致"
+    if not reason and workflow_materialization is not None:
+        try:
+            from .review_queue import ReviewQueue
+
+            workflow_materialization = ReviewQueue(
+                case, blobs, None).validate_workflow_materialization_trusted(
+                    workflow_materialization, review=row)
+        except Exception as exc:
+            reason = f"workflow专业复核物化sidecar不可核验：{exc}"
     saved_review = {key: row.get(key) for key in review_fields}
     binding = {
         "review": saved_review,
@@ -466,6 +493,8 @@ def _bind_dimension_review(case: CaseStore, blobs: BlobStore, row: dict,
     }
     if permission_binding is not None:
         binding["permission_binding"] = permission_binding
+    if workflow_materialization is not None:
+        binding["workflow_materialization"] = workflow_materialization
     review = {key: row[key] for key in review_fields
               if key not in {"quote_sha256", "subject_scope", "scope_id",
                              "dimension_id"}}

@@ -816,9 +816,57 @@ class LocalWorkflow:
         return job
 
     def resume_failed_job(self, job_id: str) -> dict:
-        """显式解除机械失败栅栏；复核进度本身无权覆盖failure。"""
+        """按精确job合同恢复本地状态，不派发或自动消费任何专业动作。"""
+        job = self.store.get_workflow_job(job_id)
+        if job is None:
+            raise WorkflowRejected(f"workflow job不存在：{job_id}")
+        if job.get("schema_version") == JOB_SCHEMA_V2:
+            # v2候选阶段没有review request；非failed调用只读取精确状态。
+            if job.get("state") != "failed":
+                return self.status(job_id)
+            proposals = self.store.fetch_proposal_requests(job_id)
+            if not proposals:
+                raise WorkflowRejected("v2候选job缺少proposal request，不能解除failed栅栏")
+            states = {item["status"] for item in proposals}
+            if "failed" in states:
+                raise WorkflowRejected("proposal request仍为failed，不能解除workflow failed栅栏")
+            if "awaiting_candidate_proposal" in states:
+                self.store.set_workflow_job_state(
+                    job_id, "awaiting_candidate_proposal")
+                return self.status(job_id)
+            if "proposal_response_sealed" in states:
+                self.store.set_workflow_job_state(
+                    job_id, "proposal_response_sealed")
+                return self.status(job_id)
+            if states != {"consumed"}:
+                raise WorkflowRejected("v2候选proposal request状态组合非法")
+            if self.store.fetch_review_requests(job_id):
+                try:
+                    self.reviews.resume_failed_job(job_id)
+                except ReviewQueueRejected as exc:
+                    raise WorkflowRejected(str(exc)) from exc
+            else:
+                self.store.set_workflow_job_state(job_id, "insufficient")
+            return self.status(job_id)
+        # v1历史review工作流仅保留既有显式failed恢复路径。
         self.reviews.resume_failed_job(job_id)
         return self.status(job_id)
+
+    def materialize_review_response(self, response_id: str, *,
+                                    worker_id: str) -> dict:
+        """把已消费的可信 v2 专业返回转换为既有维度runner可消费的review。"""
+        try:
+            response = self.reviews.get_response(response_id)
+            request = self.reviews.get_request(response["request_id"])
+            if request.get("schema_version") != "review_request.v2" \
+                    or response.get("schema_version") != "review_response.v2":
+                raise WorkflowRejected(
+                    "legacy_restricted：仅已消费的review request/response.v2可物化")
+            self.status(request["job_id"])
+            return self.reviews.materialize_consumed_response(
+                response_id, worker_id=worker_id)
+        except ReviewQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
 
     def close(self) -> None:
         self.journal.close()

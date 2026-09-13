@@ -28,6 +28,23 @@ from .contracts import (
 )
 
 _SCHEMA_VERSION = "kth-hybrid.store.v7"
+WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA = "workflow_review_materialization.v1"
+_WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS = {
+    "schema_version", "job_id", "request_id", "request_input_digest",
+    "request_schema_version", "response_id", "response_digest",
+    "response_blob_sha256", "response_schema_version", "producer",
+    "source_mode", "authorization_id", "authorization_digest",
+    "case_basis_version", "case_basis_digest", "case_basis_proof_digest",
+    "evaluation_inputs", "evaluation_input_proof_bindings", "profile",
+    "method_versions", "dimension_id", "criterion_id", "claim_id",
+    "quote_sha256", "decision", "evidence_class", "findings",
+    "subject_scope", "scope_id", "support_scope", "reviewer",
+    "review_basis",
+}
+_WORKFLOW_REVIEW_MATERIALIZATION_FIELDS = (
+    _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS
+    | {"materialization_digest", "materialization_id", "review_id"}
+)
 
 
 def _strict_json_dumps(value, *, label: str) -> str:
@@ -37,6 +54,50 @@ def _strict_json_dumps(value, *, label: str) -> str:
             value, ensure_ascii=False, sort_keys=True, allow_nan=False)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{label}含非标准JSON值或非有限数值：{exc}") from exc
+
+
+def _workflow_materialization_digest(value: dict) -> str:
+    return sha256_hex(json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        allow_nan=False).encode("utf-8"))
+
+
+def validate_workflow_review_materialization(
+        item: dict, *, review_id: str | None = None) -> dict:
+    """校验物化sidecar的内容身份，不把调用方正文当作信任根。"""
+    if not isinstance(item, dict) or set(item) != \
+            _WORKFLOW_REVIEW_MATERIALIZATION_FIELDS:
+        raise ValueError("workflow review物化sidecar字段集合非法")
+    body = {key: item[key] for key in
+            _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS}
+    digest = _workflow_materialization_digest(body)
+    if item.get("schema_version") != WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA \
+            or item.get("materialization_digest") != digest \
+            or item.get("materialization_id") != f"WFRMAT::{digest}" \
+            or item.get("review_id") != f"DIMREVIEW::{digest}" \
+            or (review_id is not None and item.get("review_id") != review_id):
+        raise ValueError("workflow review物化sidecar内容身份无法重建")
+    required_text = (
+        "job_id", "request_id", "request_input_digest",
+        "request_schema_version", "response_id", "response_digest",
+        "response_blob_sha256", "response_schema_version", "source_mode",
+        "authorization_id", "authorization_digest", "case_basis_digest",
+        "case_basis_proof_digest", "dimension_id", "criterion_id", "claim_id",
+        "quote_sha256", "decision", "evidence_class", "subject_scope",
+        "scope_id", "support_scope", "reviewer", "review_basis",
+    )
+    if not all(isinstance(item.get(key), str) and item[key].strip()
+               for key in required_text) \
+            or not isinstance(item.get("case_basis_version"), int) \
+            or item["case_basis_version"] <= 0 \
+            or not isinstance(item.get("producer"), dict) \
+            or not isinstance(item.get("evaluation_inputs"), dict) \
+            or not isinstance(item.get("evaluation_input_proof_bindings"), dict) \
+            or not isinstance(item.get("profile"), dict) \
+            or not isinstance(item.get("method_versions"), dict) \
+            or not isinstance(item.get("findings"), dict):
+        raise ValueError("workflow review物化sidecar正文类型非法")
+    return json.loads(_strict_json_dumps(item, label="workflow review物化sidecar"))
 
 
 _SCHEMA = """
@@ -117,7 +178,8 @@ CREATE TABLE IF NOT EXISTS dimension_evidence_reviews (
     reviewer TEXT NOT NULL,
     review_basis TEXT NOT NULL,
     permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'
-        CHECK (permission_mode IN ('legacy_unbound','license_v2')),
+        CHECK (permission_mode IN
+            ('legacy_unbound','license_v2','workflow_authorization_v1')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_dimension_reviews
@@ -132,6 +194,18 @@ CREATE TABLE IF NOT EXISTS dimension_review_permissions (
     confirmation_digest TEXT NOT NULL,
     license_json TEXT NOT NULL,
     binding_digest TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS workflow_review_materializations (
+    materialization_id TEXT PRIMARY KEY,
+    review_id TEXT NOT NULL UNIQUE
+        REFERENCES dimension_evidence_reviews(review_id),
+    job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+    request_id TEXT NOT NULL REFERENCES review_requests(request_id),
+    response_id TEXT NOT NULL REFERENCES review_responses(response_id),
+    authorization_id TEXT NOT NULL REFERENCES review_authorizations(authorization_id),
+    materialization_digest TEXT NOT NULL UNIQUE,
+    body_json TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE IF NOT EXISTS tmrl_identity_overlays (
@@ -625,7 +699,9 @@ class CaseStore:
                 reviewer TEXT NOT NULL,
                 review_basis TEXT NOT NULL,
                 permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'
-                    CHECK (permission_mode IN ('legacy_unbound','license_v2')),
+                    CHECK (permission_mode IN
+                        ('legacy_unbound','license_v2',
+                         'workflow_authorization_v1')),
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
             CREATE INDEX IF NOT EXISTS idx_dimension_reviews
@@ -640,6 +716,19 @@ class CaseStore:
                 confirmation_digest TEXT NOT NULL,
                 license_json TEXT NOT NULL,
                 binding_digest TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE TABLE IF NOT EXISTS workflow_review_materializations (
+                materialization_id TEXT PRIMARY KEY,
+                review_id TEXT NOT NULL UNIQUE
+                    REFERENCES dimension_evidence_reviews(review_id),
+                job_id TEXT NOT NULL REFERENCES workflow_jobs(job_id),
+                request_id TEXT NOT NULL REFERENCES review_requests(request_id),
+                response_id TEXT NOT NULL REFERENCES review_responses(response_id),
+                authorization_id TEXT NOT NULL
+                    REFERENCES review_authorizations(authorization_id),
+                materialization_digest TEXT NOT NULL UNIQUE,
+                body_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
             CREATE TABLE IF NOT EXISTS tmrl_identity_overlays (
@@ -843,6 +932,9 @@ class CaseStore:
         if prior_generation < 7:
             self._migrate_workflow_states_v7()
         self._conn.commit()
+        if prior_generation < 8:
+            self._migrate_dimension_reviews_v8()
+        self._conn.commit()
 
     def _migrate_workflow_states_v7(self) -> None:
         """扩展候选阶段状态；保留既有v1 job与外键引用。"""
@@ -872,6 +964,72 @@ class CaseStore:
                     SELECT * FROM workflow_jobs;
                 DROP TABLE workflow_jobs;
                 ALTER TABLE workflow_jobs_v7 RENAME TO workflow_jobs;
+            """)
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
+
+    def _migrate_dimension_reviews_v8(self) -> None:
+        """扩展非CRL review许可模式，同时保留历史许可sidecar。"""
+        sql = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='dimension_evidence_reviews'").fetchone()
+        if sql is not None and "workflow_authorization_v1" in (sql[0] or ""):
+            return
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._conn.executescript("""
+                CREATE TABLE dimension_evidence_reviews_v8 (
+                    review_id TEXT PRIMARY KEY,
+                    dimension_id TEXT NOT NULL,
+                    case_basis_version INTEGER NOT NULL,
+                    claim_id TEXT NOT NULL,
+                    criterion_id TEXT NOT NULL,
+                    quote_sha256 TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK (decision IN
+                        ('supports','does_not_support')),
+                    evidence_class TEXT NOT NULL,
+                    findings_json TEXT NOT NULL,
+                    subject_scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    support_scope TEXT NOT NULL,
+                    reviewer TEXT NOT NULL,
+                    review_basis TEXT NOT NULL,
+                    permission_mode TEXT NOT NULL DEFAULT 'legacy_unbound'
+                        CHECK (permission_mode IN
+                            ('legacy_unbound','license_v2',
+                             'workflow_authorization_v1')),
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO dimension_evidence_reviews_v8
+                    SELECT review_id,dimension_id,case_basis_version,claim_id,
+                           criterion_id,quote_sha256,decision,evidence_class,
+                           findings_json,subject_scope,scope_id,support_scope,
+                           reviewer,review_basis,permission_mode,created_at
+                    FROM dimension_evidence_reviews;
+                CREATE TABLE dimension_review_permissions_v8 (
+                    review_id TEXT PRIMARY KEY
+                        REFERENCES dimension_evidence_reviews_v8(review_id),
+                    license_id TEXT NOT NULL,
+                    requested_use TEXT NOT NULL,
+                    candidate_json TEXT NOT NULL,
+                    candidate_digest TEXT NOT NULL,
+                    confirmation_json TEXT NOT NULL,
+                    confirmation_digest TEXT NOT NULL,
+                    license_json TEXT NOT NULL,
+                    binding_digest TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO dimension_review_permissions_v8
+                    SELECT * FROM dimension_review_permissions;
+                DROP TABLE dimension_review_permissions;
+                DROP TABLE dimension_evidence_reviews;
+                ALTER TABLE dimension_evidence_reviews_v8
+                    RENAME TO dimension_evidence_reviews;
+                ALTER TABLE dimension_review_permissions_v8
+                    RENAME TO dimension_review_permissions;
+                CREATE INDEX IF NOT EXISTS idx_dimension_reviews
+                    ON dimension_evidence_reviews(
+                        dimension_id, case_basis_version, scope_id);
             """)
         finally:
             self._conn.execute("PRAGMA foreign_keys=ON")
@@ -1336,7 +1494,8 @@ class CaseStore:
             claim_id: str, criterion_id: str, quote_sha256: str, decision: str,
             evidence_class: str, findings: dict, subject_scope: str,
             scope_id: str, support_scope: str, reviewer: str,
-            review_basis: str, permission_binding: dict | None = None) -> None:
+            review_basis: str, permission_binding: dict | None = None,
+            workflow_materialization: dict | None = None) -> None:
         """登记非CRL维度的受控、准则绑定复核记录。"""
         text_fields = (
             review_id, dimension_id, claim_id, criterion_id, quote_sha256,
@@ -1349,14 +1508,40 @@ class CaseStore:
                            for value in text_fields):
             raise ValueError("维度复核记录的身份、decision、证据类别或findings非法")
         findings_json = _strict_json_dumps(findings, label="维度复核findings")
+        if permission_binding is not None and workflow_materialization is not None:
+            raise ValueError("维度review不能同时绑定旧用途许可与workflow物化sidecar")
         if permission_binding is not None:
             from .evidence_permissions import validate_permission_binding
 
             permission_binding = validate_permission_binding(
                 permission_binding, review_id=review_id)
+        if workflow_materialization is not None:
+            workflow_materialization = validate_workflow_review_materialization(
+                workflow_materialization, review_id=review_id)
+            expected = {
+                "dimension_id": dimension_id,
+                "case_basis_version": case_basis_version,
+                "claim_id": claim_id,
+                "criterion_id": criterion_id,
+                "quote_sha256": quote_sha256,
+                "decision": decision,
+                "evidence_class": evidence_class,
+                "findings": findings,
+                "subject_scope": subject_scope,
+                "scope_id": scope_id,
+                "support_scope": support_scope,
+                "reviewer": reviewer,
+                "review_basis": review_basis,
+            }
+            if any(workflow_materialization.get(key) != value
+                   for key, value in expected.items()):
+                raise ValueError("workflow物化sidecar与维度review正文不一致")
         permission_mode = (
-            "license_v2" if permission_binding is not None else "legacy_unbound")
-        with self._conn:
+            "license_v2" if permission_binding is not None
+            else ("workflow_authorization_v1"
+                  if workflow_materialization is not None else "legacy_unbound"))
+
+        def write() -> None:
             self._conn.execute(
                 "INSERT INTO dimension_evidence_reviews("
                 "review_id,dimension_id,case_basis_version,claim_id,criterion_id,"
@@ -1393,6 +1578,31 @@ class CaseStore:
                         permission_binding["binding_digest"],
                     ),
                 )
+            if workflow_materialization is not None:
+                self._conn.execute(
+                    "INSERT INTO workflow_review_materializations("
+                    "materialization_id,review_id,job_id,request_id,response_id,"
+                    "authorization_id,materialization_digest,body_json) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (
+                        workflow_materialization["materialization_id"],
+                        review_id,
+                        workflow_materialization["job_id"],
+                        workflow_materialization["request_id"],
+                        workflow_materialization["response_id"],
+                        workflow_materialization["authorization_id"],
+                        workflow_materialization["materialization_digest"],
+                        _strict_json_dumps(
+                            workflow_materialization,
+                            label="workflow review物化sidecar"),
+                    ),
+                )
+
+        if self._conn.in_transaction:
+            write()
+        else:
+            with self._conn:
+                write()
 
     def fetch_dimension_evidence_reviews(
             self, dimension_id: str, case_basis_version: int,
@@ -1434,6 +1644,22 @@ class CaseStore:
         item["candidate"] = json.loads(item.pop("candidate_json"))
         item["confirmation"] = json.loads(item.pop("confirmation_json"))
         item["license"] = json.loads(item.pop("license_json"))
+        return item
+
+    def get_workflow_review_materialization(self, review_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM workflow_review_materializations WHERE review_id=?",
+            (review_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        item = json.loads(row["body_json"])
+        for key in (
+                "materialization_id", "review_id", "job_id", "request_id",
+                "response_id", "authorization_id", "materialization_digest"):
+            if item.get(key) != row[key]:
+                raise StoreIntegrityError(
+                    "workflow review物化sidecar索引与正文不一致")
         return item
 
     def add_tmrl_identity_overlay(

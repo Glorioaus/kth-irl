@@ -1119,6 +1119,33 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
                     broken.append(
                         f"维度review {saved_review.get('review_id')} "
                         f"用途许可sidecar不可核验：{exc}")
+        saved_workflow_materialization = binding.get(
+            "workflow_materialization")
+        if saved_workflow_materialization is not None:
+            try:
+                current_materialization = \
+                    case.get_workflow_review_materialization(
+                        saved_review.get("review_id"))
+            except Exception as exc:
+                broken.append(
+                    f"维度review {saved_review.get('review_id')} workflow物化"
+                    f"sidecar不可读：{exc}")
+            else:
+                if current_materialization != saved_workflow_materialization:
+                    broken.append(
+                        f"维度review {saved_review.get('review_id')} workflow物化"
+                        "sidecar已删除或改写")
+                else:
+                    try:
+                        from .review_queue import ReviewQueue
+
+                        ReviewQueue(case, blobs, None).\
+                            validate_workflow_materialization_trusted(
+                                current_materialization, review=review)
+                    except Exception as exc:
+                        broken.append(
+                            f"维度review {saved_review.get('review_id')} "
+                            f"workflow物化sidecar不可核验：{exc}")
         view = binding.get("qualification_view")
         if not isinstance(view, dict):
             broken.append(

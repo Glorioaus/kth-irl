@@ -9,7 +9,12 @@ from typing import Any
 from .contracts import sha256_hex
 from .evidence_permissions import validate_evidence_use_license
 from .journal import CommitRejected, Journal
-from .store import BlobStore, CaseStore
+from .store import (
+    WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA,
+    BlobStore,
+    CaseStore,
+    validate_workflow_review_materialization,
+)
 
 
 REQUEST_SCHEMA = "review_request.v1"
@@ -33,6 +38,9 @@ _FORBIDDEN_OUTPUT_KEYS = {
     "level", "maturity_level", "native_disposition", "native_note",
     "product_status", "final_decision", "investment_recommendation",
     "investment_decision", "approved", "go_no_go",
+    "result_id", "rule_version", "criterion_results", "criteria",
+    "attained_level", "first_unmet_level", "method_boundary",
+    "rule_result", "evaluation_result",
 }
 _CITATION_FIELDS = {
     "source_id", "blob_sha256", "projection_id", "locator", "quote_sha256",
@@ -233,6 +241,251 @@ class ReviewQueue:
         self.journal = journal
 
     materialize_authorization_from_v1 = None
+
+    @staticmethod
+    def _workflow_job_input_digest(job: dict) -> str:
+        required = {
+            "schema_version", "input_schema_version", "job_id", "input_digest",
+            "state", "sources", "projections", "case_basis",
+            "case_basis_digest", "case_basis_proof_digest", "evaluation_inputs",
+            "evaluation_input_proof_bindings", "catalog_sha256", "catalog_digest",
+            "proposal_request_input_digests", "proposal_request_ids",
+            "created_at", "updated_at",
+        }
+        if not required <= set(job) or set(job) - (required | {"failure"}):
+            raise ReviewQueueRejected("workflow job v2字段集合非法")
+        if job.get("schema_version") != "kth-local.workflow-job.v2" \
+                or job.get("input_schema_version") != "kth-local.workflow-job-input.v2":
+            raise ReviewQueueRejected("workflow job不是可物化的v2候选job")
+        body = {
+            "schema_version": "kth-local.workflow-job-input.v2",
+            "sources": copy.deepcopy(job["sources"]),
+            "projections": copy.deepcopy(job["projections"]),
+            "case_basis": copy.deepcopy(job["case_basis"]),
+            "case_basis_digest": job["case_basis_digest"],
+            "case_basis_proof_digest": job["case_basis_proof_digest"],
+            "evaluation_inputs": copy.deepcopy(job["evaluation_inputs"]),
+            "evaluation_input_proof_bindings": copy.deepcopy(
+                job["evaluation_input_proof_bindings"]),
+            "catalog_sha256": job["catalog_sha256"],
+            "catalog_digest": job["catalog_digest"],
+            "proposal_request_input_digests": copy.deepcopy(
+                job["proposal_request_input_digests"]),
+        }
+        digest = _digest(body, label="workflow job v2 input")
+        if job.get("input_digest") != digest or job.get("job_id") != \
+                f"JOB2::{digest}":
+            raise ReviewQueueRejected("workflow job v2内容身份无法重建")
+        return digest
+
+    def _build_workflow_materialization(self, *, request: dict,
+                                        response: dict,
+                                        authorization: dict) -> dict:
+        """仅以可信授权和已封存返回构建runner可消费的业务字段。"""
+        if request.get("schema_version") != REQUEST_SCHEMA_V2 \
+                or response.get("schema_version") != RESPONSE_SCHEMA_V2:
+            raise ReviewQueueRejected("仅review request/response.v2可物化")
+        if response.get("status") != "consumed":
+            raise ReviewQueueRejected("专业返回必须先消费后物化")
+        if response.get("request_id") != request.get("request_id") \
+                or response.get("request_input_digest") != \
+                request.get("request_input_digest"):
+            raise ReviewQueueRejected("已消费专业返回与request身份不一致")
+        if request.get("authorization_id") != authorization.get("authorization_id") \
+                or request.get("authorization") != authorization:
+            raise ReviewQueueRejected("v2 request与可信authorization不一致")
+        job = self.store.get_workflow_job(request["job_id"])
+        if job is None:
+            raise ReviewQueueRejected("workflow job不存在")
+        self._workflow_job_input_digest(job)
+        if job.get("evaluation_inputs") != authorization.get("evaluation_inputs") \
+                or job.get("evaluation_input_proof_bindings") != \
+                authorization.get("evaluation_input_proof_bindings") \
+                or job.get("case_basis_digest") != \
+                authorization.get("case_basis_digest") \
+                or job.get("case_basis_proof_digest") != \
+                authorization.get("case_basis_proof_digest"):
+            raise ReviewQueueRejected("workflow job与authorization冻结输入不一致")
+        profile = authorization["evaluation_inputs"].get("profile")
+        if not isinstance(profile, dict) or set(profile) != {
+                "profile_id", "profile_digest"}:
+            raise ReviewQueueRejected("authorization缺少精确aggregation profile")
+        criterion = authorization.get("canonical_criterion")
+        if response.get("evidence_class") != authorization.get("evidence_class") \
+                or not isinstance(criterion, dict) \
+                or response.get("evidence_class") not in \
+                (criterion.get("eligible_evidence_classes") or []):
+            raise ReviewQueueRejected("review response evidence_class不是canonical允许类别")
+        decision = response.get("decision")
+        if decision not in {"supports", "does_not_support"}:
+            raise ReviewQueueRejected("review response decision不受支持")
+        claim = authorization.get("qualification_input_view", {}).get("claim")
+        if not isinstance(claim, dict) or claim.get("claim_id") != \
+                authorization.get("claim_id"):
+            raise ReviewQueueRejected("authorization资格视图缺少可信Claim")
+        scope_id = authorization["evaluation_inputs"].get(
+            "assessment_unit", {}).get("scope_id")
+        if not isinstance(scope_id, str) or not scope_id.strip():
+            raise ReviewQueueRejected("authorization评估单元scope_id非法")
+        support_scope = (
+            f"仅支持{authorization['dimension_id']}/"
+            f"{authorization['criterion_id']}的"
+            f"{authorization['requested_use']}专业复核")
+        body = {
+            "schema_version": WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA,
+            "job_id": request["job_id"],
+            "request_id": request["request_id"],
+            "request_input_digest": request["request_input_digest"],
+            "request_schema_version": request["schema_version"],
+            "response_id": response["response_id"],
+            "response_digest": response["response_digest"],
+            "response_blob_sha256": response["response_blob_sha256"],
+            "response_schema_version": response["schema_version"],
+            "producer": copy.deepcopy(response["producer"]),
+            "source_mode": response["source_mode"],
+            "authorization_id": authorization["authorization_id"],
+            "authorization_digest": _authorization_digest(authorization),
+            "case_basis_version": authorization["case_basis_version"],
+            "case_basis_digest": authorization["case_basis_digest"],
+            "case_basis_proof_digest": authorization["case_basis_proof_digest"],
+            "evaluation_inputs": copy.deepcopy(authorization["evaluation_inputs"]),
+            "evaluation_input_proof_bindings": copy.deepcopy(
+                authorization["evaluation_input_proof_bindings"]),
+            "profile": copy.deepcopy(profile),
+            "method_versions": copy.deepcopy(authorization["method_versions"]),
+            "dimension_id": authorization["dimension_id"],
+            "criterion_id": authorization["criterion_id"],
+            "claim_id": authorization["claim_id"],
+            "quote_sha256": authorization["quote_sha256"],
+            "decision": decision,
+            "evidence_class": authorization["evidence_class"],
+            "findings": copy.deepcopy(response["findings"]),
+            "subject_scope": claim.get("subject_scope"),
+            "scope_id": scope_id,
+            "support_scope": support_scope,
+            "reviewer": response["producer"]["producer_id"],
+            "review_basis": (
+                "workflow_authorization_v1:"
+                f"{authorization['authorization_id']}"),
+        }
+        digest = _digest(body, label="workflow review物化sidecar")
+        return {
+            **body,
+            "materialization_digest": digest,
+            "materialization_id": f"WFRMAT::{digest}",
+            "review_id": f"DIMREVIEW::{digest}",
+        }
+
+    def validate_workflow_materialization_trusted(
+            self, materialization: dict, *, review: dict | None = None) -> dict:
+        """读时重建sidecar，验证其仍闭合于当前可信Case存储。"""
+        try:
+            materialization = validate_workflow_review_materialization(
+                materialization, review_id=(review or materialization).get(
+                    "review_id"))
+        except ValueError as exc:
+            raise ReviewQueueRejected(
+                f"workflow review物化sidecar不可核验：{exc}") from exc
+        request = self.get_request(materialization["request_id"])
+        response = self.get_response(materialization["response_id"])
+        authorization = self.validate_authorization_trusted(
+            request.get("authorization"))
+        expected = self._build_workflow_materialization(
+            request=request, response=response, authorization=authorization)
+        if expected != materialization:
+            raise ReviewQueueRejected("workflow review物化sidecar与可信输入不一致")
+        if review is not None:
+            expected_review = {
+                key: materialization[key] for key in (
+                    "review_id", "dimension_id", "case_basis_version",
+                    "claim_id", "criterion_id", "quote_sha256", "decision",
+                    "evidence_class", "findings", "subject_scope", "scope_id",
+                    "support_scope", "reviewer", "review_basis")}
+            if any(review.get(key) != value
+                   for key, value in expected_review.items()) \
+                    or review.get("permission_mode") != \
+                    "workflow_authorization_v1":
+                raise ReviewQueueRejected(
+                    "workflow review物化sidecar与维度review字段不一致")
+        return materialization
+
+    def materialize_consumed_response(self, response_id: str, *,
+                                      worker_id: str) -> dict:
+        """将已消费的 v2 返回原子写为维度review与内容寻址sidecar。"""
+        if not isinstance(worker_id, str) or not worker_id.strip():
+            raise ReviewQueueRejected("物化worker_id不能为空")
+        response = self.get_response(response_id)
+        request = self.get_request(response["request_id"])
+        if request.get("schema_version") != REQUEST_SCHEMA_V2 \
+                or response.get("schema_version") != RESPONSE_SCHEMA_V2:
+            raise ReviewQueueRejected(
+                "legacy_restricted：仅已消费的review request/response.v2可物化")
+        authorization = self.validate_authorization_trusted(
+            request.get("authorization"))
+        materialization = self._build_workflow_materialization(
+            request=request, response=response, authorization=authorization)
+        review_id = materialization["review_id"]
+        task_key = f"workflow-review-materialize:{response_id}"
+        input_id = materialization["materialization_digest"]
+        self.journal.ensure_task(task_key, input_id)
+        existing = self.store.get_dimension_evidence_review(review_id)
+        if existing is not None:
+            sidecar = self.store.get_workflow_review_materialization(review_id)
+            if sidecar is None:
+                raise ReviewQueueRejected("已有物化review缺少workflow sidecar")
+            self.validate_workflow_materialization_trusted(
+                sidecar, review=existing)
+            try:
+                self.journal.complete_existing_local_task(
+                    task_key, input_id=input_id, output_ref=review_id,
+                    worker_id=worker_id,
+                    evidence="已存在物化review及sidecar逐字重建并闭包核验")
+            except CommitRejected as exc:
+                raise ReviewQueueRejected(f"workflow review物化恢复封账失败：{exc}") from exc
+            return materialization
+        try:
+            claim = self.journal.claim(task_key, worker_id, input_id)
+        except CommitRejected as exc:
+            raise ReviewQueueRejected(f"workflow review物化认领失败：{exc}") from exc
+        try:
+            with self.store.immediate_transaction():
+                response = self.get_response(response_id)
+                request = self.get_request(response["request_id"])
+                authorization = self.validate_authorization_trusted(
+                    request.get("authorization"))
+                materialization = self._build_workflow_materialization(
+                    request=request, response=response,
+                    authorization=authorization)
+                if self.store.get_dimension_evidence_review(
+                        materialization["review_id"]) is not None:
+                    raise ReviewQueueRejected("物化review在发布事务内已存在")
+                self.store.add_dimension_evidence_review(
+                    materialization["review_id"],
+                    dimension_id=materialization["dimension_id"],
+                    case_basis_version=materialization["case_basis_version"],
+                    claim_id=materialization["claim_id"],
+                    criterion_id=materialization["criterion_id"],
+                    quote_sha256=materialization["quote_sha256"],
+                    decision=materialization["decision"],
+                    evidence_class=materialization["evidence_class"],
+                    findings=materialization["findings"],
+                    subject_scope=materialization["subject_scope"],
+                    scope_id=materialization["scope_id"],
+                    support_scope=materialization["support_scope"],
+                    reviewer=materialization["reviewer"],
+                    review_basis=materialization["review_basis"],
+                    workflow_materialization=materialization)
+            self.journal.commit(claim, materialization["review_id"])
+        except Exception as exc:
+            try:
+                self.journal.record_failure(claim, str(exc))
+            except CommitRejected:
+                pass
+            if isinstance(exc, ReviewQueueRejected):
+                raise
+            raise ReviewQueueRejected(
+                f"workflow review物化失败：{type(exc).__name__}: {exc}") from exc
+        return materialization
 
     def validate_authorization(self, authorization: dict) -> dict:
         required = {
