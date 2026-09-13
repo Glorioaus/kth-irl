@@ -12,6 +12,7 @@ R1.1 修复（验收 R1-04/R1-05）：
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,8 @@ CREATE TABLE IF NOT EXISTS tasks (
         ('planned','claimed','dispatch_recorded','succeeded','failed','outcome_unknown')),
     current_token INTEGER,
     current_worker TEXT,
+    owner_pid INTEGER,
+    claimed_at TEXT,
     input_id TEXT NOT NULL,
     output_ref TEXT,
     external_actions INTEGER NOT NULL DEFAULT 0,
@@ -33,6 +36,8 @@ CREATE TABLE IF NOT EXISTS task_attempts (
     task_key TEXT NOT NULL,
     token INTEGER NOT NULL,
     worker_id TEXT NOT NULL,
+    owner_pid INTEGER,
+    claimed_at TEXT,
     input_id TEXT NOT NULL,
     outcome TEXT NOT NULL,
     detail TEXT,
@@ -45,6 +50,9 @@ CREATE TABLE IF NOT EXISTS takeover_events (
     attempt_no INTEGER NOT NULL,
     worker_id TEXT NOT NULL,
     evidence TEXT NOT NULL,
+    previous_owner_pid INTEGER,
+    previous_claimed_at TEXT,
+    stale_judgment TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 """
@@ -80,6 +88,78 @@ class Journal:
         self._conn.execute("PRAGMA synchronous=FULL")
         self._conn.execute("PRAGMA busy_timeout=30000")
         self._conn.executescript(_SCHEMA)
+        self._migrate_lease_columns()
+
+    def _migrate_lease_columns(self) -> None:
+        """为旧 Journal 补充只增字段的本地进程租约，不改写历史行。"""
+        additions = {
+            "tasks": {
+                "owner_pid": "INTEGER",
+                "claimed_at": "TEXT",
+            },
+            "task_attempts": {
+                "owner_pid": "INTEGER",
+                "claimed_at": "TEXT",
+            },
+            "takeover_events": {
+                "previous_owner_pid": "INTEGER",
+                "previous_claimed_at": "TEXT",
+                "stale_judgment": "TEXT",
+            },
+        }
+        for table, columns in additions.items():
+            present = {row["name"] for row in self._conn.execute(
+                f"PRAGMA table_info({table})").fetchall()}
+            for column, definition in columns.items():
+                if column not in present:
+                    self._conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    @staticmethod
+    def _owner_pid_exited(owner_pid: object) -> bool:
+        """仅在本机 PID 明确已退出时允许接管；任何不确定均视为仍活跃。"""
+        if isinstance(owner_pid, bool) or not isinstance(owner_pid, int) \
+                or owner_pid <= 0:
+            raise CommitRejected("claimed任务owner_pid缺失或不可核验，禁止自动接管")
+        if owner_pid == os.getpid():
+            return False
+        if os.name == "nt":
+            # os.kill(pid, 0) 在 Windows 不可靠地对已退出 PID 返回成功；用
+            # 标准库 ctypes 查询进程句柄和退出码，PID 重用时仍会保守视为活跃。
+            import ctypes
+            from ctypes import wintypes
+
+            process_query_limited_information = 0x1000
+            still_active = 259
+            error_invalid_parameter = 87
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.argtypes = [
+                wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.GetExitCodeProcess.argtypes = [
+                wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+            kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            handle = kernel32.OpenProcess(
+                process_query_limited_information, False, owner_pid)
+            if not handle:
+                return ctypes.get_last_error() == error_invalid_parameter
+            try:
+                exit_code = wintypes.DWORD()
+                if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return False
+                return exit_code.value != still_active
+            finally:
+                kernel32.CloseHandle(handle)
+        try:
+            os.kill(owner_pid, 0)
+        except ProcessLookupError:
+            return True
+        except (PermissionError, OSError):
+            # Windows PID 重用、权限或平台错误均不能证明原任务已退出。
+            return False
+        return False
 
     # ---- 内部：串行写事务与单调 token ----
 
@@ -111,40 +191,50 @@ class Journal:
         """原子认领：状态/input 条件在 UPDATE 的 WHERE 中，行数必须为 1。"""
         with self._write_txn():
             row = self._conn.execute(
-                "SELECT state, input_id FROM tasks WHERE task_key=?",
+                "SELECT state, input_id, external_actions FROM tasks WHERE task_key=?",
                 (task_key,),
             ).fetchone()
             if row is None:
                 self._conn.execute(
                     "INSERT INTO tasks(task_key, state, input_id) "
                     "VALUES (?, 'planned', ?)", (task_key, input_id))
-                row = {"state": "planned", "input_id": input_id}
+                row = {
+                    "state": "planned",
+                    "input_id": input_id,
+                    "external_actions": 0,
+                }
             if row["state"] not in _CLAIMABLE_STATES:
                 raise CommitRejected(
                     f"任务 {task_key} 当前状态 {row['state']} 不可认领："
                     f"outcome_unknown/succeeded 需显式新任务或已验证幂等语义，"
                     f"不允许自动重发原请求"
                 )
+            if row["external_actions"] != 0:
+                raise CommitRejected(
+                    f"任务 {task_key} 已记录外部动作，禁止重新认领或重派")
             if row["input_id"] != input_id:
                 raise CommitRejected(
                     f"任务 {task_key} 输入身份不符：登记 {row['input_id']}，"
                     f"本次 {input_id}"
                 )
             token = self._next_token()
+            owner_pid = os.getpid()
             cur = self._conn.execute(
                 "UPDATE tasks SET state='claimed', current_token=?, current_worker=?, "
+                "owner_pid=?, claimed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'), "
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
                 "WHERE task_key=? AND input_id=? AND state IN ('planned','failed')",
-                (token, worker_id, task_key, input_id),
+                (token, worker_id, owner_pid, task_key, input_id),
             )
             if cur.rowcount != 1:
                 raise CommitRejected(
                     f"任务 {task_key} 认领条件更新行数 {cur.rowcount}≠1（并发抢占）"
                 )
             attempt = self._conn.execute(
-                "INSERT INTO task_attempts(task_key, token, worker_id, input_id, "
-                "outcome) VALUES (?,?,?,?,'claimed')",
-                (task_key, token, worker_id, input_id),
+                "INSERT INTO task_attempts(task_key, token, worker_id, owner_pid, "
+                "claimed_at, input_id, outcome) VALUES (?,?,?,?,"
+                "strftime('%Y-%m-%dT%H:%M:%fZ','now'),?,'claimed')",
+                (task_key, token, worker_id, owner_pid, input_id),
             )
             return Claim(task_key, worker_id, token, input_id,
                          int(attempt.lastrowid))
@@ -237,19 +327,18 @@ class Journal:
 
     def takeover_stale_claim(self, task_key: str, new_worker: str,
                              input_id: str, *, evidence: str) -> Claim:
-        """受控接管：仅限仍处 ``claimed`` 且 ``external_actions=0`` 的失效认领。
+        """受控接管：仅限原本机进程已退出的本地 ``claimed`` 任务。
 
-        已派发（dispatch_recorded）或未知结果（outcome_unknown）任务不允许
-        静默接管——必须先按保守流程处理（mark_recovered_unknown / 人工新任务）。
-        R1.2-D：接管作为**事件**写入 ``takeover_events`` 留痕；新 attempt 状态
-        置 ``claimed``（detail 记录接管证据），后续派发/提交/失败正常推进到
-        终态。旧 worker 复活后因 token 失配不能再派发或提交。
+        仅有字符串 evidence 不能证明失效。旧任务必须有可核验的本机 owner_pid
+        与 claimed_at，且平台本机进程查询明确报告 PID 已退出。已派发或结果未知
+        的任务始终不允许静默接管。
         """
         if not evidence or not evidence.strip():
             raise CommitRejected("接管必须携带失效证据（evidence）")
         with self._write_txn():
             row = self._conn.execute(
-                "SELECT state, current_worker, external_actions, input_id "
+                "SELECT state, current_worker, external_actions, input_id, "
+                "owner_pid, claimed_at "
                 "FROM tasks WHERE task_key=?", (task_key,),
             ).fetchone()
             if row is None:
@@ -264,25 +353,39 @@ class Journal:
                     f"{row['external_actions']}：已派发或未知结果的任务不允许"
                     f"静默接管（先按保守恢复流程处理）"
                 )
+            if not isinstance(row["claimed_at"], str) or not row["claimed_at"]:
+                raise CommitRejected(
+                    f"任务 {task_key} claimed_at缺失或不可核验，禁止自动接管")
+            if not self._owner_pid_exited(row["owner_pid"]):
+                raise CommitRejected(
+                    f"任务 {task_key} owner_pid={row['owner_pid']}仍存活或"
+                    "无法确认已退出，禁止自动接管")
             token = self._next_token()
+            owner_pid = os.getpid()
             cur = self._conn.execute(
                 "UPDATE tasks SET state='claimed', current_token=?, current_worker=?, "
+                "owner_pid=?, claimed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'), "
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
                 "WHERE task_key=? AND input_id=? AND state='claimed' "
                 "AND external_actions=0",
-                (token, new_worker, task_key, input_id),
+                (token, new_worker, owner_pid, task_key, input_id),
             )
             if cur.rowcount != 1:
                 raise CommitRejected(f"任务 {task_key} 接管条件更新失败")
             attempt = self._conn.execute(
-                "INSERT INTO task_attempts(task_key, token, worker_id, input_id, "
-                "outcome, detail) VALUES (?,?,?,?,'claimed',?)",
-                (task_key, token, new_worker, input_id, f"takeover: {evidence}"),
+                "INSERT INTO task_attempts(task_key, token, worker_id, owner_pid, "
+                "claimed_at, input_id, outcome, detail) VALUES (?,?,?,?,"
+                "strftime('%Y-%m-%dT%H:%M:%fZ','now'),?,'claimed',?)",
+                (task_key, token, new_worker, owner_pid, input_id,
+                 f"takeover: {evidence}"),
             )
             self._conn.execute(
                 "INSERT INTO takeover_events(task_key, attempt_no, worker_id, "
-                "evidence) VALUES (?,?,?,?)",
-                (task_key, int(attempt.lastrowid), new_worker, evidence),
+                "evidence, previous_owner_pid, previous_claimed_at, "
+                "stale_judgment) VALUES (?,?,?,?,?,?,?)",
+                (task_key, int(attempt.lastrowid), new_worker, evidence,
+                 row["owner_pid"], row["claimed_at"],
+                 "owner_pid_exit_confirmed"),
             )
             return Claim(task_key, new_worker, token, input_id,
                          int(attempt.lastrowid))
@@ -296,20 +399,42 @@ class Journal:
 
     def mark_recovered_unknown(self, task_key: str) -> None:
         """恢复期保守解释：dispatch 已落账但无持久结果 → outcome_unknown。"""
+        self.recover_dispatched_unknown(task_key=task_key)
+
+    def recover_dispatched_unknown(self, *, task_key: str | None = None) -> list[dict]:
+        """将恢复时未封账的已派发任务保守冻结为 unknown，并返回新冻结项。"""
         with self._write_txn():
-            cur = self._conn.execute(
-                "UPDATE tasks SET state='outcome_unknown', "
-                "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
-                "WHERE task_key=? AND state='dispatch_recorded'",
-                (task_key,),
-            )
-            if cur.rowcount:
+            where = "state='dispatch_recorded'"
+            parameters: tuple = ()
+            if task_key is not None:
+                where += " AND task_key=?"
+                parameters = (task_key,)
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE " + where + " ORDER BY task_key",
+                parameters).fetchall()
+            if rows:
+                task_keys = [row["task_key"] for row in rows]
+                self._conn.execute(
+                    "UPDATE tasks SET state='outcome_unknown', "
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                    "WHERE " + where,
+                    parameters)
+                placeholders = ",".join("?" for _ in task_keys)
                 self._conn.execute(
                     "UPDATE task_attempts SET outcome='outcome_unknown', "
                     "detail=COALESCE(detail,'') || 'recovered:dispatch_recorded;' "
-                    "WHERE task_key=? AND outcome='dispatch_recorded'",
-                    (task_key,),
+                    f"WHERE task_key IN ({placeholders}) "
+                    "AND outcome='dispatch_recorded'",
+                    task_keys,
                 )
+            return [dict(row) for row in rows]
+
+    def unresolved_external_actions(self) -> list[dict]:
+        """返回必须人工确认的 unknown 外部动作；不提供自动接管入口。"""
+        rows = self._conn.execute(
+            "SELECT * FROM tasks WHERE state='outcome_unknown' "
+            "AND external_actions>0 ORDER BY task_key").fetchall()
+        return [dict(row) for row in rows]
 
     def complete_existing_local_task(
             self, task_key: str, *, input_id: str, output_ref: str,

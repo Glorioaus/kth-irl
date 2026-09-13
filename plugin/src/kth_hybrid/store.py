@@ -2786,6 +2786,26 @@ class CaseStore:
             )
         return int(cur.lastrowid)
 
+    def ensure_import_record(self, kind: str, origin_path: str,
+                             origin_sha256: str | None,
+                             note: str | None = None) -> int:
+        """按完整来源/内容/审计正文复用同一次导入记录，避免恢复时双写。"""
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT import_id FROM import_records WHERE kind=? "
+                "AND origin_path=? AND origin_sha256 IS ? AND note IS ? "
+                "ORDER BY import_id LIMIT 1",
+                (kind, origin_path, origin_sha256, note),
+            ).fetchone()
+            if row is not None:
+                return int(row["import_id"])
+            cur = self._conn.execute(
+                "INSERT INTO import_records(kind, origin_path, origin_sha256, note) "
+                "VALUES (?,?,?,?)",
+                (kind, origin_path, origin_sha256, note),
+            )
+            return int(cur.lastrowid)
+
     def add_source(self, source_id: str, blob_sha256: str, byte_length: int, *,
                    media_type: str | None = None, locator: str | None = None,
                    retrieved_at: str | None = None, published_at: str | None = None,

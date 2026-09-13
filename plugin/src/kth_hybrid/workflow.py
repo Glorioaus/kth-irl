@@ -119,6 +119,8 @@ class LocalWorkflow:
         self.reviews = ReviewQueue(self.store, self.blobs, self.journal)
         self.proposals = ProposalQueue(
             self.store, self.blobs, self.journal, self.reviews)
+        # 重启时，任何已经派发而尚未封账的动作都必须保守转为 unknown。
+        self.journal.recover_dispatched_unknown()
 
     def _inject_fault(self, point: str) -> None:
         if self._fault_hook is not None:
@@ -238,19 +240,21 @@ class LocalWorkflow:
                         task_key, "local-intake", blob_sha256)
                 blob = self.blobs.put_bytes(data)
                 self._inject_fault("after_attachment_blob_persisted")
-                import_id = self.store.add_import_record(
+                import_note = json.dumps({
+                    "attachment_id": attachment_id,
+                    "alias_id": alias_id,
+                    "status": inspection.status,
+                    "error": inspection.error,
+                    "media_type": inspection.media_type,
+                    "tool": inspection.tool,
+                }, ensure_ascii=False, sort_keys=True)
+                import_id = self.store.ensure_import_record(
                     "attachment" if inspection.status == "saved"
                     else "attachment_attempt",
                     resolved, blob.sha256,
-                    note=json.dumps({
-                        "attachment_id": attachment_id,
-                        "alias_id": alias_id,
-                        "status": inspection.status,
-                        "error": inspection.error,
-                        "media_type": inspection.media_type,
-                        "tool": inspection.tool,
-                    }, ensure_ascii=False, sort_keys=True),
+                    note=import_note,
                 )
+                self._inject_fault("after_attachment_import_record_persisted")
                 source_id = None
                 if inspection.status == "saved":
                     source_id = f"ATT::{blob.sha256}"
@@ -757,11 +761,12 @@ class LocalWorkflow:
         return self.status(job_id)
 
     def status(self, job_id: str) -> dict:
+        self.journal.recover_dispatched_unknown()
         job = self.store.get_workflow_job(job_id)
         if job is None:
             raise WorkflowRejected(f"工作流job不存在：{job_id}")
         if job.get("schema_version") == JOB_SCHEMA_V2:
-            return self._status_v2(job)
+            return self._with_manual_actions(self._status_v2(job))
         required = {
             "schema_version", "job_id", "input_digest", "state", "sources",
             "projections", "case_basis", "case_basis_digest",
@@ -808,6 +813,18 @@ class LocalWorkflow:
                 or any(item["job_id"] != job_id for item in requests):
             raise WorkflowRejected("workflow job与review request身份闭包不一致")
         job["review_requests"] = requests
+        return self._with_manual_actions(job)
+
+    def _with_manual_actions(self, job: dict) -> dict:
+        actions = []
+        for task in self.journal.unresolved_external_actions():
+            actions.append({
+                "task_key": task["task_key"],
+                "state": task["state"],
+                "external_actions": task["external_actions"],
+                "action": "必须人工确认已派发动作的外部结果；不得自动接管、重派或消费",
+            })
+        job["manual_actions"] = actions
         return job
 
     def _status_v2(self, job: dict) -> dict:
