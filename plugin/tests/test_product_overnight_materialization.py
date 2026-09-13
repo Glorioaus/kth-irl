@@ -13,7 +13,11 @@ from kth_hybrid.aggregation_profiles import (
 )
 from kth_hybrid.audit import trace_dimension_result
 from kth_hybrid.catalog import build_catalog_from_wheel
-from kth_hybrid.review_queue import ReviewQueueRejected, build_request
+from kth_hybrid.review_queue import (
+    ReviewQueueRejected,
+    _FORBIDDEN_OUTPUT_KEYS,
+    build_request,
+)
 from kth_hybrid.runner import run_trl_dimension_slice
 from kth_hybrid.workflow import LocalWorkflow, WorkflowRejected
 
@@ -288,6 +292,67 @@ def test_v2_response_rejects_nested_rule_result_fields_before_materialization(
     with pytest.raises(ReviewQueueRejected, match="禁止字段|越权"):
         workflow.reviews.seal_response(
             request["request_id"], response, source_mode="manual_import")
+
+
+def _camel_key(value: str) -> str:
+    parts = value.split("_")
+    return parts[0] + "".join(part.title() for part in parts[1:])
+
+
+def _fullwidth_key(value: str) -> str:
+    return "".join(
+        chr(ord(char) + 0xFEE0) if "!" <= char <= "~" else char
+        for char in _camel_key(value))
+
+
+def _escaped_key(value: str) -> str:
+    return "\\u" + f"{ord(value[0]):04x}" + value[1:]
+
+
+def test_response_seal_rejects_all_forbidden_key_equivalents_in_nested_values(
+        workflow, tmp_path):
+    _catalog, _job, request, response = _prepare_authorized_review(workflow, tmp_path)
+    for forbidden in sorted(_FORBIDDEN_OUTPUT_KEYS):
+        variants = {
+            forbidden,
+            _camel_key(forbidden),
+            _camel_key(forbidden).title(),
+            _fullwidth_key(forbidden),
+            forbidden.replace("_", " - "),
+            _escaped_key(forbidden),
+        }
+        for variant in variants:
+            forged = copy.deepcopy(response)
+            forged["findings"] = {"outer": [{variant: "forged-rule-result"}]}
+            with pytest.raises(ReviewQueueRejected, match="禁止字段|越权"):
+                workflow.reviews.seal_response(
+                    request["request_id"], forged, source_mode="manual_import")
+
+        json_key = _escaped_key(forbidden)
+        forged_json = copy.deepcopy(response)
+        forged_json["findings"] = {
+            "serialized": "{\"nested\":[{\"" + json_key
+            + "\":\"forged-rule-result\"}]}",
+        }
+        with pytest.raises(ReviewQueueRejected, match="禁止字段|越权"):
+            workflow.reviews.seal_response(
+                request["request_id"], forged_json, source_mode="manual_import")
+
+
+def test_response_seal_allows_neutral_text_mentioning_forbidden_key_names(
+        workflow, tmp_path):
+    _catalog, _job, request, response = _prepare_authorized_review(workflow, tmp_path)
+    response["findings"] = {
+        "discussion": (
+            "专业复核只提交证据判断；attainedLevel、FinalDecision 和 "
+            "native_disposition 仅作为禁止字段名称被说明。"),
+        "metadata": {"note": "不对任何成熟度或投资结论赋值"},
+    }
+
+    sealed = workflow.reviews.seal_response(
+        request["request_id"], response, source_mode="manual_import")
+
+    assert sealed["status"] == "response_sealed"
 
 
 @pytest.mark.parametrize("tamper", ["deleted", "rewritten"])
