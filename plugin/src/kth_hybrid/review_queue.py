@@ -242,8 +242,10 @@ class ReviewQueue:
             "case_basis_proof_digest", "qualification_id",
             "qualification_digest", "qualification_input_view_id",
             "qualification_input_view", "canonical_criterion",
+            "catalog_sha256", "catalog_digest",
             "dimension_id", "criterion_id", "evidence_class",
             "requested_use", "allowed_uses", "evaluation_inputs",
+            "evaluation_input_proof_bindings",
             "method_versions", "proposal_response_id", "proposal_source_mode",
             "proposal_producer", "purpose", "output_contract",
         }
@@ -303,6 +305,123 @@ class ReviewQueue:
         return build_authorized_request(
             job_id=job_id, authorization=authorization)
 
+    def validate_authorization_trusted(self, authorization: dict) -> dict:
+        """以当前Case存储和批准目录为信任根核验授权，不接受仅自洽正文。"""
+        authorization = self.validate_authorization(authorization)
+        stored = self.store.get_review_authorization(
+            authorization["authorization_id"])
+        if stored != authorization:
+            raise ReviewQueueRejected("review authorization未在当前Case可信存储登记")
+        claim = self.store.fetch_one(
+            "claims", "claim_id", authorization["claim_id"])
+        if claim is None or claim != (
+                authorization["qualification_input_view"].get("claim")):
+            raise ReviewQueueRejected("review authorization Claim存储闭包断裂")
+        source = self.store.fetch_one(
+            "sources", "source_id", authorization["source_id"])
+        if source is None or source.get("blob_sha256") != \
+                authorization["blob_sha256"]:
+            raise ReviewQueueRejected("review authorization Source存储闭包断裂")
+        projection = self.store.get_text_projection(
+            authorization["projection_id"])
+        if projection is None \
+                or projection.get("source_id") != authorization["source_id"] \
+                or projection.get("source_blob_sha256") != \
+                authorization["blob_sha256"] \
+                or projection.get("locator") != authorization["locator"] \
+                or projection.get("text_sha256") != authorization["quote_sha256"]:
+            raise ReviewQueueRejected("review authorization投影/引文存储闭包断裂")
+        self.blobs.read_bytes(source["blob_sha256"])
+        projection_text = self.blobs.read_bytes(
+            projection["text_blob_sha256"])
+        if sha256_hex(projection_text) != authorization["quote_sha256"]:
+            raise ReviewQueueRejected("review authorization投影文本blob摘要不一致")
+        qualification = self.store.fetch_one(
+            "qualifications", "qual_id", authorization["qualification_id"])
+        if qualification is None \
+                or qualification != authorization["qualification_input_view"].get(
+                    "stored_qualification"):
+            raise ReviewQueueRejected("review authorization Qualification存储闭包断裂")
+        view_row = self.store.get_qualification_input_view(
+            authorization["qualification_input_view_id"])
+        if view_row is None or view_row.get("view") != \
+                authorization["qualification_input_view"]:
+            raise ReviewQueueRejected("review authorization资格输入视图存储闭包断裂")
+        basis = self.store.get_case_basis_version(
+            authorization["case_basis_version"])
+        if basis is None:
+            raise ReviewQueueRejected("review authorization CaseBasis版本不存在")
+        basis_body = {key: value for key, value in basis.items()
+                      if key != "created_at"}
+        if _digest(basis_body, label="CaseBasis") != \
+                authorization["case_basis_digest"]:
+            raise ReviewQueueRejected("review authorization CaseBasis摘要不一致")
+        from .qualification import (
+            resolve_case_basis_proof_bindings,
+            verify_qualification_input_view,
+        )
+
+        proofs, proof_error = resolve_case_basis_proof_bindings(
+            basis, self.store, self.blobs)
+        if proof_error or proofs is None \
+                or _digest(proofs, label="CaseBasis proofs") != \
+                authorization["case_basis_proof_digest"]:
+            raise ReviewQueueRejected("review authorization CaseBasis证明断裂")
+        broken = verify_qualification_input_view(
+            authorization["qualification_input_view"], basis,
+            self.store, self.blobs)
+        if broken:
+            raise ReviewQueueRejected(
+                f"review authorization资格输入视图读时核验失败：{broken}")
+        from .proposal_requests import (
+            _catalog_criterion,
+            approved_catalog,
+            validate_approved_catalog,
+            validate_evaluation_input_bindings,
+        )
+
+        catalog = approved_catalog()
+        catalog_digest = validate_approved_catalog(catalog)
+        if authorization["catalog_digest"] != catalog_digest \
+                or authorization["catalog_sha256"] != catalog["wheel_sha256"]:
+            raise ReviewQueueRejected("review authorization批准catalog身份不一致")
+        criterion = _catalog_criterion(
+            catalog, authorization["dimension_id"],
+            authorization["criterion_id"])
+        if criterion != authorization["canonical_criterion"]:
+            raise ReviewQueueRejected("review authorization canonical准则不是批准正文")
+        proof_bindings = validate_evaluation_input_bindings(
+            authorization["evaluation_inputs"], case=self.store,
+            blobs=self.blobs, subject_scope=basis["subject_legal_name"])
+        if proof_bindings != authorization["evaluation_input_proof_bindings"]:
+            raise ReviewQueueRejected("review authorization评估输入证明绑定不一致")
+        proposal = self.store.get_proposal_response(
+            authorization["proposal_response_id"])
+        if proposal is None \
+                or proposal.get("source_mode") != authorization["proposal_source_mode"] \
+                or proposal.get("producer") != authorization["proposal_producer"] \
+                or authorization["claim_id"] not in {
+                    item.get("claim_id") for item in proposal.get("candidates", [])}:
+            raise ReviewQueueRejected("review authorization候选生产者存储闭包断裂")
+        proposal_blob = self.blobs.read_bytes(proposal["response_blob_sha256"])
+        if sha256_hex(proposal_blob) != proposal["response_digest"] \
+                or proposal["response_id"] != \
+                f"PROPOSALRESP::{proposal['response_digest']}":
+            raise ReviewQueueRejected("review authorization候选响应blob身份断裂")
+        return authorization
+
+    def build_trusted_authorized_request(self, *, job_id: str,
+                                         authorization: dict) -> dict:
+        authorization = self.validate_authorization_trusted(authorization)
+        job = self.store.get_workflow_job(job_id)
+        if job is None or job.get("schema_version") != \
+                "kth-local.workflow-job.v2" \
+                or job.get("evaluation_inputs") != \
+                authorization["evaluation_inputs"]:
+            raise ReviewQueueRejected("review authorization与v2 job冻结输入不一致")
+        return build_authorized_request(
+            job_id=job_id, authorization=authorization)
+
     def validate_request(self, request: dict) -> dict:
         if request.get("schema_version") == REQUEST_SCHEMA_V2:
             if request.get("status") != AWAITING:
@@ -328,7 +447,15 @@ class ReviewQueue:
         return copy.deepcopy(request)
 
     def add_request(self, request: dict) -> dict:
+        if request.get("schema_version") == REQUEST_SCHEMA:
+            raise ReviewQueueRejected(
+                "legacy_restricted：review_request.v1仅保留历史读取")
         request = self.validate_request(request)
+        expected = self.build_trusted_authorized_request(
+            job_id=request["job_id"],
+            authorization=request["authorization"])
+        if expected != request:
+            raise ReviewQueueRejected("review request v2与可信授权/job不一致")
         return self.store.add_review_request(request)
 
     def get_request(self, request_id: str) -> dict:
@@ -352,6 +479,13 @@ class ReviewQueue:
             if request.get(field) != expected[field]:
                 raise ReviewQueueRejected(
                     "review request读时身份无法重建或正文被改写")
+        if request.get("schema_version") == REQUEST_SCHEMA_V2:
+            trusted = self.build_trusted_authorized_request(
+                job_id=request["job_id"], authorization=request["authorization"])
+            for field, value in trusted.items():
+                if field != "status" and request.get(field) != value:
+                    raise ReviewQueueRejected(
+                        "review request v2可信授权/job闭包不一致")
         return request
 
     def _refresh_job_state(self, job_id: str) -> None:
@@ -375,6 +509,21 @@ class ReviewQueue:
     def seal_response(self, request_id: str, response: dict, *,
                       source_mode: str,
                       allow_simulated: bool = False) -> dict:
+        return self._seal_response(
+            request_id, response, source_mode=source_mode,
+            allow_simulated=allow_simulated, allow_legacy_history=False)
+
+    def _seal_response_v1_history_fixture(
+            self, request_id: str, response: dict, *, source_mode: str,
+            allow_simulated: bool = False) -> dict:
+        """仅供历史迁移回归装载v1返回；产品入口不得调用。"""
+        return self._seal_response(
+            request_id, response, source_mode=source_mode,
+            allow_simulated=allow_simulated, allow_legacy_history=True)
+
+    def _seal_response(self, request_id: str, response: dict, *,
+                       source_mode: str, allow_simulated: bool,
+                       allow_legacy_history: bool) -> dict:
         if source_mode not in _ALLOWED_SOURCE_MODES:
             raise ReviewQueueRejected(f"非法source_mode：{source_mode}")
         if source_mode == "runtime_provider":
@@ -382,6 +531,10 @@ class ReviewQueue:
         if source_mode == "simulated" and not allow_simulated:
             raise ReviewQueueRejected("模拟返回必须由接口测试显式启用")
         request = self.get_request(request_id)
+        if request.get("schema_version") == REQUEST_SCHEMA \
+                and not allow_legacy_history:
+            raise ReviewQueueRejected(
+                "legacy_restricted：review_request.v1不得新增response")
         if not isinstance(response, dict):
             raise ReviewQueueRejected("review response必须是对象")
         _validate_json_limits(
@@ -494,8 +647,23 @@ class ReviewQueue:
         return self._validate_stored_response(response)
 
     def consume_response(self, response_id: str, *, worker_id: str) -> dict:
+        return self._consume_response(
+            response_id, worker_id=worker_id, allow_legacy_history=False)
+
+    def _consume_response_v1_history_fixture(
+            self, response_id: str, *, worker_id: str) -> dict:
+        """仅供历史迁移回归推进v1状态；产品入口不得调用。"""
+        return self._consume_response(
+            response_id, worker_id=worker_id, allow_legacy_history=True)
+
+    def _consume_response(self, response_id: str, *, worker_id: str,
+                          allow_legacy_history: bool) -> dict:
         response = self.get_response(response_id)
         request = self.get_request(response["request_id"])
+        if request.get("schema_version") == REQUEST_SCHEMA \
+                and not allow_legacy_history:
+            raise ReviewQueueRejected(
+                "legacy_restricted：review_response.v1仅保留历史读取")
         if response["status"] == "consumed":
             return response
         if response["status"] != "response_sealed" \

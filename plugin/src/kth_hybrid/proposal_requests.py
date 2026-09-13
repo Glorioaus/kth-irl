@@ -75,9 +75,18 @@ def _catalog_body(catalog: dict) -> dict:
 
 
 @lru_cache(maxsize=1)
+def _approved_catalog_value() -> dict:
+    return build_catalog_from_wheel()
+
+
+def approved_catalog() -> dict:
+    return copy.deepcopy(_approved_catalog_value())
+
+
+@lru_cache(maxsize=1)
 def _approved_catalog_digest() -> str:
-    return _digest(
-        _catalog_body(build_catalog_from_wheel()), label="approved catalog")
+    return _digest(_catalog_body(_approved_catalog_value()),
+                   label="approved catalog")
 
 
 def validate_approved_catalog(catalog: dict) -> str:
@@ -176,6 +185,40 @@ def validate_evaluation_inputs(value: dict) -> dict:
     return copy.deepcopy(value)
 
 
+def validate_evaluation_input_bindings(value: dict, *, case: CaseStore,
+                                       blobs: BlobStore,
+                                       subject_scope: str) -> dict:
+    """用既有六维字段解析器核验所有评估输入引用及同记录关系。"""
+    value = validate_evaluation_inputs(value)
+    from .runner import (
+        _resolve_assessment_unit,
+        _resolve_financing_entity,
+        _resolve_frl_applicability,
+    )
+
+    try:
+        unit = _resolve_assessment_unit(
+            case, blobs, value["assessment_unit"], subject_scope)
+        entity = _resolve_financing_entity(
+            case, blobs, value["financing_entity"], subject_scope)
+        applicability, applicability_error = _resolve_frl_applicability(
+            case, blobs, value["frl_applicability"],
+            scope=subject_scope,
+            financing_entity_id=entity["financing_entity_id"])
+    except ValueError as exc:
+        raise ProposalQueueRejected(
+            f"evaluation_inputs字段引用不可核验：{exc}") from exc
+    if applicability_error:
+        raise ProposalQueueRejected(
+            f"evaluation_inputs FRL引用不可核验：{applicability_error}")
+    return {
+        "assessment_unit": unit["proof_bindings"],
+        "financing_entity": entity["proof_bindings"],
+        "frl_applicability": (
+            applicability["proof_bindings"] if applicability else None),
+    }
+
+
 def build_proposal_request(*, job_id: str, payload: dict) -> dict:
     body = {
         "schema_version": REQUEST_SCHEMA,
@@ -228,7 +271,8 @@ def _catalog_criterion(catalog: dict, dimension_id: str,
 
 
 def _claim_from_candidate(request: dict, candidate: dict,
-                          source: dict, *, proposal_response_id: str) -> dict:
+                          source: dict, *, proposal_response_id: str,
+                          proposal_created_at: str | None = None) -> dict:
     media_type = source.get("media_type")
     locator = candidate["locator"]
     if media_type == "application/pdf":
@@ -256,6 +300,8 @@ def _claim_from_candidate(request: dict, candidate: dict,
     digest = claim_content_digest(row)
     row["input_digest"] = digest
     row["content_digest"] = digest
+    if proposal_created_at is not None:
+        row["created_at"] = proposal_created_at
     return row
 
 
@@ -298,12 +344,16 @@ def _authorization(*, request: dict, candidate: dict, criterion: dict,
             f"QUALVIEW::{view['input_digest']}"),
         "qualification_input_view": copy.deepcopy(view),
         "canonical_criterion": copy.deepcopy(criterion),
+        "catalog_sha256": request["catalog_sha256"],
+        "catalog_digest": request["catalog_digest"],
         "dimension_id": candidate["dimension_id"],
         "criterion_id": candidate["criterion_id"],
         "evidence_class": mapping["evidence_class"],
         "requested_use": mapping["requested_use"],
         "allowed_uses": json.loads(qualification["allowed_uses"]),
         "evaluation_inputs": copy.deepcopy(request["evaluation_inputs"]),
+        "evaluation_input_proof_bindings": copy.deepcopy(
+            request["evaluation_input_proof_bindings"]),
         "method_versions": copy.deepcopy(
             request["evaluation_inputs"]["method_versions"]),
         "proposal_response_id": proposal_response["response_id"],
@@ -456,6 +506,34 @@ class ProposalQueue:
             raise ProposalQueueRejected(f"proposal response不存在：{response_id}")
         return self._validate_stored_response(response)
 
+    def _verify_materialized_response(self, response: dict,
+                                      catalog: dict) -> None:
+        materialization = response.get("materialization")
+        required = {
+            "claim_ids", "qualification_view_ids", "authorization_ids",
+            "review_request_ids", "gap_ids", "candidate_statuses",
+        }
+        if not isinstance(materialization, dict) \
+                or set(materialization) != required:
+            raise ProposalQueueRejected("已消费候选缺少完整物化清单")
+        validate_approved_catalog(catalog)
+        for claim_id in materialization["claim_ids"]:
+            if self.store.fetch_one("claims", "claim_id", claim_id) is None:
+                raise ProposalQueueRejected("候选物化Claim引用断裂")
+        for view_id in materialization["qualification_view_ids"]:
+            if self.store.get_qualification_input_view(view_id) is None:
+                raise ProposalQueueRejected("候选物化资格视图引用断裂")
+        for authorization_id in materialization["authorization_ids"]:
+            authorization = self.store.get_review_authorization(authorization_id)
+            if authorization is None:
+                raise ProposalQueueRejected("候选物化authorization授权引用断裂")
+            self.reviews.validate_authorization_trusted(authorization)
+        for request_id in materialization["review_request_ids"]:
+            request = self.reviews.get_request(request_id)
+            if request.get("authorization_id") not in \
+                    materialization["authorization_ids"]:
+                raise ProposalQueueRejected("候选物化专业请求与授权闭包不一致")
+
     def consume_response(self, response_id: str, *, worker_id: str,
                          catalog: dict) -> dict:
         response = self.get_response(response_id)
@@ -463,6 +541,7 @@ class ProposalQueue:
         input_id = response["response_digest"]
         self.journal.ensure_task(task_key, input_id)
         if response["status"] == "consumed":
+            self._verify_materialized_response(response, catalog)
             try:
                 self.journal.complete_existing_local_task(
                     task_key, input_id=input_id, output_ref=response_id,
@@ -473,111 +552,154 @@ class ProposalQueue:
             return response
         if response["status"] != "proposal_response_sealed":
             raise ProposalQueueRejected("proposal response尚未封存")
-        request = self.get_request(response["request_id"])
-        catalog_digest = validate_approved_catalog(catalog)
-        if catalog_digest != request.get("catalog_digest"):
-            raise ProposalQueueRejected("候选消费catalog摘要与请求不一致")
-        source = self.store.fetch_one("sources", "source_id", request["source_id"])
-        if source is None or source.get("blob_sha256") != request["blob_sha256"]:
-            raise ProposalQueueRejected("候选消费时source/blob绑定断裂")
-        basis = self.store.get_case_basis_version(request["case_basis_version"])
-        if basis is None:
-            raise ProposalQueueRejected("候选消费时CaseBasis版本不存在")
-        basis_body = {key: value for key, value in basis.items()
-                      if key != "created_at"}
-        if _digest(basis_body, label="CaseBasis") != request["case_basis_digest"]:
-            raise ProposalQueueRejected("候选消费时CaseBasis摘要变化")
-        proof_bindings, proof_error = resolve_case_basis_proof_bindings(
-            basis, self.store, self.blobs)
-        if proof_error or proof_bindings is None:
-            raise ProposalQueueRejected(f"CaseBasis证明不可核验：{proof_error}")
-        proof_digest = _digest(proof_bindings, label="CaseBasis proofs")
-        if proof_digest != request["case_basis_proof_digest"]:
-            raise ProposalQueueRejected("CaseBasis证明摘要与请求不一致")
-        plans = []
-        statuses = []
-        for candidate in response["candidates"]:
-            candidate = self._validate_candidate(request, candidate)
-            criterion = _catalog_criterion(
-                catalog, candidate["dimension_id"], candidate["criterion_id"])
-            evidence_class = candidate["mapping"]["evidence_class"]
-            if evidence_class not in criterion.get("eligible_evidence_classes", []):
-                raise ProposalQueueRejected("candidate evidence_class不在canonical证据类中")
-            claim = _claim_from_candidate(
-                request, candidate, source,
-                proposal_response_id=response["response_id"])
-            same_body = sum(1 for row in self.store.fetch_all("sources")
-                            if row["blob_sha256"] == source["blob_sha256"])
-            _preview, outcome, proof_errors = build_qualification_input_view(
-                claim, source, None, basis, self.store, self.blobs,
-                same_body_sources=same_body,
-                review_attempt=response["response_id"],
-                case_basis_proofs=proof_bindings,
-            )
-            if isinstance(outcome, GapOutcome):
-                status = "gap"
-                qualification = None
-                authorization = None
-                view = _preview
-                gap = {
-                    "gap_id": f"GAPR::{outcome.claim_id}",
-                    "gap_type": outcome.gap_type,
-                    "affected_criteria": outcome.affected_criteria or [
-                        candidate["criterion_id"]],
-                    "pipeline_fault": outcome.pipeline_fault,
-                    "investigation": outcome.investigation,
-                    "unconfirmed": outcome.unconfirmed,
-                }
-            else:
-                status = outcome.status
-                gap = None
-                qualification = _qualification_row(
-                    outcome, created_at=response["created_at"])
-                view, rebuilt_outcome, proof_errors = \
-                    build_qualification_input_view(
-                        claim, source, qualification, basis, self.store,
-                        self.blobs, same_body_sources=same_body,
-                        review_attempt=response["response_id"],
-                        case_basis_proofs=proof_bindings)
-                if asdict(rebuilt_outcome) != asdict(outcome):
-                    raise ProposalQueueRejected("资格预判与冻结重建不一致")
-                if outcome.status == "qualified":
-                    requested_use = candidate["mapping"]["requested_use"]
-                    if requested_use not in outcome.allowed_uses:
-                        raise ProposalQueueRejected(
-                            "requested_use不在实际资格allowed_uses中")
-                    if proof_errors:
-                        raise ProposalQueueRejected("qualified资格证明闭包仍有错误")
-                    authorization = _authorization(
-                        request=request, candidate=candidate, criterion=criterion,
-                        qualification=qualification, view=view,
-                        case_basis_proof_digest=proof_digest,
-                        proposal_response=response)
-                    self.reviews.validate_authorization(authorization)
-                else:
-                    authorization = None
-            view_id = f"QUALVIEW::{view['input_digest']}"
-            plans.append({
-                "claim": claim,
-                "qualification": qualification,
-                "gap": gap,
-                "qualification_view_id": view_id,
-                "qualification_view": view,
-                "authorization": authorization,
-            })
-            statuses.append({"claim_id": claim["claim_id"], "status": status})
-        materialization = self.store.materialize_candidate_response_atomic(
-            response_id=response_id, request_id=request["request_id"],
-            job_id=request["job_id"], plans=plans,
-            candidate_statuses=statuses,
-            review_request_builder=self.reviews.build_authorized_request,
-        )
+        state = self.journal.task_state(task_key)
+        if state["state"] != "planned":
+            raise ProposalQueueRejected(
+                f"候选消费任务认领被拒：当前状态{state['state']}，"
+                "claimed/dispatch_recorded/outcome_unknown均不得自动接管")
         try:
-            state = self.journal.task_state(task_key)
-            if state["state"] != "succeeded":
-                claim = self.journal.claim(
-                    task_key, worker_id, input_id)
-                self.journal.commit(claim, response_id)
+            consume_claim = self.journal.claim(task_key, worker_id, input_id)
+        except CommitRejected as exc:
+            raise ProposalQueueRejected(f"候选消费任务认领失败：{exc}") from exc
+        try:
+            request = self.get_request(response["request_id"])
+            catalog_digest = validate_approved_catalog(catalog)
+            if catalog_digest != request.get("catalog_digest"):
+                raise ProposalQueueRejected("候选消费catalog摘要与请求不一致")
+            source = self.store.fetch_one(
+                "sources", "source_id", request["source_id"])
+            if source is None or source.get("blob_sha256") != request["blob_sha256"]:
+                raise ProposalQueueRejected("候选消费时source/blob绑定断裂")
+            basis = self.store.get_case_basis_version(request["case_basis_version"])
+            if basis is None:
+                raise ProposalQueueRejected("候选消费时CaseBasis版本不存在")
+            basis_body = {key: value for key, value in basis.items()
+                          if key != "created_at"}
+            if _digest(basis_body, label="CaseBasis") != request["case_basis_digest"]:
+                raise ProposalQueueRejected("候选消费时CaseBasis摘要变化")
+            proof_bindings, proof_error = resolve_case_basis_proof_bindings(
+                basis, self.store, self.blobs)
+            if proof_error or proof_bindings is None:
+                raise ProposalQueueRejected(f"CaseBasis证明不可核验：{proof_error}")
+            proof_digest = _digest(proof_bindings, label="CaseBasis proofs")
+            if proof_digest != request["case_basis_proof_digest"]:
+                raise ProposalQueueRejected("CaseBasis证明摘要与请求不一致")
+            evaluation_proofs = validate_evaluation_input_bindings(
+                request["evaluation_inputs"], case=self.store,
+                blobs=self.blobs, subject_scope=basis["subject_legal_name"])
+            if evaluation_proofs != request["evaluation_input_proof_bindings"]:
+                raise ProposalQueueRejected("评估输入字段证明与请求冻结值不一致")
+            plans = []
+            statuses = []
+            for candidate in response["candidates"]:
+                candidate = self._validate_candidate(request, candidate)
+                criterion = _catalog_criterion(
+                    catalog, candidate["dimension_id"], candidate["criterion_id"])
+                evidence_class = candidate["mapping"]["evidence_class"]
+                if evidence_class not in criterion.get("eligible_evidence_classes", []):
+                    raise ProposalQueueRejected(
+                        "candidate evidence_class不在canonical证据类中")
+                claim = _claim_from_candidate(
+                    request, candidate, source,
+                    proposal_response_id=response["response_id"],
+                    proposal_created_at=response["created_at"])
+                existing_claim = self.store.fetch_one(
+                    "claims", "claim_id", claim["claim_id"])
+                if existing_claim is not None:
+                    if claim_content_digest(existing_claim) != \
+                            claim_content_digest(claim):
+                        raise ProposalQueueRejected(
+                            "既有Claim内容与候选身份冲突")
+                    claim = existing_claim
+                same_body = sum(1 for row in self.store.fetch_all("sources")
+                                if row["blob_sha256"] == source["blob_sha256"])
+                _preview, outcome, proof_errors = build_qualification_input_view(
+                    claim, source, None, basis, self.store, self.blobs,
+                    same_body_sources=same_body,
+                    review_attempt=response["response_id"],
+                    case_basis_proofs=proof_bindings,
+                )
+                if isinstance(outcome, GapOutcome):
+                    status = "gap"
+                    qualification = None
+                    authorization = None
+                    view = _preview
+                    gap = {
+                        "gap_id": f"GAPR::{outcome.claim_id}",
+                        "gap_type": outcome.gap_type,
+                        "affected_criteria": outcome.affected_criteria or [
+                            candidate["criterion_id"]],
+                        "pipeline_fault": outcome.pipeline_fault,
+                        "investigation": outcome.investigation,
+                        "unconfirmed": outcome.unconfirmed,
+                    }
+                else:
+                    status = outcome.status
+                    gap = None
+                    planned_qualification = _qualification_row(
+                        outcome, created_at=response["created_at"])
+                    existing_qualification = self.store.fetch_one(
+                        "qualifications", "qual_id",
+                        planned_qualification["qual_id"])
+                    if existing_qualification is not None:
+                        if qualification_content_digest(existing_qualification) != \
+                                qualification_content_digest(planned_qualification) \
+                                or existing_qualification["status"] != \
+                                planned_qualification["status"] \
+                                or existing_qualification["allowed_uses"] != \
+                                planned_qualification["allowed_uses"]:
+                            raise ProposalQueueRejected(
+                                "既有Qualification内容、状态或allowed_uses冲突")
+                        qualification = existing_qualification
+                    else:
+                        qualification = planned_qualification
+                    view, rebuilt_outcome, proof_errors = \
+                        build_qualification_input_view(
+                            claim, source, qualification, basis, self.store,
+                            self.blobs, same_body_sources=same_body,
+                            review_attempt=response["response_id"],
+                            case_basis_proofs=proof_bindings)
+                    if asdict(rebuilt_outcome) != asdict(outcome):
+                        raise ProposalQueueRejected("资格预判与冻结重建不一致")
+                    if outcome.status == "qualified":
+                        requested_use = candidate["mapping"]["requested_use"]
+                        if requested_use not in outcome.allowed_uses:
+                            raise ProposalQueueRejected(
+                                "requested_use不在实际资格allowed_uses中")
+                        if proof_errors:
+                            raise ProposalQueueRejected("qualified资格证明闭包仍有错误")
+                        authorization = _authorization(
+                            request=request, candidate=candidate,
+                            criterion=criterion, qualification=qualification,
+                            view=view, case_basis_proof_digest=proof_digest,
+                            proposal_response=response)
+                        self.reviews.validate_authorization(authorization)
+                    else:
+                        authorization = None
+                view_id = f"QUALVIEW::{view['input_digest']}"
+                plans.append({
+                    "claim": claim,
+                    "qualification": qualification,
+                    "gap": gap,
+                    "qualification_view_id": view_id,
+                    "qualification_view": view,
+                    "authorization": authorization,
+                })
+                statuses.append({"claim_id": claim["claim_id"], "status": status})
+            materialization = self.store.materialize_candidate_response_atomic(
+                response_id=response_id, request_id=request["request_id"],
+                job_id=request["job_id"], plans=plans,
+                candidate_statuses=statuses,
+                review_request_builder=self.reviews.build_trusted_authorized_request,
+            )
+        except Exception as exc:
+            try:
+                self.journal.record_failure(consume_claim, str(exc))
+            except CommitRejected:
+                pass
+            raise
+        try:
+            self.journal.commit(consume_claim, response_id)
         except CommitRejected as exc:
             raise ProposalQueueRejected(f"候选消费封账失败：{exc}") from exc
         stored = self.get_response(response_id)

@@ -19,7 +19,13 @@ import tempfile
 from pathlib import Path
 from threading import RLock
 
-from .contracts import CASE_STAGES, BlobRef, is_sha256_hex, sha256_hex
+from .contracts import (
+    CASE_STAGES,
+    BlobRef,
+    is_sha256_hex,
+    qualification_content_digest,
+    sha256_hex,
+)
 
 _SCHEMA_VERSION = "kth-hybrid.store.v7"
 
@@ -2065,14 +2071,14 @@ class CaseStore:
                         "INSERT INTO claims(claim_id,source_id,locator_kind,"
                         "locator_start,locator_end,locator_ref,excerpt_sha256,"
                         "excerpt_text,interpretation,subject_scope,"
-                        "interpretation_attempt,input_digest,content_digest) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "interpretation_attempt,input_digest,content_digest,created_at) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         tuple(claim[key] for key in (
                             "claim_id", "source_id", "locator_kind",
                             "locator_start", "locator_end", "locator_ref",
                             "excerpt_sha256", "excerpt_text", "interpretation",
                             "subject_scope", "interpretation_attempt",
-                            "input_digest", "content_digest")))
+                            "input_digest", "content_digest", "created_at")))
                 elif dict(existing).get("content_digest") != claim["content_digest"]:
                     raise StoreIntegrityError("同claim_id已登记不同候选内容")
                 qualification = plan.get("qualification")
@@ -2097,6 +2103,15 @@ class CaseStore:
                              qualification["review_attempt"],
                              qualification["status"],
                              qualification["created_at"]))
+                    else:
+                        actual = dict(existing_qual)
+                        if qualification_content_digest(actual) != \
+                                qualification_content_digest(qualification) \
+                                or actual["status"] != qualification["status"] \
+                                or actual["allowed_uses"] != \
+                                qualification["allowed_uses"]:
+                            raise StoreIntegrityError(
+                                "既有Qualification内容、状态或allowed_uses冲突")
                 gap = plan.get("gap")
                 if gap is not None:
                     gap_ids.append(gap["gap_id"])

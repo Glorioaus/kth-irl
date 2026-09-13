@@ -17,6 +17,7 @@ from .proposal_requests import (
     ProposalQueueRejected,
     build_proposal_request,
     validate_approved_catalog,
+    validate_evaluation_input_bindings,
     validate_evaluation_inputs,
 )
 from .qualification import resolve_case_basis_proof_bindings
@@ -387,6 +388,15 @@ class LocalWorkflow:
     def create_job(self, *, assessment_unit: dict, profile_id: str,
                    method_versions: dict, review_specs: list[dict],
                    resume_failed_creation: bool = False) -> dict:
+        raise WorkflowRejected(
+            "legacy_restricted：workflow-job.v1仅保留历史读取，"
+            "新材料必须创建workflow-job.v2")
+
+    def _create_job_v1_history_fixture(
+            self, *, assessment_unit: dict, profile_id: str,
+            method_versions: dict, review_specs: list[dict],
+            resume_failed_creation: bool = False) -> dict:
+        """仅供历史迁移回归装载v1行；产品入口不得调用。"""
         if not isinstance(resume_failed_creation, bool):
             raise WorkflowRejected("resume_failed_creation必须是显式布尔值")
         if not isinstance(assessment_unit, dict) \
@@ -569,6 +579,12 @@ class LocalWorkflow:
                 f"CaseBasis证明不可核验：{proof_error or '无绑定'}")
         case_basis_proof_digest = _digest(
             proofs, label="CaseBasis proofs")
+        try:
+            evaluation_proof_bindings = validate_evaluation_input_bindings(
+                evaluation, case=self.store, blobs=self.blobs,
+                subject_scope=case_basis["subject_legal_name"])
+        except ProposalQueueRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
         payloads = []
         sources = {}
         projections = {}
@@ -619,6 +635,8 @@ class LocalWorkflow:
                 "case_basis_digest": case_basis_digest,
                 "case_basis_proof_digest": case_basis_proof_digest,
                 "evaluation_inputs": copy.deepcopy(evaluation),
+                "evaluation_input_proof_bindings": copy.deepcopy(
+                    evaluation_proof_bindings),
                 "catalog_sha256": catalog["wheel_sha256"],
                 "catalog_digest": catalog_digest,
                 "purpose": spec["purpose"],
@@ -643,6 +661,8 @@ class LocalWorkflow:
             "case_basis_digest": case_basis_digest,
             "case_basis_proof_digest": case_basis_proof_digest,
             "evaluation_inputs": copy.deepcopy(evaluation),
+            "evaluation_input_proof_bindings": copy.deepcopy(
+                evaluation_proof_bindings),
             "catalog_sha256": catalog["wheel_sha256"],
             "catalog_digest": catalog_digest,
             "proposal_request_input_digests": sorted(
@@ -754,6 +774,7 @@ class LocalWorkflow:
             "schema_version", "input_schema_version", "job_id", "input_digest",
             "state", "sources", "projections", "case_basis",
             "case_basis_digest", "case_basis_proof_digest", "evaluation_inputs",
+            "evaluation_input_proof_bindings",
             "catalog_sha256", "proposal_request_input_digests",
             "catalog_digest",
             "proposal_request_ids", "created_at", "updated_at",
@@ -774,6 +795,8 @@ class LocalWorkflow:
             "case_basis_digest": job["case_basis_digest"],
             "case_basis_proof_digest": job["case_basis_proof_digest"],
             "evaluation_inputs": copy.deepcopy(job["evaluation_inputs"]),
+            "evaluation_input_proof_bindings": copy.deepcopy(
+                job["evaluation_input_proof_bindings"]),
             "catalog_sha256": job["catalog_sha256"],
             "catalog_digest": job["catalog_digest"],
             "proposal_request_input_digests": copy.deepcopy(
