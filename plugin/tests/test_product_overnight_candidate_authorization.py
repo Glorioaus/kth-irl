@@ -10,6 +10,7 @@ import pytest
 
 from kth_hybrid.aggregation_profiles import (
     CURRENT_AGGREGATION_PROFILE_ID,
+    get_evaluation_method_contract,
     get_aggregation_profile,
 )
 from kth_hybrid.audit import _excerpt_bytes_for_claim, _verify_projection
@@ -59,11 +60,7 @@ FRL_APPLICABILITY = {
         "kind": "field_reference", "path": "case:frl.json#/entity"},
     "subject_ref": {"kind": "field_reference", "path": "case:frl.json#/subject"},
 }
-METHODS = {
-    "candidate_proposal": "kth-local.candidate-proposal.v1",
-    "qualification": "kth-hybrid.qualification.v4",
-    "professional_review": "kth-local.professional-review.v2",
-}
+METHODS = get_evaluation_method_contract(CURRENT_AGGREGATION_PROFILE_ID)
 
 
 @pytest.fixture(scope="module")
@@ -285,12 +282,14 @@ def test_v2_job_identity_changes_with_complete_evaluation_input(
     changed = _evaluation_inputs()
     changed["method_versions"]["candidate_proposal"] = \
         "kth-local.candidate-proposal.v2"
-    second = workflow.create_candidate_job(
-        evaluation_inputs=changed,
-        proposal_specs=[_proposal_spec(imported, projection)],
-        catalog=catalog,
-    )
-    assert second["job_id"] != first["job_id"]
+    with pytest.raises(WorkflowRejected, match="method_versions|方法合同"):
+        workflow.create_candidate_job(
+            evaluation_inputs=changed,
+            proposal_specs=[_proposal_spec(imported, projection)],
+            catalog=catalog,
+        )
+    assert workflow.status(first["job_id"])["input_digest"] == \
+        first["input_digest"]
 
 
 @pytest.mark.parametrize("field,value", [

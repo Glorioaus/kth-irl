@@ -9,6 +9,7 @@ import pytest
 
 from kth_hybrid.aggregation_profiles import (
     CURRENT_AGGREGATION_PROFILE_ID,
+    get_evaluation_method_contract,
     get_aggregation_profile,
 )
 from kth_hybrid.audit import trace_dimension_result
@@ -49,11 +50,7 @@ FRL = {
     "financing_entity_ref": {"kind": "field_reference", "path": "case:frl.json#/entity"},
     "subject_ref": {"kind": "field_reference", "path": "case:frl.json#/subject"},
 }
-METHODS = {
-    "candidate_proposal": "kth-local.candidate-proposal.v1",
-    "qualification": "kth-hybrid.qualification.v4",
-    "professional_review": "kth-local.professional-review.v2",
-}
+METHODS = get_evaluation_method_contract(CURRENT_AGGREGATION_PROFILE_ID)
 
 
 def _put_case_provenance(workflow: LocalWorkflow) -> None:

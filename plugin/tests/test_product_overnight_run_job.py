@@ -14,7 +14,7 @@ from kth_hybrid.aggregation_profiles import (
 from kth_hybrid.audit import trace_crl_dimension, trace_dimension_result
 from kth_hybrid.catalog import build_catalog_from_wheel
 from kth_hybrid.proposal_requests import candidate_claim_id
-from kth_hybrid.workflow import LocalWorkflow, LocalWorkflowCrash
+from kth_hybrid.workflow import LocalWorkflow, LocalWorkflowCrash, WorkflowRejected
 
 
 SUBJECT = "武汉微玖光电科技有限公司"
@@ -87,9 +87,22 @@ def _evaluation_inputs() -> dict:
         "profile": {"profile_id": profile["profile_id"],
                     "profile_digest": profile["profile_digest"]},
         "method_versions": {
+            "contract_schema": "kth-local.evaluation-method-contract.v1",
             "candidate_proposal": "kth-local.candidate-proposal.v1",
             "qualification": "kth-hybrid.qualification.v4",
             "professional_review": "kth-local.professional-review.v2",
+            "catalog_sha256": profile["catalog_sha256"],
+            "profile_id": profile["profile_id"],
+            "profile_digest": profile["profile_digest"],
+            **{
+                f"{dimension.lower()}_rule_version": values["rule_version"]
+                for dimension, values in profile["dimensions"].items()
+            },
+            **{
+                f"{dimension.lower()}_result_schema_version":
+                    values["result_schema_version"]
+                for dimension, values in profile["dimensions"].items()
+            },
         },
     }
 
@@ -235,3 +248,77 @@ def test_run_job_reuses_registered_dimension_after_controlled_crash(workflow, tm
     assert resumed["state"] == "completed"
     assert next(row for row in resumed["dimension_outputs"]
                 if row["dimension_id"] == "CRL")["result_id"] == first[0]["result_id"]
+
+
+@pytest.mark.parametrize("tamper", [
+    "qualification", "rule_version", "result_schema", "catalog", "missing_dimension",
+])
+def test_create_candidate_job_rejects_unregistered_method_contract(
+        workflow, tmp_path, tamper):
+    job = _candidate_job(workflow, tmp_path)
+    request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+    inputs = _evaluation_inputs()
+    methods = inputs["method_versions"]
+    if tamper == "qualification":
+        methods["qualification"] = "forged.qualification.v99"
+    elif tamper == "rule_version":
+        methods["trl_rule_version"] = "forged.trl.v99"
+    elif tamper == "result_schema":
+        methods["crl_result_schema_version"] = "forged.schema.v99"
+    elif tamper == "catalog":
+        methods["catalog_sha256"] = "0" * 64
+    else:
+        del methods["frl_rule_version"]
+
+    with pytest.raises(WorkflowRejected, match="method_versions|方法合同|资格|profile"):
+        workflow.create_candidate_job(
+            evaluation_inputs=inputs,
+            proposal_specs=[{
+                "source_id": request["source_id"],
+                "blob_sha256": request["blob_sha256"],
+                "projection_id": request["projection_id"],
+                "locator": request["locator"],
+                "quote": request["quote"],
+                "purpose": "伪造方法合同反例",
+                "output_schema": "proposal_response.v1",
+            }],
+            catalog=build_catalog_from_wheel(),
+        )
+
+
+def test_run_job_rejects_and_marks_failed_when_frozen_method_contract_is_forged(
+        workflow, tmp_path):
+    job = _candidate_job(workflow, tmp_path)
+    _consume_full_trl_path(workflow, job)
+    with workflow.store._conn:
+        row = workflow.store._conn.execute(
+            "SELECT body_json FROM workflow_jobs WHERE job_id=?", (job["job_id"],)).fetchone()
+        body = json.loads(row["body_json"])
+        body["evaluation_inputs"]["method_versions"]["qualification"] = \
+            "forged.qualification.v99"
+        workflow.store._conn.execute(
+            "UPDATE workflow_jobs SET body_json=? WHERE job_id=?",
+            (json.dumps(body, ensure_ascii=False, sort_keys=True), job["job_id"]),
+        )
+
+    with pytest.raises(WorkflowRejected, match="method_versions|方法合同|资格"):
+        workflow.run_job(job["job_id"])
+
+    assert workflow.store.get_workflow_job(job["job_id"])["state"] == "failed"
+
+
+def test_run_job_rejects_runtime_runner_version_drift_before_trl_execution(
+        workflow, tmp_path, monkeypatch):
+    job = _candidate_job(workflow, tmp_path)
+    _consume_full_trl_path(workflow, job)
+    import kth_hybrid.kernels.trl as trl_kernel
+
+    monkeypatch.setattr(trl_kernel, "RULE_VERSION", "forged.trl.runner.v99")
+
+    with pytest.raises(WorkflowRejected, match="TRL runner方法版本"):
+        workflow.run_job(job["job_id"])
+
+    assert workflow.store.get_workflow_job(job["job_id"])["state"] == "failed"
+    assert {row["dimension_id"] for row in
+            workflow.store.fetch_workflow_job_dimension_outputs(job["job_id"])} == {
+                "BRL", "CRL"}
