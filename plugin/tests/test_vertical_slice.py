@@ -223,7 +223,7 @@ def test_counting_simulated_provider_dispatches_exactly_once(tmp_path):
         journal.close()
 
 
-def test_crash_after_dispatch_is_outcome_unknown_no_blind_redispatch(tmp_path):
+def test_same_process_dispatch_crash_waits_for_owner_without_blind_redispatch(tmp_path):
     blobs = BlobStore(tmp_path / "blobs")
     journal = Journal(tmp_path / "journal.sqlite3")
     try:
@@ -233,7 +233,7 @@ def test_crash_after_dispatch_is_outcome_unknown_no_blind_redispatch(tmp_path):
                              crash_after_dispatch=True)
         assert journal.task_state("mission-c")["state"] == "dispatch_recorded"
         journal.mark_recovered_unknown("mission-c")
-        assert journal.task_state("mission-c")["state"] == "outcome_unknown"
+        assert journal.task_state("mission-c")["state"] == "dispatch_recorded"
         with pytest.raises(CommitRejected):
             provider.execute("mission-c", "input-1", lambda: b"resp")
         assert provider.dispatch_count == 1

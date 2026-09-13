@@ -597,7 +597,7 @@ class TestR104JournalAtomicity:
 
 
 def _claim_then_hard_exit(db_path: Path, *, task_key: str, worker_id: str,
-                          input_id: str) -> None:
+                          input_id: str, record_dispatch: bool = False) -> None:
     plugin_src = Path(__file__).resolve().parents[1] / "src"
     script = textwrap.dedent(f"""
         import os
@@ -606,7 +606,9 @@ def _claim_then_hard_exit(db_path: Path, *, task_key: str, worker_id: str,
         from kth_hybrid.journal import Journal
 
         journal = Journal(sys.argv[1])
-        journal.claim({task_key!r}, {worker_id!r}, {input_id!r})
+        claim = journal.claim({task_key!r}, {worker_id!r}, {input_id!r})
+        if {record_dispatch!r}:
+            journal.record_dispatch(claim)
         os._exit(0)
     """)
     result = subprocess.run(
@@ -650,10 +652,13 @@ class TestR105Recovery:
 
     def test_dispatched_claim_takeover_requires_evidence_and_marks_unknown(
             self, tmp_path):
-        j = Journal(tmp_path / "journal.sqlite3")
+        db_path = tmp_path / "journal.sqlite3"
+        _claim_then_hard_exit(
+            db_path, task_key="task", worker_id="dead-worker", input_id="input",
+            record_dispatch=True)
+        j = Journal(db_path)
         try:
-            claim = j.claim("task", "dead-worker", "input")
-            j.record_dispatch(claim)  # 已有外部动作
+            assert j.task_state("task")["state"] == "dispatch_recorded"
             # 已派发的失效认领：接管必须保守（先标unknown，不允许静默重派）
             with pytest.raises(CommitRejected):
                 j.takeover_stale_claim("task", "new-worker", "input",

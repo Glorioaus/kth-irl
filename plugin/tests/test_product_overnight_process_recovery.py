@@ -144,6 +144,8 @@ def _child_script(tmp_path: Path) -> Path:
                           "review_id": materialized["review_id"]}
             elif mode == "run_job":
                 result = workflow.run_job(payload["job_id"])
+            elif mode == "status_job":
+                result = workflow.status(payload["job_id"])
             elif mode == "resume_job":
                 result = workflow.resume_failed_job(payload["job_id"])
             else:
@@ -523,6 +525,11 @@ def test_journal_migrates_legacy_task_lease_columns_without_rewriting_history(tm
                 ('legacy-claimed','claimed','legacy-input');
             INSERT INTO task_attempts(task_key,token,worker_id,input_id,outcome)
                 VALUES('legacy-claimed',1,'legacy-worker','legacy-input','claimed');
+            INSERT INTO tasks(task_key,state,input_id,external_actions) VALUES
+                ('legacy-dispatch','dispatch_recorded','legacy-dispatch-input',1);
+            INSERT INTO task_attempts(task_key,token,worker_id,input_id,outcome)
+                VALUES('legacy-dispatch',2,'legacy-worker',
+                       'legacy-dispatch-input','dispatch_recorded');
         """)
         connection.commit()
     finally:
@@ -542,6 +549,17 @@ def test_journal_migrates_legacy_task_lease_columns_without_rewriting_history(tm
                 evidence="旧任务没有可核验本地进程租约")
         fresh = journal.claim("fresh-after-migration", "fresh-worker", "fresh-input")
         assert journal.task_state(fresh.task_key)["owner_pid"] == os.getpid()
+        assert journal.recover_dispatched_unknown() == []
+        assert journal.task_state("legacy-dispatch")["state"] == \
+            "dispatch_recorded"
+        recovered = journal.recover_dispatched_unknown(
+            manual_recovery_evidence="旧Journal无owner_pid，人工确认未获得外部结果")
+        assert [row["task_key"] for row in recovered] == ["legacy-dispatch"]
+        assert recovered[0]["recovery_judgment"] == \
+            "legacy_missing_owner_pid_manual_evidence"
+        assert journal.task_state("legacy-dispatch")["state"] == \
+            "outcome_unknown"
+        assert "manual_evidence" in journal.attempts("legacy-dispatch")[0]["detail"]
     finally:
         journal.close()
 
@@ -714,17 +732,11 @@ def test_process_dispatch_unknown_never_auto_consumes_or_redispatches(tmp_path):
     finally:
         journal.close()
 
-    with LocalWorkflow(case_dir) as workflow:
-        recovered = workflow.status(job["job_id"])
-        actions = recovered["manual_actions"]
-        assert any(action["task_key"] == task_key
-                   and action["state"] == "outcome_unknown"
-                   and "人工" in action["action"]
-                   for action in actions)
-        assert workflow.run_job(job["job_id"])["state"] == \
-            "proposal_response_sealed"
-        assert workflow.resume_failed_job(job["job_id"])["state"] == \
-            "proposal_response_sealed"
+    recovered = _run_child(tmp_path, case_dir, "status_job", {
+        "job_id": job["job_id"],
+    }, processes)
+    assert recovered.returncode == 0, recovered.stderr
+    _assert_child_loaded_current_source(recovered)
     journal = Journal(case_dir / "records.sqlite3")
     try:
         state = journal.task_state(task_key)
@@ -763,3 +775,28 @@ def test_process_dispatch_unknown_never_auto_consumes_or_redispatches(tmp_path):
         assert workflow.run_job(job["job_id"])["state"] == "proposal_response_sealed"
         assert workflow.resume_failed_job(job["job_id"])["state"] == \
             "proposal_response_sealed"
+
+
+def test_active_dispatch_stays_recorded_until_owner_commits_late_result(tmp_path):
+    case_dir = tmp_path / "case-active-dispatch"
+    job = _create_candidate_job(case_dir, tmp_path, tag="e4-active-dispatch")
+    with LocalWorkflow(case_dir) as workflow:
+        request = workflow.proposals.get_request(job["proposal_request_ids"][0])
+        sealed = workflow.proposals.seal_response(
+            request["request_id"], _proposal_response(request),
+            source_mode="manual_import")
+        task_key = f"proposal-consume:{sealed['response_id']}"
+        workflow.journal.ensure_task(task_key, sealed["response_digest"])
+        claim = workflow.journal.claim(
+            task_key, "e4-active-dispatch", sealed["response_digest"])
+        workflow.journal.record_dispatch(claim)
+
+        status = workflow.status(job["job_id"])
+        state = workflow.journal.task_state(task_key)
+        assert state["state"] == "dispatch_recorded"
+        assert any(action["task_key"] == task_key
+                   and action["state"] == "dispatch_recorded"
+                   and "等待" in action["action"]
+                   for action in status["manual_actions"])
+        workflow.journal.commit(claim, sealed["response_id"])
+        assert workflow.journal.task_state(task_key)["state"] == "succeeded"
