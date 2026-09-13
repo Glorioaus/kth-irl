@@ -86,6 +86,16 @@ def _json(result: subprocess.CompletedProcess[str]):
     return json.loads(result.stdout)
 
 
+def _provenance_binding_value(index: dict, package: Path, binding: dict):
+    record = next(item for item in index["records"]
+                  if item["origin_sha256"] == binding["origin_sha256"])
+    value = json.loads(
+        (package / record["export_blob_path"]).read_text(encoding="utf-8"))
+    for token in binding["field_tokens"]:
+        value = value[token]
+    return value
+
+
 def _write_docx(path: Path) -> None:
     docx = pytest.importorskip("docx")
     document = docx.Document()
@@ -134,6 +144,15 @@ def _case_and_projection(tmp_path: Path):
         "--file", str(financing_file), "--file", str(frl_file),
         "--file", str(source_file),
     ))
+    # CLI 已封存的原件在本测试中显式登记为 Case provenance，随后 v2 job
+    # 只能通过字段引用读取这些原件，不能把调用方 JSON 当作事实。
+    with CaseStore(case_dir / "records.sqlite3") as store:
+        for item in imported:
+            if item["origin_path"] in {
+                    str(identity_file), str(units_file), str(financing_file),
+                    str(frl_file)}:
+                store.add_import_record(
+                    "case_provenance", item["origin_path"], item["blob_sha256"])
     source = next(item for item in imported
                   if item["origin_path"] == str(source_file))
     projected = _json(_run(
@@ -263,10 +282,11 @@ def test_resume_requires_exact_failed_job_and_calls_controlled_resume(tmp_path):
         "resume", "--case-dir", str(case_dir), "--job-id", job["job_id"]))
     assert resumed["job_id"] == job["job_id"]
     assert resumed["state"] == "awaiting_candidate_proposal"
-    _run(
-        "resume", "--case-dir", str(case_dir), "--job-id", job["job_id"],
-        ok=False,
-    )
+    repeated = _json(_run(
+        "resume", "--case-dir", str(case_dir), "--job-id", job["job_id"]))
+    assert repeated["job_id"] == job["job_id"]
+    assert repeated["state"] == resumed["state"]
+    assert repeated["updated_at"] == resumed["updated_at"]
 
 
 def test_review_commands_route_candidate_request_by_exact_id_and_lifecycle(tmp_path):
@@ -420,6 +440,7 @@ def test_export_creates_new_verification_package_with_verified_hash_manifest(tmp
     names = {item["path"] for item in manifest["files"]}
     assert {
         "job.json", "status.json", "sources.json", "projections.json",
+        "case-provenance.json",
         "proposal-requests.json", "proposal-responses.json",
         "review-requests.json", "review-responses.json",
     } <= names
@@ -443,6 +464,26 @@ def test_export_creates_new_verification_package_with_verified_hash_manifest(tmp
         blob = (detached / source["export_blob_path"]).read_bytes()
         assert len(blob) == source["byte_length"]
         assert hashlib.sha256(blob).hexdigest() == source["blob_sha256"]
+    provenance = json.loads(
+        (detached / "case-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["job_id"] == job["job_id"]
+    assert provenance["case_basis_proof_digest"] == job["case_basis_proof_digest"]
+    assert provenance["evaluation_input_proof_bindings"] == \
+        job["evaluation_input_proof_bindings"]
+    assert len(provenance["records"]) == 4
+    for record in provenance["records"]:
+        blob = (detached / record["export_blob_path"]).read_bytes()
+        assert len(blob) == record["byte_length"]
+        assert hashlib.sha256(blob).hexdigest() == record["origin_sha256"]
+    proof_bindings = provenance["proof_bindings"]
+    assert _provenance_binding_value(
+        provenance, detached, proof_bindings["case_basis"]["subject"]) == SUBJECT
+    for group in proof_bindings["evaluation_inputs"].values():
+        if group is None:
+            continue
+        for binding in group.values():
+            assert _provenance_binding_value(
+                provenance, detached, binding) == binding["value"]
     _run(
         "export", "--case-dir", str(tmp_path / "case-unavailable"),
         "--job-id", job["job_id"], "--output-dir", str(output), ok=False)
