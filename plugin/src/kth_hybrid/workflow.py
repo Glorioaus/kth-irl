@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from .aggregate import (
     build_offline_dimension_view,
@@ -104,9 +104,14 @@ def _require_bounded_json(value, *, label: str, max_bytes: int,
 class LocalWorkflow:
     """单Case本地工作流；所有持久记录共用 ``records.sqlite3``。"""
 
-    def __init__(self, case_dir: Path | str):
+    def __init__(self, case_dir: Path | str, *,
+                 fault_hook: Callable[[str], None] | None = None):
         self.case_dir = Path(case_dir)
         self.case_dir.mkdir(parents=True, exist_ok=True)
+        if fault_hook is not None and not callable(fault_hook):
+            raise TypeError("fault_hook必须是可调用对象或null")
+        # 仅受控本地故障测试注入；CLI和普通工作流不传入该回调。
+        self._fault_hook = fault_hook
         self.blobs = BlobStore(self.case_dir / "blobs")
         self.db_path = self.case_dir / "records.sqlite3"
         self.store = CaseStore(self.db_path)
@@ -114,6 +119,10 @@ class LocalWorkflow:
         self.reviews = ReviewQueue(self.store, self.blobs, self.journal)
         self.proposals = ProposalQueue(
             self.store, self.blobs, self.journal, self.reviews)
+
+    def _inject_fault(self, point: str) -> None:
+        if self._fault_hook is not None:
+            self._fault_hook(point)
 
     def initialize_case(self, *, subject_legal_name: str,
                         subject_aliases: list[str], evidence_cutoff: str,
@@ -216,9 +225,19 @@ class LocalWorkflow:
             task_key = f"attachment-import:{alias_id}"
             self.journal.ensure_task(task_key, blob_sha256)
             try:
-                claim = self.journal.claim(
-                    task_key, "local-intake", blob_sha256)
+                task_state = self.journal.task_state(task_key)
+                if task_state["state"] == "claimed":
+                    claim = self.journal.takeover_stale_claim(
+                        task_key, "local-intake", blob_sha256,
+                        evidence=(
+                            "附件原件已按冻结SHA256重读；前次本地认领未登记"
+                            "附件/来源业务对象，现以孤立blob恢复"),
+                    )
+                else:
+                    claim = self.journal.claim(
+                        task_key, "local-intake", blob_sha256)
                 blob = self.blobs.put_bytes(data)
+                self._inject_fault("after_attachment_blob_persisted")
                 import_id = self.store.add_import_record(
                     "attachment" if inspection.status == "saved"
                     else "attachment_attempt",
@@ -1189,6 +1208,8 @@ class LocalWorkflow:
                     job=job, catalog=catalog, case_basis=case_basis,
                     dimension_id=dimension_id,
                     allowed_review_ids=allowed_review_ids)
+                self._inject_fault(
+                    f"after_dimension_output_registered:{dimension_id}")
                 if crash_after_dimension == dimension_id:
                     raise LocalWorkflowCrash(
                         f"workflow job在{dimension_id}维度登记后受控中断")
