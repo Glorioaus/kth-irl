@@ -160,9 +160,118 @@ class LocalWorkflow:
             "status": alias.get("status", row.get("status")),
             "error": alias.get("error", row.get("error")),
             "import_id": alias.get("import_id", row.get("import_id")),
-            "source_id": row.get("source_id"),
+            "source_id": (alias.get("source_id") if alias.get("status") == "saved"
+                          else row.get("source_id")),
             "created_at": alias.get("created_at", row.get("created_at")),
         }
+
+    def _verify_existing_attachment_alias_closure(
+            self, *, existing: dict, alias: dict, data: bytes,
+            blob_sha256: str, attachment_id: str, alias_body: dict,
+            alias_id: str, import_kind: str, import_note: str,
+            expected_source_id: str | None, byte_length: int) -> None:
+        """既有附件业务对象只能在完整审计和引用闭包可重建时补 Journal 封账。"""
+        if self.blobs.read_bytes(blob_sha256) != data:
+            raise WorkflowRejected("既有附件blob与本次冻结原件字节不一致")
+        expected_attachment = {
+            "attachment_id": attachment_id,
+            "blob_sha256": blob_sha256,
+            "byte_length": byte_length,
+        }
+        if any(existing.get(key) != value
+               for key, value in expected_attachment.items()):
+            raise WorkflowRejected("既有附件业务对象与冻结原件身份或来源闭包不一致")
+        imports = [
+            row for row in self.store.fetch_all("import_records")
+            if row.get("kind") == import_kind
+            and row.get("origin_path") == alias_body["origin_path"]
+            and row.get("origin_sha256") == blob_sha256
+            and row.get("note") == import_note
+        ]
+        if len(imports) != 1:
+            raise WorkflowRejected("既有附件审计kind/path/blob/note闭包不唯一或缺失")
+        import_id = imports[0]["import_id"]
+        expected_alias = {
+            **alias_body,
+            "alias_id": alias_id,
+            "import_id": import_id,
+            "source_id": expected_source_id,
+        }
+        if any(alias.get(key) != value for key, value in expected_alias.items()):
+            raise WorkflowRejected("既有附件alias与冻结审计闭包不一致")
+        if expected_source_id is None:
+            return
+        source = self.store.fetch_one("sources", "source_id", expected_source_id)
+        source_import = (self.store.fetch_one(
+            "import_records", "import_id", source["import_id"])
+            if source is not None else None)
+        source_alias = (self.store.get_attachment_alias(
+            attachment_id, source["locator"])
+            if source is not None and source.get("locator") else None)
+        if source is None or any(source.get(key) != value for key, value in {
+                "blob_sha256": blob_sha256,
+                "byte_length": byte_length,
+                "capture_status": "attachment_saved",
+                "source_family": "owner_attachment",
+        }.items()) or source_import is None or any(
+                source_import.get(key) != value for key, value in {
+                    "kind": "attachment",
+                    "origin_path": source["locator"],
+                    "origin_sha256": blob_sha256,
+                }.items()) or source_alias is None or any(
+                source_alias.get(key) != value for key, value in {
+                    "attachment_id": attachment_id,
+                    "source_id": expected_source_id,
+                    "import_id": source["import_id"],
+                    "media_type": source["media_type"],
+                    "status": "saved",
+                }.items()):
+            raise WorkflowRejected("既有附件source与alias/审计闭包不一致")
+
+    def _verify_historical_attachment_alias_closure(
+            self, *, existing: dict, alias: dict, data: bytes,
+            blob_sha256: str, alias_body: dict, alias_id: str) -> None:
+        """旧迁移的 alias 使用保留的 import/source 身份，不生成新版任务。"""
+        if self.blobs.read_bytes(blob_sha256) != data or any(
+                existing.get(key) != value for key, value in {
+                    "attachment_id": alias_body["attachment_id"],
+                    "blob_sha256": blob_sha256,
+                    "byte_length": len(data),
+                }.items()):
+            raise WorkflowRejected("历史附件原件/blob/业务对象来源闭包不一致")
+        if any(alias.get(key) != value for key, value in {
+                **alias_body, "alias_id": alias_id,
+        }.items()):
+            raise WorkflowRejected("历史附件alias路径及媒体身份闭包不一致")
+        audit = self.store.fetch_one(
+            "import_records", "import_id", alias.get("import_id"))
+        kind = "attachment" if alias["status"] == "saved" else "attachment_attempt"
+        if audit is None or any(audit.get(key) != value for key, value in {
+                "kind": kind, "origin_path": alias["origin_path"],
+                "origin_sha256": blob_sha256,
+        }.items()):
+            raise WorkflowRejected("历史附件alias审计来源闭包不一致")
+        if audit.get("note"):
+            try:
+                note = json.loads(audit["note"])
+            except (TypeError, ValueError):
+                note = None
+            if isinstance(note, dict) and {"attachment_id", "alias_id", "status"} <= note.keys():
+                raise WorkflowRejected("新版附件审计不得冒充无任务的历史迁移来源")
+        if alias["status"] != "saved":
+            if alias.get("source_id") is not None:
+                raise WorkflowRejected("历史未保存附件alias存在错误source引用")
+            return
+        source = self.store.fetch_one("sources", "source_id", alias.get("source_id"))
+        if source is None or any(source.get(key) != value for key, value in {
+                "blob_sha256": blob_sha256, "byte_length": len(data),
+                "media_type": alias["media_type"],
+                "locator": alias["origin_path"],
+                "capture_status": "attachment_saved",
+                "source_family": "owner_attachment",
+                "import_id": alias["import_id"],
+        }.items()):
+            raise WorkflowRejected("历史附件source与alias审计来源闭包不一致")
 
     def import_attachments(self, paths: list[Path | str]) -> list[dict]:
         if not isinstance(paths, (list, tuple)) or not paths \
@@ -207,12 +316,6 @@ class LocalWorkflow:
             existing = self.store.get_attachment_import(
                 origin_path=resolved, blob_sha256=blob_sha256,
                 media_type=inspection.media_type)
-            if existing is not None:
-                alias = self.store.get_attachment_alias(
-                    existing["attachment_id"], resolved)
-                if alias is not None:
-                    results.append(self._attachment_result(existing, alias))
-                    continue
             attachment_id = (existing["attachment_id"] if existing is not None
                              else f"ATTACH::{blob_sha256}")
             alias_body = {
@@ -225,6 +328,59 @@ class LocalWorkflow:
             }
             alias_id = f"ATTALIAS::{_digest(alias_body, label='附件来源别名')}"
             task_key = f"attachment-import:{alias_id}"
+            import_kind = (
+                "attachment" if inspection.status == "saved"
+                else "attachment_attempt")
+            import_note = json.dumps({
+                "attachment_id": attachment_id,
+                "alias_id": alias_id,
+                "status": inspection.status,
+                "error": inspection.error,
+                "media_type": inspection.media_type,
+                "tool": inspection.tool,
+            }, ensure_ascii=False, sort_keys=True)
+            expected_source_id = (
+                f"ATT::{blob_sha256}" if inspection.status == "saved" else None)
+            alias = (self.store.get_attachment_alias(
+                attachment_id, resolved) if existing is not None else None)
+            try:
+                task_state = self.journal.task_state(task_key)
+            except KeyError:
+                task_state = None
+            if alias is not None:
+                historical_unclaimed = (task_state is not None
+                                        and task_state["state"] == "planned"
+                                        and not self.journal.attempts(task_key))
+                if task_state is None or historical_unclaimed:
+                    if historical_unclaimed and task_state["input_id"] != blob_sha256:
+                        raise WorkflowRejected(
+                            "历史附件孤立planned任务输入与冻结原件不一致")
+                    self._verify_historical_attachment_alias_closure(
+                        existing=existing, alias=alias, data=data,
+                        blob_sha256=blob_sha256, alias_body=alias_body,
+                        alias_id=alias_id)
+                    results.append(self._attachment_result(existing, alias))
+                    continue
+                self._verify_existing_attachment_alias_closure(
+                    existing=existing, alias=alias, data=data,
+                    blob_sha256=blob_sha256, attachment_id=attachment_id,
+                    alias_body=alias_body, alias_id=alias_id,
+                    import_kind=import_kind, import_note=import_note,
+                    expected_source_id=expected_source_id,
+                    byte_length=len(data))
+                try:
+                    self.journal.complete_existing_local_task(
+                        task_key, input_id=blob_sha256, output_ref=alias_id,
+                        worker_id="local-intake-recovery",
+                        evidence=(
+                            "既有附件审计kind/path/blob/note及alias/source闭包"
+                            "已按冻结原件逐字核验"),
+                    )
+                except CommitRejected as exc:
+                    raise WorkflowRejected(
+                        f"既有附件Journal封账被拒：{exc}") from exc
+                results.append(self._attachment_result(existing, alias))
+                continue
             self.journal.ensure_task(task_key, blob_sha256)
             try:
                 task_state = self.journal.task_state(task_key)
@@ -240,24 +396,15 @@ class LocalWorkflow:
                         task_key, "local-intake", blob_sha256)
                 blob = self.blobs.put_bytes(data)
                 self._inject_fault("after_attachment_blob_persisted")
-                import_note = json.dumps({
-                    "attachment_id": attachment_id,
-                    "alias_id": alias_id,
-                    "status": inspection.status,
-                    "error": inspection.error,
-                    "media_type": inspection.media_type,
-                    "tool": inspection.tool,
-                }, ensure_ascii=False, sort_keys=True)
                 import_id = self.store.ensure_import_record(
-                    "attachment" if inspection.status == "saved"
-                    else "attachment_attempt",
+                    import_kind,
                     resolved, blob.sha256,
                     note=import_note,
                 )
                 self._inject_fault("after_attachment_import_record_persisted")
                 source_id = None
                 if inspection.status == "saved":
-                    source_id = f"ATT::{blob.sha256}"
+                    source_id = expected_source_id
                     source = self.store.fetch_one(
                         "sources", "source_id", source_id)
                     if source is None:
@@ -299,6 +446,7 @@ class LocalWorkflow:
                     "import_id": import_id,
                     "source_id": source_id,
                 })
+                self._inject_fault("after_attachment_alias_persisted")
                 self.journal.commit(claim, alias_id)
             except Exception as exc:
                 try:

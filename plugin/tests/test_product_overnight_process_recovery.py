@@ -107,6 +107,7 @@ def _child_script(tmp_path: Path) -> Path:
         workflow_fault_points = {
             "after_attachment_blob_persisted",
             "after_attachment_import_record_persisted",
+            "after_attachment_alias_persisted",
             "after_dimension_output_registered:CRL",
         }
         workflow = LocalWorkflow(
@@ -462,6 +463,93 @@ def test_process_crash_after_attachment_persistence_recovers_same_attachment_onc
         assert state["external_actions"] == 0
         assert state["output_ref"].startswith("ATTALIAS::")
         assert len(journal.takeover_events(task_key)) == 1
+    finally:
+        journal.close()
+
+
+def test_process_crash_after_attachment_alias_before_commit_closes_exact_task(tmp_path):
+    case_dir = tmp_path / "case-alias-commit"
+    attachment = tmp_path / "e4-alias-commit.docx"
+    _write_docx(attachment, "E4附件：alias已落库但Journal封账前硬退出。")
+    processes: list[dict] = []
+
+    first = _run_child(tmp_path, case_dir, "import", {
+        "paths": [str(attachment)],
+        "fault_point": "after_attachment_alias_persisted",
+        "exit_code": CHILD_EXIT,
+    }, processes)
+    assert first.returncode == CHILD_EXIT
+    _assert_child_loaded_current_source(first)
+    before = _case_snapshot(case_dir)
+    assert before["counts"]["attachment_imports"] == 1
+    assert before["counts"]["attachment_aliases"] == 1
+    assert before["counts"]["sources"] == 1
+    assert before["counts"]["import_records"] == 1
+
+    second = _run_child(tmp_path, case_dir, "import", {
+        "paths": [str(attachment)],
+    }, processes)
+    assert second.returncode == 0, second.stderr
+    _assert_child_loaded_current_source(second)
+    after = _case_snapshot(case_dir)
+    evidence = _save_evidence(
+        case_dir, "E4-attachment-alias-before-commit", before=before,
+        after=after, processes=processes)
+
+    assert evidence.is_file()
+    assert after["counts"] == before["counts"]
+    journal = Journal(case_dir / "records.sqlite3")
+    try:
+        row = journal._conn.execute(
+            "SELECT task_key FROM tasks WHERE task_key LIKE 'attachment-import:%'"
+        ).fetchone()
+        assert row is not None
+        state = journal.task_state(row["task_key"])
+        assert state["state"] == "succeeded"
+        assert state["output_ref"].startswith("ATTALIAS::")
+        assert len(journal.attempts(row["task_key"])) == 2
+        assert len(journal.takeover_events(row["task_key"])) == 1
+    finally:
+        journal.close()
+
+
+@pytest.mark.parametrize("tamper", ["note", "alias_import", "source_blob", "source_import"])
+def test_attachment_alias_commit_recovery_rejects_rewritten_import_audit(tmp_path, tamper):
+    case_dir = tmp_path / "case-alias-tamper"
+    attachment = tmp_path / "e4-alias-tamper.docx"
+    _write_docx(attachment, "E4附件：篡改审计记录不得封账。")
+    processes: list[dict] = []
+    first = _run_child(tmp_path, case_dir, "import", {
+        "paths": [str(attachment)],
+        "fault_point": "after_attachment_alias_persisted",
+        "exit_code": CHILD_EXIT,
+    }, processes)
+    assert first.returncode == CHILD_EXIT
+    with sqlite3.connect(case_dir / "records.sqlite3") as connection:
+        if tamper == "note":
+            connection.execute(
+                "UPDATE import_records SET note='forged-attachment-audit-note'")
+        elif tamper == "alias_import":
+            connection.execute("UPDATE attachment_aliases SET import_id=999999")
+        elif tamper == "source_blob":
+            connection.execute("UPDATE sources SET blob_sha256=?",
+                               ("0" * 64,))
+        else:
+            connection.execute("UPDATE sources SET import_id=999999")
+
+    second = _run_child(tmp_path, case_dir, "import", {
+        "paths": [str(attachment)],
+    }, processes)
+    assert second.returncode != 0
+    assert ("kind/path/blob/note" in second.stderr if tamper == "note"
+            else "闭包不一致" in second.stderr)
+    journal = Journal(case_dir / "records.sqlite3")
+    try:
+        row = journal._conn.execute(
+            "SELECT task_key FROM tasks WHERE task_key LIKE 'attachment-import:%'"
+        ).fetchone()
+        assert row is not None
+        assert journal.task_state(row["task_key"])["state"] == "claimed"
     finally:
         journal.close()
 

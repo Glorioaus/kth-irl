@@ -247,11 +247,38 @@ def test_same_original_bytes_at_another_path_do_not_create_another_import(
     second_path.write_bytes(first_path.read_bytes())
     first = workflow.import_attachments([first_path])[0]
     second = workflow.import_attachments([second_path])[0]
+    repeated_second = workflow.import_attachments([second_path])[0]
+    assert repeated_second == second
     assert second["attachment_id"] == first["attachment_id"]
     assert second["source_id"] == first["source_id"]
     assert workflow.store.count_attachment_imports() == 1
     assert workflow.store.count_attachment_aliases() == 2
     assert len(workflow.store.fetch_all("import_records")) == 2
+
+
+def test_saved_same_blob_distinct_media_alias_is_repeatable(workflow, tmp_path):
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.md"
+    first.write_text("同内容不同 MIME。", encoding="utf-8")
+    second.write_bytes(first.read_bytes())
+    a = workflow.import_attachments([first])[0]
+    b = workflow.import_attachments([second])[0]
+    assert workflow.import_attachments([second])[0] == b
+    assert a["attachment_id"] == b["attachment_id"]
+    assert workflow.store.count_attachment_aliases() == 2
+
+
+def test_saved_alias_after_unsupported_canonical_path_is_repeatable(workflow, tmp_path):
+    unsupported = tmp_path / "first.exe"
+    saved = tmp_path / "second.txt"
+    saved.write_text("相同内容的原件。", encoding="utf-8")
+    unsupported.write_bytes(saved.read_bytes())
+    assert workflow.import_attachments([unsupported])[0]["status"] == "unsupported"
+    second = workflow.import_attachments([saved])[0]
+    assert second["status"] == "saved"
+    assert workflow.import_attachments([saved])[0] == second
+    assert workflow.store.count_attachment_imports() == 1
+    assert workflow.store.count_attachment_aliases() == 2
 
 
 def test_attachment_list_must_be_explicit_finite_sequence(workflow, tmp_path):
@@ -1014,11 +1041,55 @@ def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
         second = migrated.import_attachments([second_path])[0]
         assert first["attachment_id"] == second["attachment_id"] == \
             f"ATTACH::{blob.sha256}"
+        assert first["source_id"] == "SRC-V4-A"
+        assert second["source_id"] == "SRC-V4-B"
         assert len(migrated.store.fetch_all("import_records")) == before_imports
         assert migrated.store.count_attachment_imports() == 1
         assert migrated.store.count_attachment_aliases() == 3
         assert len(migrated.store.fetch_all("sources")) == 2
-        created_at = {row["alias_id"]: row["created_at"] for row in aliases}
+        assert migrated.journal._conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE task_key LIKE 'attachment-import:%'"
+        ).fetchone()[0] == 0
+        orphan_key = f"attachment-import:{first['alias_id']}"
+        migrated.journal.ensure_task(orphan_key, blob.sha256)
+        assert migrated.journal.attempts(orphan_key) == []
+        assert migrated.import_attachments([first_path])[0] == first
+        assert migrated.journal.task_state(orphan_key)["state"] == "planned"
+        assert migrated.journal.attempts(orphan_key) == []
+        with migrated.store._conn:
+            migrated.store._conn.execute(
+                "UPDATE attachment_aliases SET import_id=? WHERE origin_path=?",
+                (second_import, str(first_path.resolve())))
+        with pytest.raises(WorkflowRejected, match="alias|审计|来源"):
+            migrated.import_attachments([first_path])
+        with migrated.store._conn:
+            migrated.store._conn.execute(
+                "UPDATE attachment_aliases SET import_id=? WHERE origin_path=?",
+                (first_import, str(first_path.resolve())))
+            migrated.store._conn.execute(
+                "UPDATE sources SET import_id=? WHERE source_id='SRC-V4-A'",
+                (second_import,))
+        with pytest.raises(WorkflowRejected, match="source|审计|来源"):
+            migrated.import_attachments([first_path])
+        with migrated.store._conn:
+            migrated.store._conn.execute(
+                "UPDATE sources SET import_id=? WHERE source_id='SRC-V4-A'",
+                (first_import,))
+        new_path = root / "c.txt"
+        new_path.write_bytes(payload)
+        added = migrated.import_attachments([new_path])[0]
+        assert added["source_id"] == f"ATT::{blob.sha256}"
+        assert migrated.import_attachments([new_path])[0] == added
+        new_alias = migrated.store.get_attachment_alias(
+            f"ATTACH::{blob.sha256}", str(new_path.resolve()))
+        assert new_alias["source_id"] == f"ATT::{blob.sha256}"
+        assert {row["source_id"] for row in migrated.store.fetch_all("sources")} == {
+            "SRC-V4-A", "SRC-V4-B", f"ATT::{blob.sha256}"}
+        assert migrated.store.count_attachment_imports() == 1
+        assert migrated.store.count_attachment_aliases() == 4
+        created_at = {row["alias_id"]: row["created_at"] for row in
+                      migrated.store._conn.execute(
+                          "SELECT alias_id,created_at FROM attachment_aliases")}
     finally:
         migrated.close()
     time.sleep(0.02)
