@@ -1,18 +1,20 @@
 # kth-irl-hybrid —— KTH IRL Evaluator 整体重建实施仓
 
 本仓库承载 KTH IRL Evaluator 的整体重建（runtime-rebuild）：运行层、内部数据合同、编排、
-恢复、决策准入与报告流水线按新合同重建；旧七万行系统不是改造宿主。当前授权：
+恢复、决策准入与报告流水线按新合同重建；旧七万行系统不是改造宿主。历史首批授权：
 **《KTH整体重建执行计划v3》，Owner 2026-09-08 批准，仅 R0＋R1**（T01–T06＋I/O 历史交接、
-audit/trace、证据 census、R1 交接工件）。工程决定见 `docs/decisions/runtime-v3.md`。
+audit/trace、证据 census、R1 交接工件）。本次 2026-09-15 有限冻结收口见下方最新检查点；工程决定见 `docs/decisions/runtime-v3.md`。
 
 ## 当前状态
 
+- 最新本地冻结候选检查点：`docs/checkpoints/KTH-LOCAL-FREEZE-20260915.md`。
+  它记录代码 `c6f7b64` 的 912 项无失败/无跳过离线全套、真实原附件机械等待路径和明确标记的合成/人工六维恢复路径；**待独立验收**，未调用真实 Provider。
 - 里程碑：**M0 已完成**（权威基线冻结、微玖资产清单冻结、逐模块处置矩阵、政策草案），
   作为历史底稿保留；v3 已取代其"仅至 M0"写入限制与 M0.5 强制门。
-- 当前阶段：**R0＋R1 进行中**（分支 `codex/runtime-rebuild`）：可靠原件仓与事务台账、
-  全量分层证据盘点、样本资格判断与真实判据消费、trace 与恢复。首批完成即停止送审，
-  不自动 R2。
-- 真实 Case 工作区：`D:\t\kth-rebuild-cases\<case_id>`（仓库外；原文/盘点/日志不入 Git）。
+- 当前阶段：**本地工作流冻结候选，待独立验收**（分支 `codex/runtime-rebuild`）。
+  早期 R0＋R1 计划与 2026-09-10 停止记录保留为历史，不作为当前代码状态；
+  自动候选提出、实际专业复核、正式 D1/D2、报告与发布仍未完成或未获授权。
+- 历史真实 Case 工作区：`D:\t\kth-rebuild-cases\<case_id>`（原件只读）；本轮测试与演示写入只发生在 `D:\t\kth-local-freeze-20260915\run-20260915-1554\cases` 的新副本，原文/盘点/日志不入 Git。
 - 无远端、不 push；发布以单一受审快照回导 sunny-skills（仅凭 Owner 指令）。
 
 ## 权威基线（详见 baseline/kth-hybrid-baseline.v1.json）
