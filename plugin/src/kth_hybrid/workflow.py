@@ -160,7 +160,9 @@ class LocalWorkflow:
             "status": alias.get("status", row.get("status")),
             "error": alias.get("error", row.get("error")),
             "import_id": alias.get("import_id", row.get("import_id")),
-            "source_id": (alias.get("source_id") if alias.get("status") == "saved"
+            # alias 语义存在时以 alias 自身 source_id 为准（允许 null）；
+            # canonical 行可能被同字节其他合法路径 promote，不能借给本 alias。
+            "source_id": (alias.get("source_id") if alias
                           else row.get("source_id")),
             "created_at": alias.get("created_at", row.get("created_at")),
         }

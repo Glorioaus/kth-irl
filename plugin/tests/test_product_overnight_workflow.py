@@ -250,7 +250,11 @@ def test_same_original_bytes_at_another_path_do_not_create_another_import(
     repeated_second = workflow.import_attachments([second_path])[0]
     assert repeated_second == second
     assert second["attachment_id"] == first["attachment_id"]
-    assert second["source_id"] == first["source_id"]
+    # 同字节另一路径解析失败时，失败 alias 的 source_id 保持 null，
+    # 不借用 canonical 行上合法路径 promote 出的 source ID。
+    assert second["status"] == "failed"
+    assert second["source_id"] is None
+    assert first["source_id"] == f"ATT::{second['blob_sha256']}"
     assert workflow.store.count_attachment_imports() == 1
     assert workflow.store.count_attachment_aliases() == 2
     assert len(workflow.store.fetch_all("import_records")) == 2
@@ -279,6 +283,32 @@ def test_saved_alias_after_unsupported_canonical_path_is_repeatable(workflow, tm
     assert workflow.import_attachments([saved])[0] == second
     assert workflow.store.count_attachment_imports() == 1
     assert workflow.store.count_attachment_aliases() == 2
+
+
+@pytest.mark.parametrize("first_ext,second_ext", [
+    ("exe", "txt"), ("txt", "md"), ("md", "txt"),
+])
+def test_repeated_alias_preserves_exact_mode_and_source_id(
+        workflow, tmp_path, first_ext, second_ext):
+    first = tmp_path / ("one." + first_ext)
+    second = tmp_path / ("two." + second_ext)
+    first.write_bytes(b"same frozen content\n")
+    second.write_bytes(first.read_bytes())
+    a = workflow.import_attachments([first])[0]
+    b = workflow.import_attachments([second])[0]
+    before = {table: len(workflow.store.fetch_all(table))
+              for table in ("sources", "import_records")}
+    assert workflow.import_attachments([second])[0] == b
+    assert workflow.import_attachments([first])[0] == a
+    assert {table: len(workflow.store.fetch_all(table))
+            for table in before} == before
+    assert a["attachment_id"] == b["attachment_id"]
+    # unsupported/failed alias 的 source_id 必须保持 null，
+    # 不得借用 canonical 行上其他合法路径 promote 出的 source ID。
+    if a["status"] != "saved":
+        assert a["source_id"] is None
+    if b["status"] != "saved":
+        assert b["source_id"] is None
 
 
 def test_attachment_list_must_be_explicit_finite_sequence(workflow, tmp_path):
