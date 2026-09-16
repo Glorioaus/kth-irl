@@ -272,20 +272,123 @@ class ProviderDispatcher:
                     output_tokens += completion
         # 前账本时代已派发但读不到usage的mission：显式未知，不作0。
         unknown_attempts += legacy_requests - legacy_known_usage
-
-        prior = self.authorization.get("prior_consumption")
-        if isinstance(prior, Mapping):
-            input_tokens += prior.get("input_tokens") or 0
-            output_tokens += prior.get("output_tokens") or 0
-            unknown_attempts += prior.get("unknown_attempts") or 0
         return {
-            "requests": ledger_requests + legacy_requests
-            + ((prior.get("requests") or 0)
-               if isinstance(prior, Mapping) else 0),
+            "requests": ledger_requests + legacy_requests,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "unknown_attempts": unknown_attempts,
+            "budget_scope": self._budget_scope(),
         }
+
+    def _budget_scope(self) -> str:
+        """预算范围与授权文档摘要解耦：授权修订/新Case不重置消耗。
+
+        默认由材料hash与用途派生（同一试点 lineage 稳定）；授权可显式
+        声明 ``budget_scope`` 以接续或（经Owner批准）重设预算，重设必须
+        同时重报 prior_consumption，否则按不可证明处理。
+        """
+        declared = self.authorization.get("budget_scope")
+        if isinstance(declared, str) and declared.strip():
+            return declared.strip()
+        return sha256_hex(canonical_json_bytes({
+            "material": self.authorization["material"]["original_sha256"],
+            "purposes": sorted(self.authorization["purposes"]),
+        }))
+
+    def _prior_missions(self) -> dict[str, dict]:
+        """Owner批准的逐mission对账表；旧式全局开关不再作为对账依据。"""
+        prior = self.authorization.get("prior_consumption")
+        if not isinstance(prior, Mapping):
+            return {}
+        missions = prior.get("missions")
+        if not isinstance(missions, list):
+            return {}
+        out: dict[str, dict] = {}
+        for item in missions:
+            if isinstance(item, Mapping) \
+                    and isinstance(item.get("task_key"), str):
+                out.setdefault(item["task_key"], dict(item))
+        return out
+
+    def _historic_usage_items(self) -> tuple[list[dict], str | None]:
+        """账本启用前mission与跨Case历史消耗的逐项占用表。
+
+        本地journal既有mission按封存工件取实际值；无留存usage的项必须
+        在授权 prior_consumption.missions 中有覆盖该task_key的逐项保守
+        上界（input_bound/output_bound/evidence_source），否则剩余额度
+        不可证明。对账是逐项的：新出现的unknown不被旧对账覆盖时仍阻断。
+        """
+        items: list[dict] = []
+        ledger_keys = {row["task_key"]
+                       for row in self.workflow.store
+                       .fetch_provider_usage_ledger()}
+        prior = self._prior_missions()
+        conn = self.workflow.journal._conn
+        rows = conn.execute(
+            "SELECT a.task_key, a.outcome, a.detail, t.output_ref, "
+            "t.external_actions FROM task_attempts a JOIN tasks t "
+            "ON a.task_key=t.task_key WHERE a.task_key LIKE ?",
+            (TASK_KEY_PREFIX + "%",)).fetchall()
+        legacy_keys: set[str] = set()
+        for task_key, outcome, detail, output_ref, external_actions in rows:
+            if task_key in ledger_keys or task_key in legacy_keys:
+                continue
+            if not (outcome in ("dispatch_recorded", "succeeded",
+                               "outcome_unknown")
+                    or (outcome == "failed" and external_actions > 0)):
+                continue
+            legacy_keys.add(task_key)
+            artifact = None
+            for blob_sha in [output_ref,
+                             (str(detail).split("failure_blob=", 1)[1][:64]
+                              if detail and "failure_blob=" in str(detail)
+                              else None)]:
+                if not blob_sha:
+                    continue
+                try:
+                    artifact = json.loads(
+                        self.workflow.blobs.read_bytes(blob_sha)
+                        .decode("utf-8"))
+                    break
+                except (KeyError, OSError, UnicodeError, ValueError):
+                    continue
+            usage = (artifact or {}).get("usage") \
+                or ((artifact or {}).get("response", {})
+                    .get("body", {}).get("usage"))
+            if isinstance(usage, Mapping) \
+                    and isinstance(usage.get("prompt_tokens"), int) \
+                    and isinstance(usage.get("completion_tokens"), int):
+                items.append({
+                    "task_key": task_key, "usage_status": "known",
+                    "input_actual": usage["prompt_tokens"],
+                    "output_actual": usage["completion_tokens"]})
+                continue
+            covered = prior.get(task_key)
+            if covered is None:
+                return [], (f"已派发mission {task_key} 无留存usage且未被"
+                            "逐项对账覆盖（需Owner批准的保守上界）")
+            items.append({
+                "task_key": task_key, "usage_status": "unknown",
+                "input_bound": covered.get("input_bound"),
+                "output_bound": covered.get("output_bound"),
+                "evidence_source": covered.get("evidence_source"),
+            })
+        for task_key, covered in sorted(prior.items()):
+            if task_key in legacy_keys:
+                continue
+            if covered.get("usage_status") == "known":
+                items.append({
+                    "task_key": task_key, "usage_status": "known",
+                    "input_actual": covered.get("input_actual"),
+                    "output_actual": covered.get("output_actual")})
+            else:
+                items.append({
+                    "task_key": task_key, "usage_status": "unknown",
+                    "input_bound": covered.get("input_bound"),
+                    "output_bound": covered.get("output_bound"),
+                    "evidence_source": covered.get("evidence_source"),
+                })
+        return items, None
 
     def _check_ready(self, *, purpose: str, provider_id: str,
                      material_blob_sha256: str) -> dict:
@@ -301,21 +404,10 @@ class ProviderDispatcher:
                 self.authorization["material"]["original_sha256"]:
             raise ProviderGatewayRejected(
                 "队列请求材料不在授权外发范围（hash不符）")
-        caps = self.authorization["resource_caps"]
-        usage = self.usage()
-        prior = self.authorization.get("prior_consumption")
-        if usage["unknown_attempts"] > 0 \
-                and not (isinstance(prior, Mapping)
-                         and prior.get("unknown_reconciled")):
+        _items, historic_error = self._historic_usage_items()
+        if historic_error:
             raise ProviderGatewayRejected(
-                f"存在{usage['unknown_attempts']}个未核算usage的已派发"
-                "mission：剩余额度不可证明，拒绝派发（需Owner批准的核算"
-                "来源或恢复记录）")
-        if usage["requests"] >= caps["max_real_requests"]:
-            raise ProviderGatewayRejected("真实请求次数达到授权上界")
-        if usage["input_tokens"] >= caps["max_cumulative_input_tokens"] \
-                or usage["output_tokens"] >= caps["max_cumulative_output_tokens"]:
-            raise ProviderGatewayRejected("累计token达到授权上界")
+                f"剩余额度不可证明，拒绝派发：{historic_error}")
         return profile
 
     # ---- 派发 ----
@@ -370,26 +462,27 @@ class ProviderDispatcher:
             "Accept": "application/json",
         }
 
-        # 派发前原子预留：本次输入上界（UTF-8字节/2 的保守估计：中文约
-        # 3字节/字≈1token 时高估、ASCII 4字节/token 时亦高估）与
-        # max_output_tokens；未结算余额不共享，越限整体回滚、零外发。
+        # 派发前原子预留：余额只在预留事务内按账本实况重算，调用方不
+        # 传入任何旧余额。输入上界用请求字符数：任何分词器下每个token
+        # 至少包含一个字符，故字符数是输入token数的可证明上界（对
+        # UTF-8多字节与ASCII同时成立）；输出上界即max_output_tokens。
         caps = self.authorization["resource_caps"]
-        usage_now = self.usage()
-        ledger_rows = self.workflow.store.fetch_provider_usage_ledger()
-        non_ledger_requests = usage_now["requests"] - len(ledger_rows)
-        input_estimate = max(1, (len(request_bytes) + 1) // 2)
+        historic_usage, historic_error = self._historic_usage_items()
+        if historic_error:
+            raise ProviderGatewayRejected(
+                f"剩余额度不可证明，拒绝派发：{historic_error}")
+        input_estimate = len(request_bytes.decode("utf-8"))
         try:
             self.workflow.store.reserve_provider_usage(
-                authorization_digest=authorization_digest(self.authorization),
+                budget_scope=self._budget_scope(),
                 task_key=task_key, purpose=purpose, provider_id=provider_id,
                 input_reserved=input_estimate,
                 output_reserved=max_output_tokens,
-                known_input=usage_now["input_tokens"],
-                known_output=usage_now["output_tokens"],
-                unknown_input_bound=0, unknown_output_bound=0,
-                request_cap=caps["max_real_requests"] - non_ledger_requests,
+                historic_usage=historic_usage,
+                request_cap=caps["max_real_requests"],
                 input_cap=caps["max_cumulative_input_tokens"],
-                output_cap=caps["max_cumulative_output_tokens"])
+                output_cap=caps["max_cumulative_output_tokens"],
+                authorization_digest=authorization_digest(self.authorization))
         except BudgetRejected as exc:
             raise ProviderGatewayRejected(
                 f"派发前额度预留被拒：{exc}") from exc

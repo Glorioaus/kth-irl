@@ -452,8 +452,8 @@ def test_insufficient_quota_rejects_before_transport(workflow_fixture,
     assert calls == []
 
 
-def test_failed_mission_counts_and_unknown_blocks_next(workflow_fixture,
-                                                        tmp_path):
+def test_failed_mission_counts_and_occupies_conservatively(
+        workflow_fixture, tmp_path):
     workflow, job = workflow_fixture
     calls: list = []
 
@@ -461,8 +461,16 @@ def test_failed_mission_counts_and_unknown_blocks_next(workflow_fixture,
         calls.append({"endpoint": endpoint})
         return {"status_code": 401, "body": {"http_error": "unauthorized"}}
 
-    dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=[])
-    dispatcher.transport = failing
+    env_path = tmp_path / "gateway-env-fake"
+    env_path.write_text("LLM_API_KEY=fake-offline-key", encoding="utf-8")
+    auth_path = _write_auth(
+        tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
+        resource_caps={"max_real_requests": 6,
+                       "max_cumulative_input_tokens": 60000,
+                       "max_cumulative_output_tokens": 5000})
+    dispatcher = ProviderDispatcher(
+        workflow, authorization_path=auth_path, env_path=env_path,
+        transport=failing)
     request = _proposal_request(workflow, job)
     messages, schema = _messages_schema(request)
     with pytest.raises(ProviderGatewayRejected, match="HTTP 401"):
@@ -471,9 +479,10 @@ def test_failed_mission_counts_and_unknown_blocks_next(workflow_fixture,
     usage = dispatcher.usage()
     assert usage["requests"] == 1 and usage["unknown_attempts"] == 1
     ledger = workflow.store.fetch_provider_usage_ledger()
-    assert ledger and ledger[0]["status"] == "failed" \
-        and ledger[0]["usage_status"] == "unknown"
-    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+    assert ledger and ledger[0]["status"] == "failed"         and ledger[0]["usage_status"] == "unknown"
+    # 失败mission的未知用量按其请求预留上界占用：紧上限下第二次
+    # 派发在预留事务内被拒，且不再产生transport调用。
+    with pytest.raises(ProviderGatewayRejected, match="额度预留被拒"):
         dispatcher.dispatch(request=request, purpose="candidate_proposal",
                             messages=messages, output_schema=schema,
                             task_suffix="#again")
@@ -501,53 +510,60 @@ def test_missing_usage_seals_unknown_and_blocks(workflow_fixture,
             "choices": [{"finish_reason": "stop", "message": {"content":
                 json.dumps(content, ensure_ascii=False)}}]}}
 
-    dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=[])
-    dispatcher.transport = no_usage
+    env_path = tmp_path / "gateway-env-fake"
+    env_path.write_text("LLM_API_KEY=fake-offline-key", encoding="utf-8")
+    auth_path = _write_auth(
+        tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
+        resource_caps={"max_real_requests": 6,
+                       "max_cumulative_input_tokens": 60000,
+                       "max_cumulative_output_tokens": 120})
+    dispatcher = ProviderDispatcher(
+        workflow, authorization_path=auth_path, env_path=env_path,
+        transport=no_usage)
     request = _proposal_request(workflow, job)
     messages, schema = _messages_schema(request)
     artifact = dispatcher.dispatch(
         request=request, purpose="candidate_proposal", messages=messages,
-        output_schema=schema)
+        output_schema=schema, max_output_tokens=50)
     assert artifact["usage"] is None
     assert artifact["usage_reconciliation"]["status"] == "unknown"
-    assert dispatcher.usage()["unknown_attempts"] == 1
-    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+    # 账本内未知不按0处理：按该次请求预留上界保守占用，紧上限下
+    # 第二次派发必须在预留事务内被拒且零transport。
+    with pytest.raises(ProviderGatewayRejected, match="额度预留被拒"):
         dispatcher.dispatch(request=request, purpose="candidate_proposal",
                             messages=messages, output_schema=schema,
-                            task_suffix="#next")
+                            max_output_tokens=100, task_suffix="#next")
     assert len(calls) == 1
 
 
 def test_outstanding_reservation_is_shared_balance(workflow_fixture,
                                                    tmp_path):
+    from kth_hybrid.store import BudgetRejected
     workflow, job = workflow_fixture
     calls: list = []
     dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=calls)
     request = _proposal_request(workflow, job)
-    from kth_hybrid.provider_gateway import authorization_digest
-    from kth_hybrid.store import BudgetRejected
-    digest = authorization_digest(dispatcher.authorization)
-    # 存储层：同一授权的第二次预留必须计入已占余额（并发不共享未预留额度）。
+    # 存储层：同一预算范围的第二次预留必须计入第一次的未结算占用。
     workflow.store.reserve_provider_usage(
-        authorization_digest=digest,
-        task_key="provider-dispatch:OTHER-RESERVED",
+        budget_scope="scope-shared", task_key="provider-dispatch:OTHER",
         purpose="candidate_proposal", provider_id="glm",
-        input_reserved=100, output_reserved=100,
-        known_input=0, known_output=0, unknown_input_bound=0,
-        unknown_output_bound=0, request_cap=1, input_cap=60000,
-        output_cap=12000)
+        input_reserved=60, output_reserved=60, historic_usage=[],
+        request_cap=1, input_cap=100, output_cap=100)
     with pytest.raises(BudgetRejected, match="请求次数2超过上界1"):
         workflow.store.reserve_provider_usage(
-            authorization_digest=digest,
-            task_key="provider-dispatch:SECOND-RESERVED",
+            budget_scope="scope-shared", task_key="provider-dispatch:SECOND",
             purpose="candidate_proposal", provider_id="glm",
-            input_reserved=100, output_reserved=100,
-            known_input=0, known_output=0, unknown_input_bound=0,
-            unknown_output_bound=0, request_cap=1, input_cap=60000,
-            output_cap=12000)
-    # 派发层：未结算预留按未知占用阻断（零transport）。
+            input_reserved=10, output_reserved=10, historic_usage=[],
+            request_cap=1, input_cap=100, output_cap=100)
+    # 派发层：同一预算范围内的未结算占用参与事务内实况计算，零transport。
+    scope = dispatcher._budget_scope()
+    workflow.store.reserve_provider_usage(
+        budget_scope=scope, task_key="provider-dispatch:OUTSTANDING",
+        purpose="candidate_proposal", provider_id="glm",
+        input_reserved=50000, output_reserved=11000, historic_usage=[],
+        request_cap=6, input_cap=60000, output_cap=12000)
     messages, schema = _messages_schema(request)
-    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+    with pytest.raises(ProviderGatewayRejected, match="额度预留被拒"):
         dispatcher.dispatch(request=request, purpose="candidate_proposal",
                             messages=messages, output_schema=schema)
     assert calls == []
@@ -558,13 +574,20 @@ def test_prior_consumption_reconciliation_allows_dispatch(
     workflow, job = workflow_fixture
     calls: list = []
     env_path = tmp_path / "gateway-env-fake"
-    env_path.write_text("LLM_API_KEY=fake-offline-key\n", encoding="utf-8")
+    env_path.write_text("LLM_API_KEY=fake-offline-key" + chr(10), encoding="utf-8")
     auth_path = _write_auth(
         tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
         prior_consumption={
-            "requests": 3, "input_tokens": 1980, "output_tokens": 6621,
-            "unknown_attempts": 2, "unknown_reconciled": True,
-            "source": "测试：Owner批准的保守核算（2个未知按其请求上界折算）"})
+            "declared_by": "测试：Owner批准的逐mission对账",
+            "missions": [
+                {"task_key": "provider-dispatch:LEGACY-1",
+                 "usage_status": "known", "input_actual": 1980,
+                 "output_actual": 6621},
+                {"task_key": "provider-dispatch:LEGACY-2",
+                 "usage_status": "unknown", "input_bound": 2500,
+                 "output_bound": 1000,
+                 "evidence_source": "Owner批准：按该次请求上界折算"},
+            ]})
     dispatcher = ProviderDispatcher(
         workflow, authorization_path=auth_path, env_path=env_path,
         transport=_fake_transport(calls))
@@ -573,10 +596,15 @@ def test_prior_consumption_reconciliation_allows_dispatch(
     artifact = dispatcher.dispatch(
         request=request, purpose="candidate_proposal", messages=messages,
         output_schema=schema)
-    usage = dispatcher.usage()
-    # 历史未知计数保留为事实（2），已由授权声明对账，不再阻断派发。
-    assert usage["requests"] == 4 and usage["unknown_attempts"] == 2
-    assert usage["input_tokens"] == 1980 + 512
+    historic, historic_error = dispatcher._historic_usage_items()
+    assert historic_error is None and len(historic) == 2
     ledger = workflow.store.fetch_provider_usage_ledger()
-    assert ledger[0]["status"] == "succeeded" \
-        and ledger[0]["usage_status"] == "known"
+    assert ledger[0]["status"] == "succeeded"         and ledger[0]["usage_status"] == "known"
+    # 覆盖表只列旧mission：新出现的本地未知mission仍必须阻断。
+    workflow.journal.ensure_task("provider-dispatch:NEW-UNKNOWN", "z" * 64)
+    nc = workflow.journal.claim("provider-dispatch:NEW-UNKNOWN", "x",
+                                "z" * 64)
+    workflow.journal.record_dispatch(nc)
+    workflow.journal.record_failure(nc, "HTTP 500")
+    _items2, error2 = dispatcher._historic_usage_items()
+    assert error2 and "未被逐项对账覆盖" in error2

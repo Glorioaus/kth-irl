@@ -119,6 +119,85 @@ def _resolve_registration_proof(proof, blobs) -> tuple[datetime | None, str | No
     return parsed, None
 
 
+def _field_tokens(field: str) -> list[str]:
+    return [token for token in re.split(r"\.|(\[|\])", field)
+            if token not in (None, "", "[", "]")]
+
+
+def _walk_record_field(record, field: str):
+    """按 ``a.b[0].c`` 语法遍历封存记录字段；返回 (值, 错误)。"""
+    node = record
+    for token in _field_tokens(field):
+        if isinstance(node, list):
+            try:
+                node = node[int(token)]
+            except (ValueError, IndexError):
+                return None, f"字段路径失败于 {token!r}"
+        elif isinstance(node, dict):
+            if token not in node:
+                return None, f"记录无字段 {token!r}"
+            node = node[token]
+        else:
+            return None, f"字段路径失败于 {token!r}"
+    return node, None
+
+
+TIME_REGISTRATION_CONTRACT = "kth-hybrid.time-registration.v1"
+DECLARATION_SCHEMA = "kth-hybrid.document-subject-declaration.v1"
+
+
+def verify_time_registration_contract(evidence: dict, source: dict,
+                                      blobs: BlobStore) -> str | None:
+    """time-registration.v1 登记合同的统一读时复验。
+
+    登记写入后的复验、资格视图与依赖它的trace都调用本函数：重新读取
+    上游封存blob、重算同记录关系（时间字段与原件hash字段必须属于同一
+    上游附件记录）、逐项比较派生记录与当前原件绑定。上游缺失、改写、
+    跨记录拼接或关联矛盾时返回错误字符串；通过返回None。历史无合同
+    标记的registered_at记录不经此路径，语义不变。
+    """
+    proof = (evidence or {}).get("registration_proof") or {}
+    blob_sha = proof.get("blob_sha256")
+    if not isinstance(blob_sha, str) or not blob_sha:
+        return "登记证明缺少 blob_sha256"
+    try:
+        record = json.loads(blobs.read_bytes(blob_sha).decode("utf-8"))
+    except (OSError, StoreIntegrityError, KeyError, UnicodeDecodeError,
+            ValueError) as exc:
+        return f"登记封存记录不可读：{exc}"
+    if not isinstance(record, dict):
+        return "登记封存记录不是JSON对象"
+    upstream = record.get("upstream") or {}
+    if not isinstance(upstream, dict):
+        return "登记记录缺少上游关系"
+    up_blob = upstream.get("blob_sha256")
+    time_field = upstream.get("field")
+    document_field = upstream.get("document_field")
+    if not (isinstance(up_blob, str) and isinstance(time_field, str)
+            and isinstance(document_field, str)):
+        return "登记记录上游引用不完整"
+    try:
+        up_record = json.loads(blobs.read_bytes(up_blob).decode("utf-8"))
+    except (OSError, StoreIntegrityError, KeyError, UnicodeDecodeError,
+            ValueError) as exc:
+        return f"上游封存记录缺失或不可读：{exc}"
+    if _field_tokens(time_field)[:-1] != _field_tokens(document_field)[:-1]:
+        return ("时间字段与原件hash字段不属于同一上游附件记录"
+                f"（{time_field} vs {document_field}）")
+    up_time, time_error = _walk_record_field(up_record, time_field)
+    up_document, document_error = _walk_record_field(up_record, document_field)
+    if time_error or document_error:
+        return f"上游字段解析失败：{time_error or document_error}"
+    if not isinstance(up_time, str) or parse_iso_datetime(up_time) is None:
+        return f"上游时间字段不可解析：{up_time!r}"
+    if up_time != record.get("recorded_value"):
+        return "登记时间与上游记录当前值不一致"
+    if up_document != source["blob_sha256"] \
+            or record.get("document_sha256") != source["blob_sha256"]:
+        return "上游/登记原件绑定与当前来源不一致"
+    return None
+
+
 def _registration_binding_error(proof, source, blobs) -> str | None:
     """R1.3-A：登记证明必须绑定当前原件。
 
@@ -445,6 +524,37 @@ def _verify_document_subject_binding(proof, document_subject: str, source: dict,
     if hash_value != source["blob_sha256"]:
         return False, (f"第一方归属记录绑定原件 {str(hash_value)[:12]}… ≠ 当前"
                        f"来源 {source['blob_sha256'][:12]}…"), None
+    # 声明v1合同读时锚复验（版本分支；历史记录不受影响）：原投影锚与
+    # 原文自识字样在读取时按封存投影重建，缺失或漂移即拒绝。
+    origin_sha = (hash_binding or {}).get("origin_sha256")
+    if isinstance(origin_sha, str) and origin_sha:
+        try:
+            declaration = json.loads(
+                blobs.read_bytes(origin_sha).decode("utf-8"))
+        except (OSError, StoreIntegrityError, KeyError, UnicodeDecodeError,
+                ValueError) as exc:
+            return False, f"声明封存记录不可读：{exc}", None
+        if isinstance(declaration, dict) \
+                and declaration.get("schema_version") == DECLARATION_SCHEMA:
+            anchor = None
+            for row in case._conn.execute(
+                    "SELECT text_blob_sha256, text_sha256, locator_json FROM "
+                    "text_projections WHERE source_id=? AND status="
+                    "'projected'", (source["source_id"],)).fetchall():
+                if row["text_blob_sha256"] and json.loads(
+                        row["locator_json"]) == declaration.get(
+                            "raw_locator") \
+                        and row["text_sha256"] == declaration.get(
+                            "raw_text_sha256"):
+                    anchor = row
+                    break
+            if anchor is None:
+                return False, ("声明锚定的原投影（locator+text hash）在当前"
+                               "封存投影中不存在或已漂移"), None
+            text = blobs.read_bytes(
+                anchor["text_blob_sha256"]).decode("utf-8")
+            if declaration.get("document_subject_raw") not in text:
+                return False, "原文自识字样未出现在锚定投影文本中", None
     return True, (f"封存归属记录主体 {subject_value!r} 与当前原件 hash 均已核验"), {
         "subject": subject_binding,
         "document_sha256": hash_binding,
@@ -1212,9 +1322,18 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         binding_err = _registration_binding_error(proof, source, blobs)
         record_dt, proof_err = _resolve_registration_proof(proof, blobs)
         claimed_dt = reg_dt
+        contract_err = None
+        if time_evidence.get("registration_contract") == \
+                TIME_REGISTRATION_CONTRACT:
+            contract_err = verify_time_registration_contract(
+                time_evidence, source, blobs)
         if binding_err:
             time_judgment = Judgment(
                 VERDICT_FAIL, f"登记证明绑定核验失败：{binding_err}")
+        elif contract_err:
+            time_judgment = Judgment(
+                VERDICT_FAIL,
+                f"登记合同读时复验失败（上游实读/同记录关系）：{contract_err}")
         elif reg_dt is None:
             time_judgment = Judgment(
                 VERDICT_FAIL,

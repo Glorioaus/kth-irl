@@ -32,7 +32,7 @@ class BudgetRejected(RuntimeError):
     """Provider 用量预留/结算违反上界或状态合同；事务已回滚。"""
 
 
-_SCHEMA_VERSION = "kth-hybrid.store.v11"
+_SCHEMA_VERSION = "kth-hybrid.store.v12"
 WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA = "workflow_review_materialization.v1"
 _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS = {
     "schema_version", "job_id", "request_id", "request_input_digest",
@@ -244,6 +244,7 @@ CREATE INDEX IF NOT EXISTS idx_dimension_results_dimension
 CREATE TABLE IF NOT EXISTS provider_usage_ledger (
     task_key TEXT PRIMARY KEY,
     authorization_digest TEXT NOT NULL,
+    budget_scope TEXT NOT NULL,
     purpose TEXT NOT NULL,
     provider_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN
@@ -1015,6 +1016,20 @@ class CaseStore:
                     ON provider_usage_ledger(authorization_digest);
             """)
         self._conn.commit()
+        if prior_generation < 12:
+            # v12：预算范围与授权文档摘要解耦，修订授权不再重置预算范围。
+            columns = {row[1] for row in self._conn.execute(
+                "PRAGMA table_info(provider_usage_ledger)").fetchall()}
+            if "budget_scope" not in columns:
+                self._conn.executescript("""
+                    ALTER TABLE provider_usage_ledger
+                        ADD COLUMN budget_scope TEXT NOT NULL DEFAULT '';
+                    UPDATE provider_usage_ledger
+                        SET budget_scope = authorization_digest;
+                    CREATE INDEX IF NOT EXISTS idx_provider_usage_ledger_scope
+                        ON provider_usage_ledger(budget_scope);
+                """)
+        self._conn.commit()
 
     def _migrate_proposal_source_mode_v10(self) -> None:
         """扩展proposal_responses的source_mode约束以接受runtime_provider。"""
@@ -1522,50 +1537,93 @@ class CaseStore:
 
     # ---- Provider 用量账本（派发前原子预留，结算不改写） ----
 
-    def reserve_provider_usage(self, *, authorization_digest: str,
+    def reserve_provider_usage(self, *, budget_scope: str,
                                task_key: str, purpose: str,
                                provider_id: str, input_reserved: int,
-                               output_reserved: int, known_input: int,
-                               known_output: int, unknown_input_bound: int,
-                               unknown_output_bound: int, request_cap: int,
-                               input_cap: int, output_cap: int) -> None:
-        """单一写事务内校验并预留本次派发的输入/输出上界。
+                               output_reserved: int,
+                               historic_usage: list[dict] | None,
+                               request_cap: int, input_cap: int,
+                               output_cap: int,
+                               authorization_digest: str | None = None) -> None:
+        """单一写事务内以账本实况计算可用额度，校验后写入新预留。
 
-        known_* 为已核算实际用量；unknown_* 为无留存usage mission 的保守
-        上界（按其请求预留量计）。并发派发在同一 immediate 事务内串行，
-        不共享未结算余额；任一上界越限即整体回滚并拒绝。
+        余额只在事务内重算：已结算且usage已知的行按实际值计消费；未结算
+        reserved行与结算为unknown的行按其请求预留上界保守计占用。调用者
+        不传入任何余额数值；historic_usage 仅承载账本启用前（前v11时代）
+        的既有mission，且逐项必须自证：known带实际值，unknown必须带
+        input_bound/output_bound与evidence_source（有依据的保守上界），
+        否则剩余额度不可证明，整体回滚拒绝。请求数、输入、输出三个上界
+        同时成立；任一越限即零写入。
         """
+        historic_usage = historic_usage or []
         with self.immediate_transaction():
             row = self._conn.execute(
                 "SELECT task_key FROM provider_usage_ledger WHERE task_key=?",
                 (task_key,)).fetchone()
             if row is not None:
                 raise BudgetRejected(f"用量预留已存在：{task_key}")
-            reserved_requests = self._conn.execute(
-                "SELECT COUNT(*) FROM provider_usage_ledger WHERE "
-                "authorization_digest=?", (authorization_digest,)).fetchone()[0]
-            if reserved_requests + 1 > request_cap:
+            rows = self._conn.execute(
+                "SELECT task_key, status, usage_status, input_actual, "
+                "output_actual, input_reserved, output_reserved FROM "
+                "provider_usage_ledger WHERE budget_scope=?",
+                (budget_scope,)).fetchall()
+            requests = len(rows)
+            input_used = 0
+            output_used = 0
+            for item in rows:
+                if item["usage_status"] == "known" \
+                        and item["input_actual"] is not None:
+                    input_used += item["input_actual"]
+                    output_used += item["output_actual"] or 0
+                else:
+                    # 未结算或usage未知：按该次请求的预留上界保守占用。
+                    input_used += item["input_reserved"]
+                    output_used += item["output_reserved"]
+            for item in historic_usage:
+                if not isinstance(item, dict) or not item.get("task_key"):
+                    raise BudgetRejected(
+                        f"历史用量项缺少task_key：{item!r}")
+                if item.get("usage_status") == "known":
+                    actual_in, actual_out = item.get("input_actual"), \
+                        item.get("output_actual")
+                    if not (isinstance(actual_in, int) and actual_in >= 0
+                            and isinstance(actual_out, int)
+                            and actual_out >= 0):
+                        raise BudgetRejected(
+                            f"历史known用量缺少非负实际值：{item['task_key']}")
+                    input_used += actual_in
+                    output_used += actual_out
+                else:
+                    bound_in, bound_out = item.get("input_bound"), \
+                        item.get("output_bound")
+                    if not (isinstance(bound_in, int) and bound_in >= 0
+                            and isinstance(bound_out, int) and bound_out >= 0
+                            and isinstance(item.get("evidence_source"), str)
+                            and item["evidence_source"].strip()):
+                        raise BudgetRejected(
+                            f"历史未知用量无有依据的逐项保守上界："
+                            f"{item['task_key']}；剩余额度不可证明，拒绝预留")
+                    input_used += bound_in
+                    output_used += bound_out
+                requests += 1
+            if requests + 1 > request_cap:
                 raise BudgetRejected(
-                    f"预留后请求次数{reserved_requests + 1}超过上界"
-                    f"{request_cap}")
-            if known_input + unknown_input_bound + input_reserved > input_cap:
+                    f"预留后请求次数{requests + 1}超过上界{request_cap}")
+            if input_used + input_reserved > input_cap:
                 raise BudgetRejected(
-                    f"预留后累计输入token超限：已知{known_input}+未知上界"
-                    f"{unknown_input_bound}+本次预留{input_reserved}"
-                    f">{input_cap}")
-            if known_output + unknown_output_bound + output_reserved \
-                    > output_cap:
+                    f"预留后累计输入token超限：账本内实况{input_used}"
+                    f"+本次预留{input_reserved}>{input_cap}")
+            if output_used + output_reserved > output_cap:
                 raise BudgetRejected(
-                    f"预留后累计输出token超限：已知{known_output}+未知上界"
-                    f"{unknown_output_bound}+本次预留{output_reserved}"
-                    f">{output_cap}")
+                    f"预留后累计输出token超限：账本内实况{output_used}"
+                    f"+本次预留{output_reserved}>{output_cap}")
             self._conn.execute(
                 "INSERT INTO provider_usage_ledger(task_key, "
-                "authorization_digest, purpose, provider_id, status, "
-                "input_reserved, output_reserved) "
-                "VALUES (?,?,?,?, 'reserved', ?,?)",
-                (task_key, authorization_digest, purpose, provider_id,
-                 input_reserved, output_reserved))
+                "authorization_digest, budget_scope, purpose, provider_id, "
+                "status, input_reserved, output_reserved) "
+                "VALUES (?,?,?,?,?, 'reserved', ?,?)",
+                (task_key, authorization_digest or "", budget_scope,
+                 purpose, provider_id, input_reserved, output_reserved))
 
     def settle_provider_usage(self, task_key: str, *, status: str,
                               input_actual: int | None = None,

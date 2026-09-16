@@ -20,15 +20,18 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .qualification import (
+    DECLARATION_SCHEMA,
     StoreIntegrityError,
+    TIME_REGISTRATION_CONTRACT,
+    _field_tokens,
     _registration_binding_error,
     _resolve_registration_proof,
     _verify_document_subject_binding,
     decode_document_subject_basis,
     parse_iso_datetime,
+    verify_time_registration_contract,
 )
 
-DECLARATION_SCHEMA = "kth-hybrid.document-subject-declaration.v1"
 TIME_REGISTRATION_SCHEMA = "kth-hybrid.time-registration.v1"
 DECLARATION_ORIGIN = "session:document-subject-declaration.json"
 _DECLARATION_FIELDS = {
@@ -238,6 +241,13 @@ def register_time_evidence(workflow, *, source_id: str,
         raise RegistrationRejected(
             "上游记录绑定的原件与当前来源不一致"
             f"（{doc_error or str(doc_value)[:12] + '…'}），不能借用")
+    # 同记录关系：时间字段与原件hash字段必须属于同一上游附件记录，
+    # 否则等于把另一记录的较早时间借给当前材料（跨记录拼接拒绝）。
+    if _field_tokens(upstream_field)[:-1] != \
+            _field_tokens(upstream_document_field)[:-1]:
+        raise RegistrationRejected(
+            "时间字段与原件hash字段不属于同一上游附件记录"
+            f"（{upstream_field} vs {upstream_document_field}）")
 
     canonical_record = {
         "schema_version": TIME_REGISTRATION_SCHEMA,
@@ -261,10 +271,12 @@ def register_time_evidence(workflow, *, source_id: str,
     blob = workflow.blobs.put_bytes(_canonical(canonical_record))
     evidence = {
         "kind": "registered_at",
+        "registration_contract": TIME_REGISTRATION_CONTRACT,
         "date": value,
         "basis": (
             f"封存记录载明的收存/复制事件（{event_note}）；上游 "
-            f"{upstream_blob_sha256[:12]}…#{upstream_field} 机械再解析一致；"
+            f"{upstream_blob_sha256[:12]}…#{upstream_field} 与原件字段"
+            f"#{upstream_document_field} 属同一附件记录，读时复验；"
             "为入池时点证明，非发布日期、非首次接收、非内容发生时间"),
         "registration_proof": {
             "blob_sha256": blob.sha256,
@@ -272,7 +284,7 @@ def register_time_evidence(workflow, *, source_id: str,
             "document_sha256": doc_value,
         },
     }
-    task_key = f"time-registration:{source_id}"
+    task_key = f"time-registration:{source_id}#{len(workflow.store.get_time_evidence_history(source_id))}"
     workflow.journal.ensure_task(task_key, blob.sha256)
     claim = workflow.journal.claim(task_key, "controlled-registration",
                                    blob.sha256)
@@ -288,15 +300,20 @@ def register_time_evidence(workflow, *, source_id: str,
         latest.get("registration_proof"), source, workflow.blobs)
     record_dt, proof_error = _resolve_registration_proof(
         latest.get("registration_proof"), workflow.blobs)
-    if binding_error or proof_error or record_dt is None \
+    contract_error = verify_time_registration_contract(
+        latest, source, workflow.blobs)
+    if binding_error or proof_error or contract_error or record_dt is None \
             or record_dt != dt:
         raise RegistrationRejected(
-            f"登记后读回验证失败：{binding_error or proof_error}")
+            "登记后读回验证失败："
+            f"{binding_error or proof_error or contract_error}")
     return {
         "source_id": source_id,
         "revision": revision,
         "registered_date": value,
         "record_blob_sha256": blob.sha256,
         "upstream": canonical_record["upstream"],
-        "readback_verification": "登记证明读取时再解析上游一致",
+        "readback_verification": (
+            "读回已实读上游封存记录并复验同记录关系与原件绑定"
+            f"（upstream {upstream_blob_sha256[:12]}…）"),
     }
