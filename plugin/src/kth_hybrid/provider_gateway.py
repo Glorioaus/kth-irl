@@ -280,6 +280,40 @@ class ProviderDispatcher:
             "budget_scope": self._budget_scope(),
         }
 
+    def _budget_scopes(self) -> set[str]:
+        """当前预算的范围集合：稳定派生范围＋当前授权摘要＋声明的lineage。
+
+        v11 迁入行的 budget_scope 是其当时授权摘要；与当前授权相同的摘要
+        经机械相等计入（可靠关联证据）。授权修订（摘要变化）时须在
+        ``budget_scope_lineage`` 中声明同预算的旧摘要，否则旧行按孤儿
+        拒绝。相同 scope 字符串本身不提供跨数据库共享余额——跨 Case 承接
+        只能经 prior_consumption.missions 或重建账本行。
+        """
+        scopes = {self._budget_scope(),
+                  authorization_digest(self.authorization)}
+        lineage = self.authorization.get("budget_scope_lineage")
+        if isinstance(lineage, list):
+            scopes.update(item for item in lineage if isinstance(item, str))
+        return scopes
+
+    def _orphan_ledger_error(self) -> str | None:
+        """归属不明的账本行（不在任何已知范围）必须阻断派发并列明。
+
+        旧行不得既不在当前范围汇总、又因"已在ledger"被historic扫描排除
+        而静默当作零。
+        """
+        scopes = self._budget_scopes()
+        orphans = [row for row in
+                   self.workflow.store.fetch_provider_usage_ledger()
+                   if row["budget_scope"] not in scopes]
+        if orphans:
+            described = "; ".join(
+                f"{row['task_key']}@{str(row['budget_scope'])[:16]}…"
+                for row in orphans[:5])
+            return (f"账本存在归属不明的行（共{len(orphans)}行）：{described}；"
+                    "需核对归属或由授权声明budget_scope_lineage后重试")
+        return None
+
     def _budget_scope(self) -> str:
         """预算范围与授权文档摘要解耦：授权修订/新Case不重置消耗。
 
@@ -388,6 +422,38 @@ class ProviderDispatcher:
                     "output_bound": covered.get("output_bound"),
                     "evidence_source": covered.get("evidence_source"),
                 })
+        # 主预算范围之外的既有账本行：有可靠关联（行内授权摘要与当前
+        # 授权摘要机械相等，或属授权声明的lineage摘要）时作为历史占用
+        # 项携带，保证任何只按主范围汇总的预留也看得到这笔消费；无关联
+        # 的行由 _orphan_ledger_error 阻断，不在此静默当作零。行已在主
+        # 范围内时由预留事务汇总，不进历史项，避免双算。
+        primary_scope = self._budget_scope()
+        mapped_digests = {authorization_digest(self.authorization)}
+        lineage = self.authorization.get("budget_scope_lineage")
+        if isinstance(lineage, list):
+            mapped_digests.update(
+                item for item in lineage if isinstance(item, str))
+        for row in self.workflow.store.fetch_provider_usage_ledger():
+            if row["budget_scope"] == primary_scope:
+                continue
+            if row["budget_scope"] in mapped_digests:
+                if row["usage_status"] == "known" \
+                        and row["input_actual"] is not None:
+                    items.append({
+                        "task_key": row["task_key"],
+                        "usage_status": "known",
+                        "input_actual": row["input_actual"],
+                        "output_actual": row["output_actual"] or 0})
+                else:
+                    items.append({
+                        "task_key": row["task_key"],
+                        "usage_status": "unknown",
+                        "input_bound": row["input_reserved"],
+                        "output_bound": row["output_reserved"],
+                        "evidence_source": (
+                            "既有账本行（授权摘要机械匹配/lineage声明）"
+                            "按其请求预留上界折算"),
+                    })
         return items, None
 
     def _check_ready(self, *, purpose: str, provider_id: str,
@@ -408,6 +474,23 @@ class ProviderDispatcher:
         if historic_error:
             raise ProviderGatewayRejected(
                 f"剩余额度不可证明，拒绝派发：{historic_error}")
+        orphan_error = self._orphan_ledger_error()
+        if orphan_error:
+            raise ProviderGatewayRejected(
+                f"剩余额度不可证明，拒绝派发：{orphan_error}")
+        caps = self.authorization["resource_caps"]
+        input_bound = caps.get("input_bound")
+        if not (isinstance(input_bound, Mapping)
+                and isinstance(input_bound.get("tokens"), int)
+                and input_bound["tokens"] > 0
+                and isinstance(input_bound.get("evidence_source"), str)
+                and input_bound["evidence_source"].strip()):
+            raise ProviderGatewayRejected(
+                "输入token上界无已证明方法：授权未声明逐请求输入上界"
+                "（resource_caps.input_bound：tokens+evidence_source）。"
+                "字符数/字节数与模型token不是同一单位，不构成上界证明；"
+                "本地无与当前模型相符的分词计数器，按合同拒绝真实派发"
+                "（不联网试算、不以单次历史usage外推）")
         return profile
 
     # ---- 派发 ----
@@ -463,15 +546,16 @@ class ProviderDispatcher:
         }
 
         # 派发前原子预留：余额只在预留事务内按账本实况重算，调用方不
-        # 传入任何旧余额。输入上界用请求字符数：任何分词器下每个token
-        # 至少包含一个字符，故字符数是输入token数的可证明上界（对
-        # UTF-8多字节与ASCII同时成立）；输出上界即max_output_tokens。
+        # 传入任何旧余额。汇总范围=稳定派生范围+当前授权摘要+声明lineage
+        # （v11迁入行按其授权摘要计入，不漏算不双算；范围外孤儿行已在
+        # 预检拒绝）。输入预留用授权声明的逐请求上界（无已证明的本地
+        # token计数方法时在预检即拒绝）；输出上界即max_output_tokens。
         caps = self.authorization["resource_caps"]
         historic_usage, historic_error = self._historic_usage_items()
         if historic_error:
             raise ProviderGatewayRejected(
                 f"剩余额度不可证明，拒绝派发：{historic_error}")
-        input_estimate = len(request_bytes.decode("utf-8"))
+        input_estimate = caps["input_bound"]["tokens"]
         try:
             self.workflow.store.reserve_provider_usage(
                 budget_scope=self._budget_scope(),

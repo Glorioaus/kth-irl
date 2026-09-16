@@ -143,7 +143,47 @@ def _walk_record_field(record, field: str):
 
 
 TIME_REGISTRATION_CONTRACT = "kth-hybrid.time-registration.v1"
+TIME_REGISTRATION_RECORD_SCHEMA = "kth-hybrid.time-registration.v1"
 DECLARATION_SCHEMA = "kth-hybrid.document-subject-declaration.v1"
+
+
+def classify_time_registration(evidence: dict,
+                                blobs: BlobStore) -> tuple[str, str | None]:
+    """联合封存record实际schema与外层合同标记判定验证路径。
+
+    返回 (mode, error)：mode ∈ {"legacy","verify","reject"}。
+    - 带新派生schema的record无论外层标记缺失与否都必须上游读时验证，
+      不得降级为旧路径；
+    - 未知合同版本、未知schema或内外矛盾明确拒绝；
+    - 真正旧版（record无schema且无标记）按旧合同只读处理。
+    登记写入、资格视图与trace共用本分类，不靠"有没有某个可删除字段"
+    判断历史可信性。
+    """
+    marker = (evidence or {}).get("registration_contract")
+    proof = (evidence or {}).get("registration_proof") or {}
+    blob_sha = proof.get("blob_sha256")
+    record_schema = None
+    if isinstance(blob_sha, str) and blob_sha:
+        try:
+            record = json.loads(blobs.read_bytes(blob_sha).decode("utf-8"))
+        except (OSError, StoreIntegrityError, KeyError, UnicodeDecodeError,
+                ValueError) as exc:
+            return "reject", f"登记封存记录不可读：{exc}"
+        if isinstance(record, dict):
+            record_schema = record.get("schema_version")
+    if record_schema == TIME_REGISTRATION_RECORD_SCHEMA:
+        if marker is not None and marker != TIME_REGISTRATION_CONTRACT:
+            return "reject", (f"外层合同标记{marker!r}与封存schema"
+                              f"{record_schema!r}矛盾")
+        return "verify", None
+    if marker == TIME_REGISTRATION_CONTRACT:
+        return "reject", ("外层标记为v1合同但封存记录schema缺失或不一致"
+                          f"（record schema={record_schema!r}）")
+    if marker is not None:
+        return "reject", f"未知合同版本{marker!r}"
+    if record_schema is not None:
+        return "reject", f"未知登记记录schema{record_schema!r}"
+    return "legacy", None
 
 
 def verify_time_registration_contract(evidence: dict, source: dict,
@@ -1323,8 +1363,11 @@ def qualify_claim(claim: dict, source: dict, blobs: BlobStore, case_basis: dict,
         record_dt, proof_err = _resolve_registration_proof(proof, blobs)
         claimed_dt = reg_dt
         contract_err = None
-        if time_evidence.get("registration_contract") == \
-                TIME_REGISTRATION_CONTRACT:
+        mode, classify_error = classify_time_registration(
+            time_evidence, blobs)
+        if mode == "reject":
+            contract_err = classify_error
+        elif mode == "verify":
             contract_err = verify_time_registration_contract(
                 time_evidence, source, blobs)
         if binding_err:

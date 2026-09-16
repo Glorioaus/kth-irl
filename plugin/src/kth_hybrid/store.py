@@ -1544,18 +1544,24 @@ class CaseStore:
                                historic_usage: list[dict] | None,
                                request_cap: int, input_cap: int,
                                output_cap: int,
-                               authorization_digest: str | None = None) -> None:
+                               authorization_digest: str | None = None,
+                               lineage_scopes: list[str] | None = None) -> None:
         """单一写事务内以账本实况计算可用额度，校验后写入新预留。
 
         余额只在事务内重算：已结算且usage已知的行按实际值计消费；未结算
-        reserved行与结算为unknown的行按其请求预留上界保守计占用。调用者
-        不传入任何余额数值；historic_usage 仅承载账本启用前（前v11时代）
-        的既有mission，且逐项必须自证：known带实际值，unknown必须带
-        input_bound/output_bound与evidence_source（有依据的保守上界），
+        reserved行与结算为unknown的行按其请求预留上界保守计占用。汇总范围
+        为 budget_scope 及 lineage_scopes（同预算的历史范围标识，如 v11
+        迁入行的 authorization_digest 或授权声明的 lineage），避免旧消费
+        因范围标识演进而漏算；不在此范围内的行由调用方按孤儿行拒绝，不
+        在本函数静默当作零。调用者不传入任何余额数值；historic_usage 仅
+        承载账本外（前v11时代journal）mission，且逐项必须自证：known带
+        实际值，unknown必须带 input_bound/output_bound与evidence_source，
         否则剩余额度不可证明，整体回滚拒绝。请求数、输入、输出三个上界
         同时成立；任一越限即零写入。
         """
         historic_usage = historic_usage or []
+        scopes = [budget_scope, *(lineage_scopes or [])]
+        placeholders = ",".join("?" * len(scopes))
         with self.immediate_transaction():
             row = self._conn.execute(
                 "SELECT task_key FROM provider_usage_ledger WHERE task_key=?",
@@ -1563,10 +1569,10 @@ class CaseStore:
             if row is not None:
                 raise BudgetRejected(f"用量预留已存在：{task_key}")
             rows = self._conn.execute(
-                "SELECT task_key, status, usage_status, input_actual, "
-                "output_actual, input_reserved, output_reserved FROM "
-                "provider_usage_ledger WHERE budget_scope=?",
-                (budget_scope,)).fetchall()
+                f"SELECT task_key, status, usage_status, input_actual, "
+                f"output_actual, input_reserved, output_reserved FROM "
+                f"provider_usage_ledger WHERE budget_scope IN "
+                f"({placeholders})", scopes).fetchall()
             requests = len(rows)
             input_used = 0
             output_used = 0

@@ -119,7 +119,11 @@ def _write_auth(tmp_path, *, material_sha256: str, **overrides) -> object:
         },
         "resource_caps": {"max_real_requests": 6,
                           "max_cumulative_input_tokens": 60000,
-                          "max_cumulative_output_tokens": 12000},
+                          "max_cumulative_output_tokens": 12000,
+                          "input_bound": {
+                              "method": "declared_upper_bound",
+                              "tokens": 8000,
+                              "evidence_source": "测试夹具声明（非生产证明）"}},
         "window": {"started": (now - timedelta(minutes=1)).isoformat(),
                    "expires": (now + timedelta(hours=4)).isoformat()},
     }
@@ -389,7 +393,11 @@ def test_legacy_zai_authorization_variant_still_validates(tmp_path):
         },
         "resource_caps": {"max_real_requests": 6,
                           "max_cumulative_input_tokens": 60000,
-                          "max_cumulative_output_tokens": 12000},
+                          "max_cumulative_output_tokens": 12000,
+                          "input_bound": {
+                              "method": "declared_upper_bound",
+                              "tokens": 8000,
+                              "evidence_source": "测试夹具声明（非生产证明）"}},
         "window": {"started": (now - timedelta(minutes=1)).isoformat(),
                    "expires": (now + timedelta(hours=1)).isoformat()},
     }
@@ -439,7 +447,10 @@ def test_insufficient_quota_rejects_before_transport(workflow_fixture,
         tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
         resource_caps={"max_real_requests": 6,
                        "max_cumulative_input_tokens": 60000,
-                       "max_cumulative_output_tokens": 100})
+                       "max_cumulative_output_tokens": 100,
+                       "input_bound": {"method": "declared_upper_bound",
+                                       "tokens": 8000,
+                                       "evidence_source": "测试夹具声明"}})
     dispatcher = ProviderDispatcher(
         workflow, authorization_path=auth_path, env_path=env_path,
         transport=_fake_transport(calls))
@@ -467,7 +478,10 @@ def test_failed_mission_counts_and_occupies_conservatively(
         tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
         resource_caps={"max_real_requests": 6,
                        "max_cumulative_input_tokens": 60000,
-                       "max_cumulative_output_tokens": 5000})
+                       "max_cumulative_output_tokens": 5000,
+                       "input_bound": {"method": "declared_upper_bound",
+                                       "tokens": 8000,
+                                       "evidence_source": "测试夹具声明"}})
     dispatcher = ProviderDispatcher(
         workflow, authorization_path=auth_path, env_path=env_path,
         transport=failing)
@@ -516,7 +530,10 @@ def test_missing_usage_seals_unknown_and_blocks(workflow_fixture,
         tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
         resource_caps={"max_real_requests": 6,
                        "max_cumulative_input_tokens": 60000,
-                       "max_cumulative_output_tokens": 120})
+                       "max_cumulative_output_tokens": 120,
+                       "input_bound": {"method": "declared_upper_bound",
+                                       "tokens": 8000,
+                                       "evidence_source": "测试夹具声明"}})
     dispatcher = ProviderDispatcher(
         workflow, authorization_path=auth_path, env_path=env_path,
         transport=no_usage)
@@ -543,18 +560,6 @@ def test_outstanding_reservation_is_shared_balance(workflow_fixture,
     calls: list = []
     dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=calls)
     request = _proposal_request(workflow, job)
-    # 存储层：同一预算范围的第二次预留必须计入第一次的未结算占用。
-    workflow.store.reserve_provider_usage(
-        budget_scope="scope-shared", task_key="provider-dispatch:OTHER",
-        purpose="candidate_proposal", provider_id="glm",
-        input_reserved=60, output_reserved=60, historic_usage=[],
-        request_cap=1, input_cap=100, output_cap=100)
-    with pytest.raises(BudgetRejected, match="请求次数2超过上界1"):
-        workflow.store.reserve_provider_usage(
-            budget_scope="scope-shared", task_key="provider-dispatch:SECOND",
-            purpose="candidate_proposal", provider_id="glm",
-            input_reserved=10, output_reserved=10, historic_usage=[],
-            request_cap=1, input_cap=100, output_cap=100)
     # 派发层：同一预算范围内的未结算占用参与事务内实况计算，零transport。
     scope = dispatcher._budget_scope()
     workflow.store.reserve_provider_usage(
@@ -569,6 +574,18 @@ def test_outstanding_reservation_is_shared_balance(workflow_fixture,
     assert calls == []
 
 
+    # 存储层：同一预算范围的第二次预留必须计入第一次的未结算占用。
+    workflow.store.reserve_provider_usage(
+        budget_scope="scope-shared", task_key="provider-dispatch:OTHER",
+        purpose="candidate_proposal", provider_id="glm",
+        input_reserved=60, output_reserved=60, historic_usage=[],
+        request_cap=1, input_cap=100, output_cap=100)
+    with pytest.raises(BudgetRejected, match="请求次数2超过上界1"):
+        workflow.store.reserve_provider_usage(
+            budget_scope="scope-shared", task_key="provider-dispatch:SECOND",
+            purpose="candidate_proposal", provider_id="glm",
+            input_reserved=10, output_reserved=10, historic_usage=[],
+            request_cap=1, input_cap=100, output_cap=100)
 def test_prior_consumption_reconciliation_allows_dispatch(
         workflow_fixture, tmp_path):
     workflow, job = workflow_fixture
@@ -608,3 +625,27 @@ def test_prior_consumption_reconciliation_allows_dispatch(
     workflow.journal.record_failure(nc, "HTTP 500")
     _items2, error2 = dispatcher._historic_usage_items()
     assert error2 and "未被逐项对账覆盖" in error2
+
+
+def test_missing_input_bound_refuses_dispatch(workflow_fixture, tmp_path):
+    """授权未声明逐请求输入上界：预检即拒，零transport（本地无已证明
+    的模型token计数方法，不以字符数冒充上界）。"""
+    workflow, job = workflow_fixture
+    calls: list = []
+    env_path = tmp_path / "gateway-env-fake"
+    env_path.write_text("LLM_API_KEY=fake-offline-key", encoding="utf-8")
+    auth_path = _write_auth(
+        tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
+        resource_caps={"max_real_requests": 6,
+                       "max_cumulative_input_tokens": 60000,
+                       "max_cumulative_output_tokens": 12000})
+    dispatcher = ProviderDispatcher(
+        workflow, authorization_path=auth_path, env_path=env_path,
+        transport=_fake_transport(calls))
+    request = _proposal_request(workflow, job)
+    messages, schema = _messages_schema(request)
+    with pytest.raises(ProviderGatewayRejected,
+                       match="输入token上界无已证明方法"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema)
+    assert calls == []

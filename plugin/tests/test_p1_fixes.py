@@ -289,3 +289,173 @@ def test_old_cutoff_still_gains_nothing(registered_case):
     outcome, _errors = _qualify(item, OLD_CUTOFF)
     assert "晚于截止" in outcome.time_judgment.basis
     assert outcome.status == "rejected"
+
+
+# ---- fix2：版本衔接（迁移漏算 / 孤儿行 / 输入上界政策 / 标记矩阵） ----
+
+def _v11_ledger_seed(workflow, digest, task_key, actual=80):
+    """直接构造v11形状账本行（无budget_scope），交由当前迁移补列。"""
+    import sqlite3
+    with sqlite3.connect(workflow.store.db_path if hasattr(
+            workflow.store, "db_path") else workflow.case_dir
+            / "records.sqlite3") as conn:
+        conn.execute("DROP INDEX IF EXISTS idx_provider_usage_ledger_scope")
+        conn.execute("ALTER TABLE provider_usage_ledger DROP COLUMN budget_scope")
+        conn.execute("UPDATE meta SET value='kth-hybrid.store.v11' "
+                     "WHERE key='schema_version'")
+    with workflow.store._conn:
+        workflow.store._conn.execute(
+            "INSERT INTO provider_usage_ledger(task_key,authorization_digest,"
+            "purpose,provider_id,status,input_reserved,output_reserved,"
+            "input_actual,output_actual,usage_status) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (task_key, digest, "candidate_proposal", "glm", "succeeded",
+             actual, actual, actual, actual, "known"))
+
+
+def test_v11_consumption_after_migration_blocks_and_allows(tmp_path):
+    """同授权摘要的v11消费迁移后：80拒绝、20可用；合法迁移不双算。"""
+    import sqlite3
+    from kth_hybrid.provider_gateway import ProviderDispatcher, authorization_digest
+    auth = {"schema_version": "kth-hybrid.provider-authorization.v1",
+            "material": {"original_sha256": "f" * 64},
+            "purposes": ["candidate_proposal"]}
+    digest = authorization_digest(auth)
+    root = tmp_path / "legacy"
+    workflow = LocalWorkflow(root)
+    _v11_ledger_seed(workflow, digest, "provider-dispatch:OLD", actual=80)
+    workflow.close()
+    # 以当前代码重新打开触发迁移（budget_scope=authorization_digest）
+    workflow = LocalWorkflow(root)
+    try:
+        dispatcher = object.__new__(ProviderDispatcher)
+        dispatcher.workflow = workflow
+        dispatcher.authorization = auth
+        assert dispatcher._orphan_ledger_error() is None
+        scope = dispatcher._budget_scope()
+        lineage = sorted(dispatcher._budget_scopes() - {scope})
+        with pytest.raises(BudgetRejected, match="累计输入token超限"):
+            workflow.store.reserve_provider_usage(
+                budget_scope=scope, lineage_scopes=lineage,
+                task_key="provider-dispatch:NEW80",
+                purpose="candidate_proposal", provider_id="glm",
+                input_reserved=80, output_reserved=80, historic_usage=[],
+                request_cap=6, input_cap=100, output_cap=100)
+        workflow.store.reserve_provider_usage(
+            budget_scope=scope, lineage_scopes=lineage,
+            task_key="provider-dispatch:NEW20",
+            purpose="candidate_proposal", provider_id="glm",
+            input_reserved=20, output_reserved=20, historic_usage=[],
+            request_cap=6, input_cap=100, output_cap=100)
+        # 不双算：80+20=100 恰好占满，再申请1即拒。
+        with pytest.raises(BudgetRejected, match="超限"):
+            workflow.store.reserve_provider_usage(
+                budget_scope=scope, lineage_scopes=lineage,
+                task_key="provider-dispatch:NEW1",
+                purpose="candidate_proposal", provider_id="glm",
+                input_reserved=1, output_reserved=1, historic_usage=[],
+                request_cap=6, input_cap=100, output_cap=100)
+    finally:
+        workflow.close()
+
+
+def test_foreign_digest_rows_are_orphans_and_block(tmp_path):
+    """他授权摘要的账本行：无lineage声明即孤儿阻断；声明后计入不双算。"""
+    from kth_hybrid.provider_gateway import ProviderDispatcher, authorization_digest
+    auth = {"schema_version": "kth-hybrid.provider-authorization.v1",
+            "material": {"original_sha256": "f" * 64},
+            "purposes": ["candidate_proposal"]}
+    other = {"schema_version": "kth-hybrid.provider-authorization.v1",
+             "material": {"original_sha256": "e" * 64},
+             "purposes": ["candidate_proposal"]}
+    foreign_digest = authorization_digest(other)
+    root = tmp_path / "orphan"
+    workflow = LocalWorkflow(root)
+    _v11_ledger_seed(workflow, foreign_digest, "provider-dispatch:FOREIGN",
+                     actual=80)
+    workflow.close()
+    workflow = LocalWorkflow(root)
+    try:
+        dispatcher = object.__new__(ProviderDispatcher)
+        dispatcher.workflow = workflow
+        dispatcher.authorization = auth
+        error = dispatcher._orphan_ledger_error()
+        assert error and "归属不明" in error and "FOREIGN" in error
+
+        dispatcher.authorization = {**auth,
+                                    "budget_scope_lineage": [foreign_digest]}
+        assert dispatcher._orphan_ledger_error() is None
+        scope = dispatcher._budget_scope()
+        lineage = sorted(dispatcher._budget_scopes() - {scope})
+        with pytest.raises(BudgetRejected, match="累计输入token超限"):
+            workflow.store.reserve_provider_usage(
+                budget_scope=scope, lineage_scopes=lineage,
+                task_key="provider-dispatch:NEW80",
+                purpose="candidate_proposal", provider_id="glm",
+                input_reserved=80, output_reserved=80, historic_usage=[],
+                request_cap=6, input_cap=100, output_cap=100)
+    finally:
+        workflow.close()
+
+
+def test_authorization_revision_same_derived_scope_accumulates(tmp_path):
+    """同预算授权修订（摘要变化、材料/用途不变）：v12行按稳定派生范围
+    自动累计，不重置余额。"""
+    from kth_hybrid.provider_gateway import (ProviderDispatcher,
+                                              authorization_digest)
+    base = {"schema_version": "kth-hybrid.provider-authorization.v1",
+            "material": {"original_sha256": "f" * 64},
+            "purposes": ["candidate_proposal"]}
+    revised = {**base, "amendment": {"note": "endpoint修订"}}
+    root = tmp_path / "revise"
+    workflow = LocalWorkflow(root)
+    try:
+        d1 = object.__new__(ProviderDispatcher)
+        d1.workflow = workflow
+        d1.authorization = base
+        scope = d1._budget_scope()
+        workflow.store.reserve_provider_usage(
+            budget_scope=scope, task_key="provider-dispatch:R1",
+            purpose="candidate_proposal", provider_id="glm",
+            input_reserved=60, output_reserved=60, historic_usage=[],
+            request_cap=6, input_cap=100, output_cap=100,
+            authorization_digest=authorization_digest(base))
+        d2 = object.__new__(ProviderDispatcher)
+        d2.workflow = workflow
+        d2.authorization = revised
+        assert d2._budget_scope() == scope
+        with pytest.raises(BudgetRejected, match="累计输入token超限"):
+            workflow.store.reserve_provider_usage(
+                budget_scope=d2._budget_scope(),
+                lineage_scopes=sorted(d2._budget_scopes()
+                                      - {d2._budget_scope()}),
+                task_key="provider-dispatch:R2",
+                purpose="candidate_proposal", provider_id="glm",
+                input_reserved=60, output_reserved=60, historic_usage=[],
+                request_cap=6, input_cap=100, output_cap=100)
+    finally:
+        workflow.close()
+
+
+def test_marker_schema_matrix_no_downgrade(registered_case):
+    """标记v1+schema缺失拒；record schema未知拒；真旧记录走旧路径。"""
+    from kth_hybrid.qualification import classify_time_registration
+    item = registered_case
+    blobs = item["workflow"].blobs
+    plain = item["workflow"].blobs.put_bytes(
+        b'{"document_sha256": "' + item["blob_sha256"].encode() + b'"}')
+    legacy = {"kind": "registered_at", "date": "2026-08-27T04:13:11Z",
+              "basis": "真旧记录",
+              "registration_proof": {"blob_sha256": plain.sha256}}
+    mode, error = classify_time_registration(legacy, blobs)
+    assert (mode, error) == ("legacy", None)
+    marked = dict(legacy,
+                  registration_contract="kth-hybrid.time-registration.v1")
+    mode2, error2 = classify_time_registration(marked, blobs)
+    assert mode2 == "reject" and "schema缺失或不一致" in error2
+    weird = item["workflow"].blobs.put_bytes(
+        b'{"schema_version": "kth-hybrid.time-registration.v999", '
+        b'"document_sha256": "x"}')
+    unknown = dict(legacy, registration_proof={"blob_sha256": weird.sha256})
+    mode3, error3 = classify_time_registration(unknown, blobs)
+    assert mode3 == "reject" and "v999" in error3
