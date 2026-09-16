@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -807,10 +808,39 @@ def _build_parser() -> ChineseArgumentParser:
         "--source-mode", required=True,
         choices=("manual_import", "simulated", "runtime_provider"))
     review_import.add_argument("--allow-simulated", action="store_true")
+    review_import.add_argument(
+        "--provider-artifact",
+        help="runtime_provider模式必填：已封存派发工件blob SHA256")
     review_consume = review_sub.add_parser("consume", help="消费精确封存返回")
     _add_case_dir(review_consume)
     review_consume.add_argument("--response-id", required=True)
     review_consume.add_argument("--worker-id", required=True)
+
+    provider_parser = sub.add_parser("provider", help="受控运行时Provider派发")
+    provider_sub = provider_parser.add_subparsers(
+        dest="provider_command", required=True, parser_class=ChineseArgumentParser)
+    provider_dispatch_cmd = provider_sub.add_parser(
+        "dispatch", help="把已冻结队列请求真实派发给Provider")
+    _add_case_dir(provider_dispatch_cmd)
+    provider_dispatch_cmd.add_argument("--request-id", required=True)
+    provider_dispatch_cmd.add_argument("--auth-file", required=True)
+    provider_dispatch_cmd.add_argument("--env-file", required=True)
+    provider_dispatch_cmd.add_argument(
+        "--provider", default="glm", choices=("glm", "deepseek"))
+    provider_dispatch_cmd.add_argument("--catalog-dimension", default="TRL")
+    provider_dispatch_cmd.add_argument("--max-output-tokens", type=int,
+                                       default=4096)
+    provider_dispatch_cmd.add_argument("--format-correction",
+                                       action="store_true")
+    provider_dispatch_cmd.add_argument(
+        "--attempt-suffix", default="",
+        help="同一请求的受控新mission后缀（如备选Provider切换#alt1）")
+    provider_export = provider_sub.add_parser(
+        "export-response", help="从封存派发工件导出队列返回正文")
+    _add_case_dir(provider_export)
+    provider_export.add_argument("--request-id", required=True)
+    provider_export.add_argument("--artifact-sha", required=True)
+    provider_export.add_argument("--output", required=True)
 
     export_parser = sub.add_parser("export", help="导出指定job核验包")
     _add_case_dir(export_parser)
@@ -903,14 +933,24 @@ def _dispatch(args: argparse.Namespace) -> int:
             elif args.review_command == "import":
                 response = _load_json_file(Path(args.response_file),
                                            label="review response")
+                provider_dispatch = None
+                if args.source_mode == "runtime_provider":
+                    if not args.provider_artifact:
+                        raise CliRejected(
+                            "runtime_provider必须提供--provider-artifact"
+                            "（已封存派发工件blob SHA256）")
+                    provider_dispatch = {
+                        "artifact_blob_sha256": args.provider_artifact}
                 if args.request_id.startswith("PROPOSALREQ::"):
                     result = workflow.proposals.seal_response(
                         args.request_id, response, source_mode=args.source_mode,
-                        allow_simulated=args.allow_simulated)
+                        allow_simulated=args.allow_simulated,
+                        provider_dispatch=provider_dispatch)
                 elif args.request_id.startswith(("REVIEWREQ::", "REVIEWREQ2::")):
                     result = workflow.reviews.seal_response(
                         args.request_id, response, source_mode=args.source_mode,
-                        allow_simulated=args.allow_simulated)
+                        allow_simulated=args.allow_simulated,
+                        provider_dispatch=provider_dispatch)
                 else:
                     raise CliRejected(
                         "复核请求ID必须为PROPOSALREQ、REVIEWREQ或REVIEWREQ2精确ID")
@@ -924,6 +964,87 @@ def _dispatch(args: argparse.Namespace) -> int:
                         args.response_id, worker_id=args.worker_id)
                 else:
                     raise CliRejected("复核返回ID必须为PROPOSALRESP或REVIEWRESP精确ID")
+        elif args.command == "provider":
+            from .provider_gateway import (
+                ProviderDispatcher,
+                _load_artifact,
+                build_proposal_messages,
+                build_review_messages,
+                derive_response_envelope,
+                verify_runtime_response,
+            )
+            if args.provider_command == "dispatch":
+                if args.request_id.startswith("PROPOSALREQ::"):
+                    request = workflow.proposals.get_request(args.request_id)
+                    purpose = "candidate_proposal"
+                elif args.request_id.startswith(("REVIEWREQ::", "REVIEWREQ2::")):
+                    request = workflow.reviews.get_request(args.request_id)
+                    purpose = "professional_review"
+                else:
+                    raise CliRejected(
+                        "派发请求ID必须为PROPOSALREQ、REVIEWREQ或REVIEWREQ2精确ID")
+                catalog = approved_catalog()
+                if purpose == "candidate_proposal":
+                    messages, output_schema = build_proposal_messages(
+                        request, catalog,
+                        dimension_id=args.catalog_dimension)
+                else:
+                    messages, output_schema = build_review_messages(
+                        request, catalog)
+                dispatcher = ProviderDispatcher(
+                    workflow, authorization_path=args.auth_file,
+                    env_path=args.env_file)
+                artifact = dispatcher.dispatch(
+                    request=request, purpose=purpose, messages=messages,
+                    output_schema=output_schema, provider_id=args.provider,
+                    max_output_tokens=args.max_output_tokens,
+                    task_suffix=("#fmt1" if args.format_correction
+                                 else args.attempt_suffix))
+                result = {
+                    "artifact_id": artifact["artifact_id"],
+                    "artifact_blob_sha256": artifact["artifact_blob_sha256"],
+                    "queue": copy.deepcopy(artifact["queue"]),
+                    "provider": copy.deepcopy(artifact["provider"]),
+                    "provider_request_id":
+                        artifact["response"]["provider_request_id"],
+                    "model": artifact["response"]["model"],
+                    "finish_state": artifact["response"]["finish_state"],
+                    "usage": copy.deepcopy(artifact["usage"]),
+                    "task_key": artifact["transport"]["attempt_task_key"],
+                }
+            elif args.provider_command == "export-response":
+                provider_dispatch = {
+                    "artifact_blob_sha256": args.artifact_sha}
+                if args.request_id.startswith("PROPOSALREQ::"):
+                    queue = workflow.proposals
+                    purpose = "candidate_proposal"
+                elif args.request_id.startswith(("REVIEWREQ::", "REVIEWREQ2::")):
+                    queue = workflow.reviews
+                    purpose = "professional_review"
+                else:
+                    raise CliRejected(
+                        "导出请求ID必须为PROPOSALREQ、REVIEWREQ或REVIEWREQ2精确ID")
+                request = queue.get_request(args.request_id)
+                artifact = _load_artifact(queue, provider_dispatch)
+                if artifact["queue"]["purpose"] != purpose:
+                    raise CliRejected("派发工件用途与队列请求不一致")
+                envelope = derive_response_envelope(
+                    artifact, request, purpose=purpose)
+                verify_runtime_response(
+                    queue, request, envelope, provider_dispatch,
+                    purpose=purpose)
+                output = Path(args.output)
+                if output.exists():
+                    raise CliRejected(f"导出文件已存在：{output}")
+                envelope_bytes = _json_bytes(envelope)
+                _atomic_write_file(output, envelope_bytes)
+                result = {"request_id": args.request_id,
+                          "artifact_blob_sha256": args.artifact_sha,
+                          "output": str(output.resolve()),
+                          "sha256": sha256_hex(envelope_bytes)}
+            else:
+                raise CliRejected(
+                    f"不支持的provider命令：{args.provider_command}")
         elif args.command == "export":
             result = _export_verification_package(
                 workflow, args.job_id, Path(args.output_dir))

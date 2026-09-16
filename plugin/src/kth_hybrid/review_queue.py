@@ -823,10 +823,12 @@ class ReviewQueue:
 
     def seal_response(self, request_id: str, response: dict, *,
                       source_mode: str,
-                      allow_simulated: bool = False) -> dict:
+                      allow_simulated: bool = False,
+                      provider_dispatch: dict | None = None) -> dict:
         return self._seal_response(
             request_id, response, source_mode=source_mode,
-            allow_simulated=allow_simulated, allow_legacy_history=False)
+            allow_simulated=allow_simulated, allow_legacy_history=False,
+            provider_dispatch=provider_dispatch)
 
     def _seal_response_v1_history_fixture(
             self, request_id: str, response: dict, *, source_mode: str,
@@ -838,11 +840,22 @@ class ReviewQueue:
 
     def _seal_response(self, request_id: str, response: dict, *,
                        source_mode: str, allow_simulated: bool,
-                       allow_legacy_history: bool) -> dict:
+                       allow_legacy_history: bool,
+                       provider_dispatch: dict | None = None) -> dict:
         if source_mode not in _ALLOWED_SOURCE_MODES:
             raise ReviewQueueRejected(f"非法source_mode：{source_mode}")
         if source_mode == "runtime_provider":
-            raise ReviewQueueRejected("runtime_provider尚未授权，不能封存为已完成")
+            from .provider_gateway import (
+                ProviderGatewayRejected,
+                verify_runtime_response,
+            )
+            try:
+                verify_runtime_response(
+                    self, self.get_request(request_id), response,
+                    provider_dispatch, purpose="professional_review")
+            except ProviderGatewayRejected as exc:
+                raise ReviewQueueRejected(
+                    f"runtime_provider返回未通过受控派发验证链：{exc}") from exc
         if source_mode == "simulated" and not allow_simulated:
             raise ReviewQueueRejected("模拟返回必须由接口测试显式启用")
         request = self.get_request(request_id)

@@ -493,7 +493,7 @@ def test_response_rejects_unapproved_or_fake_source_mode(
     imported, projection = _import_and_project(workflow, tmp_path)
     job = _create_job(workflow, imported, projection)
     request = workflow.reviews.get_request(job["review_request_ids"][0])
-    with pytest.raises(ReviewQueueRejected, match="source_mode|未授权|模式"):
+    with pytest.raises(ReviewQueueRejected, match="source_mode|未授权|模式|派发验证链"):
         workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], _valid_response(request), source_mode=mode)
 
@@ -528,7 +528,7 @@ def test_source_mode_must_match_real_producer_kind(
     response = _valid_response(request)
     response["producer"] = {
         "producer_id": "producer-01", "producer_kind": producer_kind}
-    with pytest.raises(ReviewQueueRejected, match="producer|来源|未授权|配对"):
+    with pytest.raises(ReviewQueueRejected, match="producer|来源|未授权|配对|派发验证链"):
         workflow.reviews._seal_response_v1_history_fixture(
             request["request_id"], response, source_mode=mode,
             allow_simulated=allow_simulated)
@@ -815,7 +815,7 @@ def test_v5_global_request_digest_schema_migrates_without_losing_requests(
             "PRAGMA foreign_key_check").fetchall() == []
         assert migrated.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-                    "kth-hybrid.store.v9"
+                    "kth-hybrid.store.v10"
     finally:
         migrated.close()
 
@@ -964,7 +964,7 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
                 "review_requests", "review_responses", "tasks"} <= tables
         assert workflow.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-                    "kth-hybrid.store.v9"
+                    "kth-hybrid.store.v10"
         workflow.journal.ensure_task("mechanical:test", "input-1")
         verifier = Journal(db)
         assert verifier.task_state("mechanical:test")["input_id"] == "input-1"
@@ -1055,7 +1055,7 @@ def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
             "PRAGMA foreign_key_check").fetchall() == []
         assert migrated.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-                    "kth-hybrid.store.v9"
+                    "kth-hybrid.store.v10"
         with pytest.raises(sqlite3.IntegrityError):
             with migrated.store._conn:
                 migrated.store._conn.execute(

@@ -42,6 +42,8 @@ MAX_JSON_DEPTH = 24
 _SOURCE_PRODUCERS = {
     "manual_import": {"authorized_human", "human", "manual_import"},
     "simulated": {"simulated", "simulated_test"},
+    # runtime_provider 仅在受控派发验证链通过后由 seal_response 放行。
+    "runtime_provider": {"runtime_provider"},
 }
 _FORBIDDEN_FIELDS = {
     "level", "maturity_level", "native_disposition", "native_note",
@@ -429,11 +431,22 @@ class ProposalQueue:
         return copy.deepcopy(candidate)
 
     def seal_response(self, request_id: str, response: dict, *, source_mode: str,
-                      allow_simulated: bool = False) -> dict:
-        if source_mode == "runtime_provider":
-            raise ProposalQueueRejected("runtime_provider尚未授权")
+                      allow_simulated: bool = False,
+                      provider_dispatch: dict | None = None) -> dict:
         if source_mode not in _SOURCE_PRODUCERS:
             raise ProposalQueueRejected("proposal response source_mode非法")
+        if source_mode == "runtime_provider":
+            from .provider_gateway import (
+                ProviderGatewayRejected,
+                verify_runtime_response,
+            )
+            try:
+                verify_runtime_response(
+                    self, self.get_request(request_id), response,
+                    provider_dispatch, purpose="candidate_proposal")
+            except ProviderGatewayRejected as exc:
+                raise ProposalQueueRejected(
+                    f"runtime_provider返回未通过受控派发验证链：{exc}") from exc
         if source_mode == "simulated" and not allow_simulated:
             raise ProposalQueueRejected("模拟候选必须显式启用")
         request = self.get_request(request_id)

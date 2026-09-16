@@ -27,7 +27,7 @@ from .contracts import (
     sha256_hex,
 )
 
-_SCHEMA_VERSION = "kth-hybrid.store.v9"
+_SCHEMA_VERSION = "kth-hybrid.store.v10"
 WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA = "workflow_review_materialization.v1"
 _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS = {
     "schema_version", "job_id", "request_id", "request_input_digest",
@@ -477,7 +477,7 @@ CREATE TABLE IF NOT EXISTS proposal_responses (
     request_id TEXT NOT NULL UNIQUE REFERENCES proposal_requests(request_id),
     response_digest TEXT NOT NULL UNIQUE,
     response_blob_sha256 TEXT NOT NULL,
-    source_mode TEXT NOT NULL CHECK (source_mode IN ('manual_import','simulated')),
+    source_mode TEXT NOT NULL CHECK (source_mode IN ('manual_import','simulated','runtime_provider')),
     status TEXT NOT NULL CHECK (status IN ('proposal_response_sealed','consumed')),
     body_json TEXT NOT NULL,
     materialization_json TEXT,
@@ -890,7 +890,7 @@ class CaseStore:
                 response_digest TEXT NOT NULL UNIQUE,
                 response_blob_sha256 TEXT NOT NULL,
                 source_mode TEXT NOT NULL CHECK (source_mode IN
-                    ('manual_import','simulated')),
+                    ('manual_import','simulated','runtime_provider')),
                 status TEXT NOT NULL CHECK (status IN
                     ('proposal_response_sealed','consumed')),
                 body_json TEXT NOT NULL,
@@ -963,6 +963,42 @@ class CaseStore:
         if prior_generation < 9:
             self._migrate_workflow_outputs_v9()
         self._conn.commit()
+        if prior_generation < 10:
+            self._migrate_proposal_source_mode_v10()
+        self._conn.commit()
+
+    def _migrate_proposal_source_mode_v10(self) -> None:
+        """扩展proposal_responses的source_mode约束以接受runtime_provider。"""
+        sql = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='proposal_responses'").fetchone()
+        if sql is not None and "runtime_provider" in (sql[0] or ""):
+            return
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._conn.executescript("""
+                CREATE TABLE proposal_responses_v10 (
+                    response_id TEXT PRIMARY KEY,
+                    request_id TEXT NOT NULL UNIQUE REFERENCES proposal_requests(request_id),
+                    response_digest TEXT NOT NULL UNIQUE,
+                    response_blob_sha256 TEXT NOT NULL,
+                    source_mode TEXT NOT NULL CHECK (source_mode IN
+                        ('manual_import','simulated','runtime_provider')),
+                    status TEXT NOT NULL CHECK (status IN
+                        ('proposal_response_sealed','consumed')),
+                    body_json TEXT NOT NULL,
+                    materialization_json TEXT,
+                    consumed_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                );
+                INSERT INTO proposal_responses_v10
+                    SELECT * FROM proposal_responses;
+                DROP TABLE proposal_responses;
+                ALTER TABLE proposal_responses_v10 RENAME TO proposal_responses;
+            """)
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
 
     def _migrate_workflow_states_v7(self) -> None:
         """扩展候选阶段状态；保留既有v1 job与外键引用。"""
