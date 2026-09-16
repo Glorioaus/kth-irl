@@ -28,17 +28,27 @@ from .contracts import sha256_hex
 from .journal import Journal
 
 PROVIDER_PROFILES: dict[str, dict[str, str]] = {
-    # 取值来自基线已记录批准部署差异 model_gateway._PROFILES（仅非凭据配置）。
+    # 取值来自基线已记录批准部署差异 model_gateway._PROFILES（仅非凭据配置），
+    # 2026-09-16 起 glm 按 Owner 指示改走内部网关。
     "glm": {
-        "endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+        "endpoint": "https://aigateway.sunnyoptical.cn/zai-api/v1/chat/completions",
         "model": "glm-5.2",
-        "api_key_env": "ZAI_API_KEY",
+        "api_key_env": "LLM_API_KEY",
     },
     "deepseek": {
         "endpoint": "https://api.deepseek.com/chat/completions",
         "model": "deepseek-v4-pro",
         "api_key_env": "DEEPSEEK_API_KEY",
     },
+}
+# 已封存工件内嵌授权的核验允许历史批准变体；新派发只用当前 PROVIDER_PROFILES。
+_PROFILE_VARIANTS: dict[str, tuple[dict[str, str], ...]] = {
+    "glm": (
+        PROVIDER_PROFILES["glm"],
+        {"endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+         "model": "glm-5.2", "api_key_env": "ZAI_API_KEY"},
+    ),
+    "deepseek": (PROVIDER_PROFILES["deepseek"],),
 }
 AUTHORIZATION_SCHEMA = "kth-hybrid.provider-authorization.v1"
 ARTIFACT_SCHEMA = "kth-hybrid.provider-dispatch.v1"
@@ -117,9 +127,12 @@ def validate_authorization(auth: Mapping[str, Any], *,
         item = providers.get(role)
         if not isinstance(item, Mapping):
             raise ProviderGatewayRejected(f"授权{role}缺失")
-        profile = PROVIDER_PROFILES.get(item.get("provider_id"))
-        if profile is None or item.get("model") != profile["model"] \
-                or item.get("endpoint") != profile["endpoint"]:
+        provider_id = item.get("provider_id")
+        variants = _PROFILE_VARIANTS.get(provider_id)
+        entry = {"endpoint": item.get("endpoint"),
+                 "model": item.get("model"),
+                 "api_key_env": item.get("api_key_env")}
+        if not variants or entry not in [dict(v) for v in variants]:
             raise ProviderGatewayRejected(f"授权{role}与受控profile不一致")
         allowed_models.add(item["model"])
     caps = auth.get("resource_caps")

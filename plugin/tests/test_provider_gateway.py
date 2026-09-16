@@ -111,9 +111,11 @@ def _write_auth(tmp_path, *, material_sha256: str, **overrides) -> object:
         "purposes": ["candidate_proposal", "professional_review"],
         "providers": {
             "primary": {"provider_id": "glm", "model": "glm-5.2",
-                        "endpoint": "https://api.z.ai/api/paas/v4/chat/completions"},
+                        "endpoint": "https://aigateway.sunnyoptical.cn/zai-api/v1/chat/completions",
+                        "api_key_env": "LLM_API_KEY"},
             "fallback": {"provider_id": "deepseek", "model": "deepseek-v4-pro",
-                         "endpoint": "https://api.deepseek.com/chat/completions"},
+                         "endpoint": "https://api.deepseek.com/chat/completions",
+                         "api_key_env": "DEEPSEEK_API_KEY"},
         },
         "resource_caps": {"max_real_requests": 6,
                           "max_cumulative_input_tokens": 60000,
@@ -221,7 +223,7 @@ def workflow_fixture(tmp_path):
 
 def _make_dispatcher(workflow, tmp_path, job, *, calls=None):
     env_path = tmp_path / "gateway-env-fake"
-    env_path.write_text("ZAI_API_KEY=fake-offline-key\nOTHER=1\n",
+    env_path.write_text("LLM_API_KEY=fake-offline-key\nOTHER=1\n",
                         encoding="utf-8")
     auth_path = _write_auth(tmp_path, material_sha256=job["sources"][0]
                             ["blob_sha256"])
@@ -335,7 +337,7 @@ def test_dispatch_rejects_material_out_of_scope(workflow_fixture, tmp_path):
     auth_path = _write_auth(
         tmp_path, material_sha256="0" * 64)
     env_path = tmp_path / "gateway-env-fake"
-    env_path.write_text("ZAI_API_KEY=fake-offline-key\n", encoding="utf-8")
+    env_path.write_text("LLM_API_KEY=fake-offline-key\n", encoding="utf-8")
     dispatcher = ProviderDispatcher(
         workflow, authorization_path=auth_path, env_path=env_path,
         transport=_fake_transport([]))
@@ -357,7 +359,7 @@ def test_dispatch_rejects_expired_authorization(workflow_fixture, tmp_path):
         window={"started": (now - timedelta(hours=5)).isoformat(),
                 "expires": (now - timedelta(hours=1)).isoformat()})
     env_path = tmp_path / "gateway-env-fake"
-    env_path.write_text("ZAI_API_KEY=fake-offline-key\n", encoding="utf-8")
+    env_path.write_text("LLM_API_KEY=fake-offline-key\n", encoding="utf-8")
     proposal = workflow.proposals.get_request(job["proposal_request_ids"][0])
     from kth_hybrid.provider_gateway import build_proposal_messages
     messages, schema = build_proposal_messages(
@@ -366,3 +368,30 @@ def test_dispatch_rejects_expired_authorization(workflow_fixture, tmp_path):
         ProviderDispatcher(
             workflow, authorization_path=auth_path, env_path=env_path,
             transport=_fake_transport([]))
+
+
+def test_legacy_zai_authorization_variant_still_validates(tmp_path):
+    """已封存工件内嵌的旧glm授权（api.z.ai）必须保持可复验。"""
+    from kth_hybrid.provider_gateway import load_authorization
+    now = datetime.now(timezone.utc)
+    auth = {
+        "schema_version": "kth-hybrid.provider-authorization.v1",
+        "material": {"original_sha256": "a" * 64},
+        "purposes": ["candidate_proposal"],
+        "providers": {
+            "primary": {"provider_id": "glm", "model": "glm-5.2",
+                        "endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+                        "api_key_env": "ZAI_API_KEY"},
+            "fallback": {"provider_id": "deepseek", "model": "deepseek-v4-pro",
+                         "endpoint": "https://api.deepseek.com/chat/completions",
+                         "api_key_env": "DEEPSEEK_API_KEY"},
+        },
+        "resource_caps": {"max_real_requests": 6,
+                          "max_cumulative_input_tokens": 60000,
+                          "max_cumulative_output_tokens": 12000},
+        "window": {"started": (now - timedelta(minutes=1)).isoformat(),
+                   "expires": (now + timedelta(hours=1)).isoformat()},
+    }
+    path = tmp_path / "legacy-auth.json"
+    path.write_text(json.dumps(auth, ensure_ascii=False), encoding="utf-8")
+    assert load_authorization(path)["providers"]["primary"]["model"] == "glm-5.2"
