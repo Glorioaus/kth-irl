@@ -842,6 +842,23 @@ def _build_parser() -> ChineseArgumentParser:
     provider_export.add_argument("--artifact-sha", required=True)
     provider_export.add_argument("--output", required=True)
 
+    source_parser = sub.add_parser("source", help="受控来源登记")
+    source_sub = source_parser.add_subparsers(
+        dest="source_command", required=True, parser_class=ChineseArgumentParser)
+    source_declare = source_sub.add_parser(
+        "declare-subject", help="按封存声明记录登记文档自识主体")
+    _add_case_dir(source_declare)
+    source_declare.add_argument("--source-id", required=True)
+    source_declare.add_argument("--declaration-file", required=True)
+    source_time = source_sub.add_parser(
+        "register-time", help="从封存上游记录登记收存时间证据")
+    _add_case_dir(source_time)
+    source_time.add_argument("--source-id", required=True)
+    source_time.add_argument("--upstream-blob", required=True)
+    source_time.add_argument("--upstream-field", required=True)
+    source_time.add_argument("--upstream-document-field", required=True)
+    source_time.add_argument("--event-note", required=True)
+
     export_parser = sub.add_parser("export", help="导出指定job核验包")
     _add_case_dir(export_parser)
     export_parser.add_argument("--job-id", required=True)
@@ -1045,6 +1062,31 @@ def _dispatch(args: argparse.Namespace) -> int:
             else:
                 raise CliRejected(
                     f"不支持的provider命令：{args.provider_command}")
+        elif args.command == "source":
+            from .controlled_registration import (
+                RegistrationRejected,
+                declare_document_subject,
+                register_time_evidence,
+            )
+            try:
+                if args.source_command == "declare-subject":
+                    declaration = _load_json_file(
+                        Path(args.declaration_file), label="主体声明记录")
+                    result = declare_document_subject(
+                        workflow, source_id=args.source_id,
+                        declaration=declaration)
+                elif args.source_command == "register-time":
+                    result = register_time_evidence(
+                        workflow, source_id=args.source_id,
+                        upstream_blob_sha256=args.upstream_blob,
+                        upstream_field=args.upstream_field,
+                        upstream_document_field=args.upstream_document_field,
+                        event_note=args.event_note)
+                else:
+                    raise CliRejected(
+                        f"不支持的source命令：{args.source_command}")
+            except RegistrationRejected as exc:
+                raise CliRejected(f"受控登记被拒：{exc}") from exc
         elif args.command == "export":
             result = _export_verification_package(
                 workflow, args.job_id, Path(args.output_dir))

@@ -26,6 +26,7 @@ from typing import Any, Callable, Mapping
 
 from .contracts import sha256_hex
 from .journal import Journal
+from .store import BudgetRejected
 
 PROVIDER_PROFILES: dict[str, dict[str, str]] = {
     # 取值来自基线已记录批准部署差异 model_gateway._PROFILES（仅非凭据配置），
@@ -72,6 +73,21 @@ def canonical_json_bytes(value: Any) -> bytes:
         json.dumps(value, ensure_ascii=False, sort_keys=True,
                    separators=(",", ":")) + "\n"
     ).encode("utf-8")
+
+
+def _extract_usage(outcome: Mapping[str, Any]) -> dict | None:
+    """从传输返回机械提取usage；任一字段缺失/非法即为不可核算（None）。"""
+    body = outcome.get("body")
+    usage_raw = body.get("usage") if isinstance(body, Mapping) else None
+    if not isinstance(usage_raw, Mapping):
+        return None
+    usage = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = usage_raw.get(key)
+        if not isinstance(value, int) or value < 0:
+            return None
+        usage[key] = value
+    return usage
 
 
 def load_env_credential(env_path: Path | str, variable: str) -> str:
@@ -201,28 +217,44 @@ class ProviderDispatcher:
         self.transport = transport or _wall_clock_transport
         self.timeout_seconds = timeout_seconds
 
-    # ---- 资源上界核算（从 Journal 与封存工件推导，不另记账） ----
+    # ---- 资源上界核算：账本 + 前账本时代Journal扫描 + 授权先验消耗 ----
 
     def usage(self) -> dict:
+        """已知用量、未知用量计数与请求次数；未知不计为0。"""
         conn = self.workflow.journal._conn
+        ledger = self.workflow.store.fetch_provider_usage_ledger()
+        ledger_keys = {row["task_key"] for row in ledger}
+        ledger_requests = len(ledger)
+        input_tokens = sum(
+            row["input_actual"] or 0
+            for row in ledger if row["usage_status"] == "known")
+        output_tokens = sum(
+            row["output_actual"] or 0
+            for row in ledger if row["usage_status"] == "known")
+        unknown_attempts = sum(
+            1 for row in ledger if row["usage_status"] != "known"
+            or row["input_actual"] is None)
+
         rows = conn.execute(
-            "SELECT a.outcome, a.detail, t.output_ref, t.external_actions "
-            "FROM task_attempts a JOIN tasks t ON a.task_key=t.task_key "
-            "WHERE a.task_key LIKE ?",
+            "SELECT a.task_key, a.outcome, a.detail, t.output_ref, "
+            "t.external_actions FROM task_attempts a JOIN tasks t "
+            "ON a.task_key=t.task_key WHERE a.task_key LIKE ?",
             (TASK_KEY_PREFIX + "%",)).fetchall()
-        requests = 0
-        input_tokens = 0
-        output_tokens = 0
+        legacy_requests = 0
         seen_refs: set[str] = set()
-        for outcome, detail, output_ref, external_actions in rows:
+        for task_key, outcome, detail, output_ref, external_actions in rows:
+            if task_key in ledger_keys:
+                continue
             if outcome in ("dispatch_recorded", "succeeded",
                            "outcome_unknown") \
                     or (outcome == "failed" and external_actions > 0):
-                requests += 1
-            if output_ref:
-                seen_refs.add(output_ref)
-            if detail and "failure_blob=" in str(detail):
-                seen_refs.add(str(detail).split("failure_blob=", 1)[1][:64])
+                legacy_requests += 1
+                if output_ref:
+                    seen_refs.add(output_ref)
+                if detail and "failure_blob=" in str(detail):
+                    seen_refs.add(
+                        str(detail).split("failure_blob=", 1)[1][:64])
+        legacy_known_usage = 0
         for blob_sha in sorted(seen_refs):
             try:
                 raw = self.workflow.blobs.read_bytes(blob_sha)
@@ -232,10 +264,28 @@ class ProviderDispatcher:
             usage = artifact.get("usage") \
                 or artifact.get("response", {}).get("body", {}).get("usage")
             if isinstance(usage, Mapping):
-                input_tokens += usage.get("prompt_tokens") or 0
-                output_tokens += usage.get("completion_tokens") or 0
-        return {"requests": requests, "input_tokens": input_tokens,
-                "output_tokens": output_tokens}
+                prompt = usage.get("prompt_tokens")
+                completion = usage.get("completion_tokens")
+                if isinstance(prompt, int) and isinstance(completion, int):
+                    legacy_known_usage += 1
+                    input_tokens += prompt
+                    output_tokens += completion
+        # 前账本时代已派发但读不到usage的mission：显式未知，不作0。
+        unknown_attempts += legacy_requests - legacy_known_usage
+
+        prior = self.authorization.get("prior_consumption")
+        if isinstance(prior, Mapping):
+            input_tokens += prior.get("input_tokens") or 0
+            output_tokens += prior.get("output_tokens") or 0
+            unknown_attempts += prior.get("unknown_attempts") or 0
+        return {
+            "requests": ledger_requests + legacy_requests
+            + ((prior.get("requests") or 0)
+               if isinstance(prior, Mapping) else 0),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "unknown_attempts": unknown_attempts,
+        }
 
     def _check_ready(self, *, purpose: str, provider_id: str,
                      material_blob_sha256: str) -> dict:
@@ -253,6 +303,14 @@ class ProviderDispatcher:
                 "队列请求材料不在授权外发范围（hash不符）")
         caps = self.authorization["resource_caps"]
         usage = self.usage()
+        prior = self.authorization.get("prior_consumption")
+        if usage["unknown_attempts"] > 0 \
+                and not (isinstance(prior, Mapping)
+                         and prior.get("unknown_reconciled")):
+            raise ProviderGatewayRejected(
+                f"存在{usage['unknown_attempts']}个未核算usage的已派发"
+                "mission：剩余额度不可证明，拒绝派发（需Owner批准的核算"
+                "来源或恢复记录）")
         if usage["requests"] >= caps["max_real_requests"]:
             raise ProviderGatewayRejected("真实请求次数达到授权上界")
         if usage["input_tokens"] >= caps["max_cumulative_input_tokens"] \
@@ -312,54 +370,112 @@ class ProviderDispatcher:
             "Accept": "application/json",
         }
 
+        # 派发前原子预留：本次输入上界（UTF-8字节/2 的保守估计：中文约
+        # 3字节/字≈1token 时高估、ASCII 4字节/token 时亦高估）与
+        # max_output_tokens；未结算余额不共享，越限整体回滚、零外发。
+        caps = self.authorization["resource_caps"]
+        usage_now = self.usage()
+        ledger_rows = self.workflow.store.fetch_provider_usage_ledger()
+        non_ledger_requests = usage_now["requests"] - len(ledger_rows)
+        input_estimate = max(1, (len(request_bytes) + 1) // 2)
+        try:
+            self.workflow.store.reserve_provider_usage(
+                authorization_digest=authorization_digest(self.authorization),
+                task_key=task_key, purpose=purpose, provider_id=provider_id,
+                input_reserved=input_estimate,
+                output_reserved=max_output_tokens,
+                known_input=usage_now["input_tokens"],
+                known_output=usage_now["output_tokens"],
+                unknown_input_bound=0, unknown_output_bound=0,
+                request_cap=caps["max_real_requests"] - non_ledger_requests,
+                input_cap=caps["max_cumulative_input_tokens"],
+                output_cap=caps["max_cumulative_output_tokens"])
+        except BudgetRejected as exc:
+            raise ProviderGatewayRejected(
+                f"派发前额度预留被拒：{exc}") from exc
+
         journal: Journal = self.workflow.journal
         journal.ensure_task(task_key, request["request_input_digest"])
         claim = journal.claim(task_key, "provider-gateway",
                               request["request_input_digest"])
         journal.record_dispatch(claim)
         try:
-            outcome = self.transport(
-                profile["endpoint"], headers, request_bytes,
-                self.timeout_seconds)
-        except (TimeoutError, socket.timeout, ConnectionError, OSError) as exc:
-            journal.record_failure(claim, f"{type(exc).__name__}",
-                                   outcome_unknown=True)
-            raise ProviderDispatchUnknown(
-                f"派发结果未知，已按outcome_unknown封账，禁止自动重发："
-                f"{type(exc).__name__}") from exc
-        try:
-            artifact = self._seal_success(
-                claim=claim, request=request, purpose=purpose,
-                provider_id=provider_id, profile=profile, payload=payload,
-                outcome=outcome)
-        except ProviderGatewayRejected as exc:
-            # 确定性失败同样封存原始响应，供审计诊断；不产生新请求。
-            failure = {
-                "schema_version": "kth-hybrid.provider-dispatch-failure.v1",
-                "queue": {
-                    "request_id": request["request_id"],
-                    "request_input_digest": request["request_input_digest"],
-                    "purpose": purpose,
-                    "source_mode": "runtime_provider",
-                },
-                "authorization_digest":
-                    authorization_digest(self.authorization),
-                "provider": {
-                    "provider_id": provider_id,
-                    "model": profile["model"],
-                    "endpoint": profile["endpoint"],
-                },
-                "request_payload": copy.deepcopy(payload),
-                "response": copy.deepcopy(outcome),
-                "error": str(exc),
-                "sealed_at": datetime.now(timezone.utc).isoformat(),
-            }
-            blob = self.workflow.blobs.put_bytes(
-                canonical_json_bytes(failure))
-            journal.record_failure(
-                claim, f"{exc}；failure_blob={blob.sha256}")
+            try:
+                outcome = self.transport(
+                    profile["endpoint"], headers, request_bytes,
+                    self.timeout_seconds)
+            except (TimeoutError, socket.timeout, ConnectionError,
+                    OSError) as exc:
+                journal.record_failure(claim, f"{type(exc).__name__}",
+                                       outcome_unknown=True)
+                self.workflow.store.settle_provider_usage(
+                    task_key, status="outcome_unknown",
+                    detail=f"{type(exc).__name__}；usage未知")
+                raise ProviderDispatchUnknown(
+                    f"派发结果未知，已按outcome_unknown封账，禁止自动重发："
+                    f"{type(exc).__name__}") from exc
+            try:
+                artifact = self._seal_success(
+                    claim=claim, request=request, purpose=purpose,
+                    provider_id=provider_id, profile=profile, payload=payload,
+                    outcome=outcome)
+            except ProviderGatewayRejected as exc:
+                # 确定性失败同样封存原始响应，供审计诊断；不产生新请求。
+                failure = {
+                    "schema_version": "kth-hybrid.provider-dispatch-failure.v1",
+                    "queue": {
+                        "request_id": request["request_id"],
+                        "request_input_digest":
+                            request["request_input_digest"],
+                        "purpose": purpose,
+                        "source_mode": "runtime_provider",
+                    },
+                    "authorization_digest":
+                        authorization_digest(self.authorization),
+                    "provider": {
+                        "provider_id": provider_id,
+                        "model": profile["model"],
+                        "endpoint": profile["endpoint"],
+                    },
+                    "request_payload": copy.deepcopy(payload),
+                    "response": copy.deepcopy(outcome),
+                    "error": str(exc),
+                    "sealed_at": datetime.now(timezone.utc).isoformat(),
+                }
+                blob = self.workflow.blobs.put_bytes(
+                    canonical_json_bytes(failure))
+                journal.record_failure(
+                    claim, f"{exc}；failure_blob={blob.sha256}")
+                failure_usage = _extract_usage(outcome)
+                self.workflow.store.settle_provider_usage(
+                    task_key, status="failed",
+                    input_actual=(failure_usage or {}).get("prompt_tokens"),
+                    output_actual=(failure_usage or {}).get("completion_tokens"),
+                    usage_status="known" if failure_usage else "unknown",
+                    detail=str(exc)[:200])
+                raise
+            settled_usage = artifact.get("usage")
+            self.workflow.store.settle_provider_usage(
+                task_key, status="succeeded",
+                input_actual=(settled_usage or {}).get("prompt_tokens"),
+                output_actual=(settled_usage or {}).get("completion_tokens"),
+                usage_status="known" if settled_usage else "unknown",
+                detail=(None if settled_usage
+                        else "响应缺少可核算usage；进入未知状态"))
+            return artifact
+        except ProviderDispatchUnknown:
             raise
-        return artifact
+        except ProviderGatewayRejected:
+            raise
+        except Exception as exc:
+            # 预留后意外异常：结算为unknown释放余额之外仍按请求计数。
+            try:
+                self.workflow.store.settle_provider_usage(
+                    task_key, status="failed",
+                    detail=f"意外异常：{type(exc).__name__}")
+            except Exception:
+                pass
+            raise
 
     def _seal_success(self, *, claim, request, purpose, provider_id,
                       profile, payload, outcome) -> dict:
@@ -384,15 +500,15 @@ class ProviderDispatcher:
         content = choices[0].get("message", {}).get("content")
         if not isinstance(content, str) or not content.strip():
             raise ProviderGatewayRejected("provider响应content为空")
-        usage_raw = body.get("usage")
-        if not isinstance(usage_raw, Mapping):
-            raise ProviderGatewayRejected("provider响应usage缺失")
-        usage = {}
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-            value = usage_raw.get(key)
-            if not isinstance(value, int) or value < 0:
-                raise ProviderGatewayRejected(f"provider响应usage.{key}非法")
-            usage[key] = value
+        # usage缺失/非法进入显式未知（completion_tokens 通常已含推理token）；
+        # 真实响应必须如实封存，不以拒绝响应的方式抹掉已发生的消耗。
+        usage = _extract_usage(outcome)
+        usage_reconciliation = {
+            "status": "known" if usage else "unknown",
+            "includes_reasoning_tokens": True,
+        }
+        if usage is None:
+            usage_reconciliation["reason"] = "响应缺少可核算usage字段"
         try:
             model_output = json.loads(content)
         except json.JSONDecodeError as exc:
@@ -401,14 +517,24 @@ class ProviderDispatcher:
         if not isinstance(model_output, dict):
             raise ProviderGatewayRejected("provider输出必须是JSON对象")
 
+        # 事后对账：预留防线不应被绕过；若实际返回仍超出上界，如实标记
+        # 超限并封存，不删除响应也不假装未发生。
         caps = self.authorization["resource_caps"]
         used = self.usage()
-        if used["requests"] + 1 > caps["max_real_requests"] \
-                or used["input_tokens"] + usage["prompt_tokens"] \
-                > caps["max_cumulative_input_tokens"] \
-                or used["output_tokens"] + usage["completion_tokens"] \
-                > caps["max_cumulative_output_tokens"]:
-            raise ProviderGatewayRejected("本次派发将超出授权资源上界")
+        cap_exceeded = None
+        if usage is not None and (
+                used["input_tokens"] + usage["prompt_tokens"]
+                > caps["max_cumulative_input_tokens"]
+                or used["output_tokens"] + usage["completion_tokens"]
+                > caps["max_cumulative_output_tokens"]):
+            cap_exceeded = {
+                "known_input_before": used["input_tokens"],
+                "known_output_before": used["output_tokens"],
+                "this_input": usage["prompt_tokens"],
+                "this_output": usage["completion_tokens"],
+                "input_cap": caps["max_cumulative_input_tokens"],
+                "output_cap": caps["max_cumulative_output_tokens"],
+            }
 
         artifact_body = {
             "schema_version": ARTIFACT_SCHEMA,
@@ -438,6 +564,8 @@ class ProviderDispatcher:
                 "raw": copy.deepcopy(body),
             },
             "usage": usage,
+            "usage_reconciliation": usage_reconciliation,
+            "cap_exceeded": cap_exceeded,
             "model_output": model_output,
             "sealed_at": datetime.now(timezone.utc).isoformat(),
         }

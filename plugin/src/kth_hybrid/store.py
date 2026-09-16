@@ -27,7 +27,12 @@ from .contracts import (
     sha256_hex,
 )
 
-_SCHEMA_VERSION = "kth-hybrid.store.v10"
+
+class BudgetRejected(RuntimeError):
+    """Provider 用量预留/结算违反上界或状态合同；事务已回滚。"""
+
+
+_SCHEMA_VERSION = "kth-hybrid.store.v11"
 WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA = "workflow_review_materialization.v1"
 _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS = {
     "schema_version", "job_id", "request_id", "request_input_digest",
@@ -236,6 +241,25 @@ CREATE TABLE IF NOT EXISTS dimension_results (
 );
 CREATE INDEX IF NOT EXISTS idx_dimension_results_dimension
     ON dimension_results(dimension_id, scope_id);
+CREATE TABLE IF NOT EXISTS provider_usage_ledger (
+    task_key TEXT PRIMARY KEY,
+    authorization_digest TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN
+        ('reserved','succeeded','failed','outcome_unknown')),
+    input_reserved INTEGER NOT NULL,
+    output_reserved INTEGER NOT NULL,
+    input_actual INTEGER,
+    output_actual INTEGER,
+    usage_status TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (usage_status IN ('known','unknown')),
+    detail TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_provider_usage_ledger_auth
+    ON provider_usage_ledger(authorization_digest);
 CREATE TABLE IF NOT EXISTS source_time_evidence (
     revision INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id TEXT NOT NULL,
@@ -966,6 +990,31 @@ class CaseStore:
         if prior_generation < 10:
             self._migrate_proposal_source_mode_v10()
         self._conn.commit()
+        if prior_generation < 11:
+            self._conn.executescript("""
+                CREATE TABLE IF NOT EXISTS provider_usage_ledger (
+                    task_key TEXT PRIMARY KEY,
+                    authorization_digest TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    provider_id TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN
+                        ('reserved','succeeded','failed','outcome_unknown')),
+                    input_reserved INTEGER NOT NULL,
+                    output_reserved INTEGER NOT NULL,
+                    input_actual INTEGER,
+                    output_actual INTEGER,
+                    usage_status TEXT NOT NULL DEFAULT 'unknown'
+                        CHECK (usage_status IN ('known','unknown')),
+                    detail TEXT,
+                    created_at TEXT NOT NULL
+                        DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    updated_at TEXT NOT NULL
+                        DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_provider_usage_ledger_auth
+                    ON provider_usage_ledger(authorization_digest);
+            """)
+        self._conn.commit()
 
     def _migrate_proposal_source_mode_v10(self) -> None:
         """扩展proposal_responses的source_mode约束以接受runtime_provider。"""
@@ -1470,6 +1519,87 @@ class CaseStore:
     def latest_time_evidence(self, source_id: str) -> dict | None:
         history = self.get_time_evidence_history(source_id)
         return history[-1] if history else None
+
+    # ---- Provider 用量账本（派发前原子预留，结算不改写） ----
+
+    def reserve_provider_usage(self, *, authorization_digest: str,
+                               task_key: str, purpose: str,
+                               provider_id: str, input_reserved: int,
+                               output_reserved: int, known_input: int,
+                               known_output: int, unknown_input_bound: int,
+                               unknown_output_bound: int, request_cap: int,
+                               input_cap: int, output_cap: int) -> None:
+        """单一写事务内校验并预留本次派发的输入/输出上界。
+
+        known_* 为已核算实际用量；unknown_* 为无留存usage mission 的保守
+        上界（按其请求预留量计）。并发派发在同一 immediate 事务内串行，
+        不共享未结算余额；任一上界越限即整体回滚并拒绝。
+        """
+        with self.immediate_transaction():
+            row = self._conn.execute(
+                "SELECT task_key FROM provider_usage_ledger WHERE task_key=?",
+                (task_key,)).fetchone()
+            if row is not None:
+                raise BudgetRejected(f"用量预留已存在：{task_key}")
+            reserved_requests = self._conn.execute(
+                "SELECT COUNT(*) FROM provider_usage_ledger WHERE "
+                "authorization_digest=?", (authorization_digest,)).fetchone()[0]
+            if reserved_requests + 1 > request_cap:
+                raise BudgetRejected(
+                    f"预留后请求次数{reserved_requests + 1}超过上界"
+                    f"{request_cap}")
+            if known_input + unknown_input_bound + input_reserved > input_cap:
+                raise BudgetRejected(
+                    f"预留后累计输入token超限：已知{known_input}+未知上界"
+                    f"{unknown_input_bound}+本次预留{input_reserved}"
+                    f">{input_cap}")
+            if known_output + unknown_output_bound + output_reserved \
+                    > output_cap:
+                raise BudgetRejected(
+                    f"预留后累计输出token超限：已知{known_output}+未知上界"
+                    f"{unknown_output_bound}+本次预留{output_reserved}"
+                    f">{output_cap}")
+            self._conn.execute(
+                "INSERT INTO provider_usage_ledger(task_key, "
+                "authorization_digest, purpose, provider_id, status, "
+                "input_reserved, output_reserved) "
+                "VALUES (?,?,?,?, 'reserved', ?,?)",
+                (task_key, authorization_digest, purpose, provider_id,
+                 input_reserved, output_reserved))
+
+    def settle_provider_usage(self, task_key: str, *, status: str,
+                              input_actual: int | None = None,
+                              output_actual: int | None = None,
+                              usage_status: str = "unknown",
+                              detail: str | None = None) -> None:
+        if status not in {"succeeded", "failed", "outcome_unknown"}:
+            raise ValueError(f"结算状态非法：{status}")
+        if usage_status not in {"known", "unknown"}:
+            raise ValueError(f"usage状态非法：{usage_status}")
+        with self.immediate_transaction():
+            cur = self._conn.execute(
+                "UPDATE provider_usage_ledger SET status=?, input_actual=?, "
+                "output_actual=?, usage_status=?, detail=?, updated_at="
+                "strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE task_key=? AND status='reserved'",
+                (status, input_actual, output_actual, usage_status, detail,
+                 task_key))
+            if cur.rowcount != 1:
+                raise BudgetRejected(
+                    f"用量结算条件更新失败（无预留或已结算）：{task_key}")
+
+    def fetch_provider_usage_ledger(
+            self, authorization_digest: str | None = None) -> list[dict]:
+        if authorization_digest is None:
+            rows = self._conn.execute(
+                "SELECT * FROM provider_usage_ledger ORDER BY created_at, "
+                "task_key").fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM provider_usage_ledger WHERE "
+                "authorization_digest=? ORDER BY created_at, task_key",
+                (authorization_digest,)).fetchall()
+        return [dict(row) for row in rows]
 
     # ---- 采集依赖封存（真实blob引用，非文件名清单）----
 

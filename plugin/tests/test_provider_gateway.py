@@ -247,8 +247,9 @@ def test_runtime_provider_full_chain_offline(workflow_fixture, tmp_path):
     assert artifact["schema_version"] == ARTIFACT_SCHEMA
     assert artifact["response"]["provider_request_id"] == "chatcmpl-fake-0001"
     assert artifact["usage"]["total_tokens"] == 640
-    assert dispatcher.usage() == {"requests": 1, "input_tokens": 512,
-                                  "output_tokens": 128}
+    usage_snapshot = dispatcher.usage()
+    assert (usage_snapshot["requests"], usage_snapshot["input_tokens"],
+            usage_snapshot["output_tokens"]) == (1, 512, 128)
 
     envelope = derive_response_envelope(artifact, proposal,
                                         purpose="candidate_proposal")
@@ -395,3 +396,187 @@ def test_legacy_zai_authorization_variant_still_validates(tmp_path):
     path = tmp_path / "legacy-auth.json"
     path.write_text(json.dumps(auth, ensure_ascii=False), encoding="utf-8")
     assert load_authorization(path)["providers"]["primary"]["model"] == "glm-5.2"
+
+
+# ---- 用量未知、派发前预留与结算（零transport验证） ----
+
+def _proposal_request(workflow, job):
+    return workflow.proposals.get_request(job["proposal_request_ids"][0])
+
+
+def _messages_schema(request):
+    from kth_hybrid.provider_gateway import build_proposal_messages
+    return build_proposal_messages(request, build_catalog_from_wheel())
+
+
+def test_unknown_legacy_usage_blocks_dispatch(workflow_fixture, tmp_path):
+    workflow, job = workflow_fixture
+    calls: list = []
+    dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=calls)
+    request = _proposal_request(workflow, job)
+    # 前账本时代：已派发但无任何usage留存的失败mission。
+    workflow.journal.ensure_task("provider-dispatch:LEGACY-UNKNOWN", "x" * 64)
+    legacy_claim = workflow.journal.claim(
+        "provider-dispatch:LEGACY-UNKNOWN", "legacy", "x" * 64)
+    workflow.journal.record_dispatch(legacy_claim)
+    workflow.journal.record_failure(legacy_claim, "HTTP 401")
+    usage = dispatcher.usage()
+    assert usage["requests"] == 1 and usage["unknown_attempts"] == 1
+    messages, schema = _messages_schema(request)
+    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema)
+    assert calls == []
+
+
+def test_insufficient_quota_rejects_before_transport(workflow_fixture,
+                                                     tmp_path):
+    workflow, job = workflow_fixture
+    calls: list = []
+    env_path = tmp_path / "gateway-env-fake"
+    env_path.write_text("LLM_API_KEY=fake-offline-key\n", encoding="utf-8")
+    auth_path = _write_auth(
+        tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
+        resource_caps={"max_real_requests": 6,
+                       "max_cumulative_input_tokens": 60000,
+                       "max_cumulative_output_tokens": 100})
+    dispatcher = ProviderDispatcher(
+        workflow, authorization_path=auth_path, env_path=env_path,
+        transport=_fake_transport(calls))
+    request = _proposal_request(workflow, job)
+    messages, schema = _messages_schema(request)
+    with pytest.raises(ProviderGatewayRejected, match="额度预留被拒"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema,
+                            max_output_tokens=4096)
+    assert calls == []
+
+
+def test_failed_mission_counts_and_unknown_blocks_next(workflow_fixture,
+                                                        tmp_path):
+    workflow, job = workflow_fixture
+    calls: list = []
+
+    def failing(endpoint, headers, body, timeout_seconds):
+        calls.append({"endpoint": endpoint})
+        return {"status_code": 401, "body": {"http_error": "unauthorized"}}
+
+    dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=[])
+    dispatcher.transport = failing
+    request = _proposal_request(workflow, job)
+    messages, schema = _messages_schema(request)
+    with pytest.raises(ProviderGatewayRejected, match="HTTP 401"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema)
+    usage = dispatcher.usage()
+    assert usage["requests"] == 1 and usage["unknown_attempts"] == 1
+    ledger = workflow.store.fetch_provider_usage_ledger()
+    assert ledger and ledger[0]["status"] == "failed" \
+        and ledger[0]["usage_status"] == "unknown"
+    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema,
+                            task_suffix="#again")
+    assert len(calls) == 1
+
+
+def test_missing_usage_seals_unknown_and_blocks(workflow_fixture,
+                                                tmp_path):
+    workflow, job = workflow_fixture
+    calls: list = []
+
+    def no_usage(endpoint, headers, body, timeout_seconds):
+        calls.append({"endpoint": endpoint})
+        payload = json.loads(body)
+        content = {"candidates": [{
+            "quote": json.loads(next(m for m in payload["messages"]
+                                    if m["role"] == "user")["content"])["quote"],
+            "locator": {}, "interpretation": "x", "subject_scope": "s",
+            "dimension_id": "TRL", "criterion_id": "TRL4-C1",
+            "mapping": {"criterion_id": "TRL4-C1",
+                        "evidence_class": "test_record",
+                        "requested_use": "third_party_reported_fact"}}]}
+        return {"status_code": 200, "body": {
+            "id": "chatcmpl-nousage", "model": payload["model"],
+            "choices": [{"finish_reason": "stop", "message": {"content":
+                json.dumps(content, ensure_ascii=False)}}]}}
+
+    dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=[])
+    dispatcher.transport = no_usage
+    request = _proposal_request(workflow, job)
+    messages, schema = _messages_schema(request)
+    artifact = dispatcher.dispatch(
+        request=request, purpose="candidate_proposal", messages=messages,
+        output_schema=schema)
+    assert artifact["usage"] is None
+    assert artifact["usage_reconciliation"]["status"] == "unknown"
+    assert dispatcher.usage()["unknown_attempts"] == 1
+    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema,
+                            task_suffix="#next")
+    assert len(calls) == 1
+
+
+def test_outstanding_reservation_is_shared_balance(workflow_fixture,
+                                                   tmp_path):
+    workflow, job = workflow_fixture
+    calls: list = []
+    dispatcher = _make_dispatcher(workflow, tmp_path, job, calls=calls)
+    request = _proposal_request(workflow, job)
+    from kth_hybrid.provider_gateway import authorization_digest
+    from kth_hybrid.store import BudgetRejected
+    digest = authorization_digest(dispatcher.authorization)
+    # 存储层：同一授权的第二次预留必须计入已占余额（并发不共享未预留额度）。
+    workflow.store.reserve_provider_usage(
+        authorization_digest=digest,
+        task_key="provider-dispatch:OTHER-RESERVED",
+        purpose="candidate_proposal", provider_id="glm",
+        input_reserved=100, output_reserved=100,
+        known_input=0, known_output=0, unknown_input_bound=0,
+        unknown_output_bound=0, request_cap=1, input_cap=60000,
+        output_cap=12000)
+    with pytest.raises(BudgetRejected, match="请求次数2超过上界1"):
+        workflow.store.reserve_provider_usage(
+            authorization_digest=digest,
+            task_key="provider-dispatch:SECOND-RESERVED",
+            purpose="candidate_proposal", provider_id="glm",
+            input_reserved=100, output_reserved=100,
+            known_input=0, known_output=0, unknown_input_bound=0,
+            unknown_output_bound=0, request_cap=1, input_cap=60000,
+            output_cap=12000)
+    # 派发层：未结算预留按未知占用阻断（零transport）。
+    messages, schema = _messages_schema(request)
+    with pytest.raises(ProviderGatewayRejected, match="剩余额度不可证明"):
+        dispatcher.dispatch(request=request, purpose="candidate_proposal",
+                            messages=messages, output_schema=schema)
+    assert calls == []
+
+
+def test_prior_consumption_reconciliation_allows_dispatch(
+        workflow_fixture, tmp_path):
+    workflow, job = workflow_fixture
+    calls: list = []
+    env_path = tmp_path / "gateway-env-fake"
+    env_path.write_text("LLM_API_KEY=fake-offline-key\n", encoding="utf-8")
+    auth_path = _write_auth(
+        tmp_path, material_sha256=job["sources"][0]["blob_sha256"],
+        prior_consumption={
+            "requests": 3, "input_tokens": 1980, "output_tokens": 6621,
+            "unknown_attempts": 2, "unknown_reconciled": True,
+            "source": "测试：Owner批准的保守核算（2个未知按其请求上界折算）"})
+    dispatcher = ProviderDispatcher(
+        workflow, authorization_path=auth_path, env_path=env_path,
+        transport=_fake_transport(calls))
+    request = _proposal_request(workflow, job)
+    messages, schema = _messages_schema(request)
+    artifact = dispatcher.dispatch(
+        request=request, purpose="candidate_proposal", messages=messages,
+        output_schema=schema)
+    usage = dispatcher.usage()
+    # 历史未知计数保留为事实（2），已由授权声明对账，不再阻断派发。
+    assert usage["requests"] == 4 and usage["unknown_attempts"] == 2
+    assert usage["input_tokens"] == 1980 + 512
+    ledger = workflow.store.fetch_provider_usage_ledger()
+    assert ledger[0]["status"] == "succeeded" \
+        and ledger[0]["usage_status"] == "known"
