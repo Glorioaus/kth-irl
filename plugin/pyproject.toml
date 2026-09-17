@@ -15,6 +15,9 @@ kth-local = "kth_hybrid.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+kth_hybrid = ["data/*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

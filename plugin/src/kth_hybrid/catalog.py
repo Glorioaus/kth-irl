@@ -1,9 +1,9 @@
-"""判据目录：从批准 wheel 的六个 registry getter 机械提取判据索引。
+"""判据目录：正常运行读取包内固定数据，批准wheel只作显式离线参考。
 
-纪律（v3 计划 T02 / 开工指令 §5）：
-- 批准 wheel 是唯一执行 oracle，但**不是**本产品的运行时依赖：提取在隔离子进程
-  （``python -I``）中完成，wheel 只进入该子进程的 ``sys.path``。
-- 提取前在父进程与子进程双重核验 wheel SHA-256；不一致立即失败，不降级。
+纪律（工作仓自包含合同 v1）：
+- 包内工件来自批准wheel六个getter的机械冻结，读取前校验固定字节hash。
+- 正常入口不读wheel、不启动子进程；缺失或损坏不回退到旧目录。
+- 显式离线提取工具仍双重核验wheel SHA256，不是应用运行路径。
 - 不重新发明 criterion：条目、级别、dispositions、na_policy 等字段原样保留。
 - 180 条只是批准 wheel 当前实现的条目，不是完整 KTH 判据全集。
 """
@@ -18,13 +18,26 @@ import sys
 from pathlib import Path
 from typing import Any
 
-APPROVED_WHEEL = Path(
-    "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/runtime/"
-    "kth_irl_evaluator-0.1.5-py3-none-any.whl"
+# 源码仓内的参考原件，不属于安装包的运行依赖。
+APPROVED_WHEEL = (
+    Path(__file__).resolve().parent.parent.parent.parent / ".local" / "reference"
+    / "approved-baseline" / "oracle.whl"
 )
 APPROVED_WHEEL_SHA256 = (
     "2c49050858555ebb063a7b82177ee43e7caf7d2b93e2319998d7d0b047a471fe"
 )
+APPROVED_CATALOG = Path(__file__).with_name("data") / "approved_catalog.v1.json"
+APPROVED_CATALOG_SHA256 = (
+    "abb21b0e5ff7aae2bf39f9149f3139ea017347ef1875c885da9a9a9e516d7f04"
+)
+
+
+def load_approved_catalog(path: Path | None = None) -> dict[str, Any]:
+    """读取独立的新对象；不接受自报身份、不回退或重建损坏工件。"""
+    payload = (Path(path) if path is not None else APPROVED_CATALOG).read_bytes()
+    if hashlib.sha256(payload).hexdigest() != APPROVED_CATALOG_SHA256:
+        raise RuntimeError("批准catalog固定工件身份不符")
+    return json.loads(payload)
 
 # 六个 getter 的机械定位（维度 → (wheel 内模块, getter 函数)）。
 _DIMENSION_GETTERS: dict[str, tuple[str, str]] = {
@@ -103,22 +116,28 @@ print(json.dumps({"wheel_sha256": digest.hexdigest(), "dimensions": out},
 def build_catalog_from_wheel(
     wheel_path: Path | None = None, *, expected_sha256: str = APPROVED_WHEEL_SHA256
 ) -> dict[str, Any]:
-    """在隔离子进程中提取六个 registry，返回判据目录（纯数据，无 wheel 依赖）。
+    """兼容入口：无路径时加载包内工件；仅显式路径才执行离线参考提取。
 
     返回结构：
     ``{"schema_version", "wheel_sha256", "generated_by", "dimensions": {...},
     "totals": {"criteria": 180}}``；每个维度含 registry 原文、判据平铺列表与
     code_pointer（wheel 内模块与 getter）。
     """
-    wheel = Path(wheel_path) if wheel_path else APPROVED_WHEEL
+    if wheel_path is None:
+        if expected_sha256 != APPROVED_WHEEL_SHA256:
+            raise RuntimeError("批准wheel身份不符：固定catalog不能换方法身份")
+        return load_approved_catalog()
+    wheel = Path(wheel_path)
     if wheel_sha256(wheel) != expected_sha256:
         raise RuntimeError(f"批准 wheel 身份不符：{wheel}")
     payload = json.dumps(_DIMENSION_GETTERS)
     with isolated_wheel_probe():
         result = subprocess.run(
-            [sys.executable, "-I", "-c", _PROBE_SCRIPT, str(wheel), expected_sha256, payload],
+            [sys.executable, "-I", "-B", "-X", "utf8", "-c", _PROBE_SCRIPT,
+             str(wheel), expected_sha256, payload],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=120,
         )
     if result.returncode != 0:

@@ -28,8 +28,10 @@ from .intake import (
 )
 from .store import BlobStore, CaseStore
 
-MANIFEST_DEFAULT = Path(
-    "D:/UGit/kth-irl-hybrid/provenance/manifest.v1.json"
+# 源码检出时的默认清单；独立安装的历史采集导入应显式传入manifest。
+MANIFEST_DEFAULT = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "provenance" / "manifest.v1.json"
 )
 
 # 已知审计锚点（2026-09-07 架构裁决 W1/W4：区间哈希定位抽查）

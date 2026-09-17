@@ -5,7 +5,7 @@ kth-env.*
 .env
 .env.*
 
-# 真实 Case 数据一律存放于仓库外的 Case 工作区
+# 新真实 Case 位于 .local/runs/ 内；兼容忽略历史 Case 输出目录
 cases/
 case-output/
 
@@ -21,6 +21,7 @@ dist/
 build/
 
 # 工具与系统
+.local/
 Thumbs.db
 .DS_Store
 *.log

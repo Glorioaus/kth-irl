@@ -749,7 +749,7 @@ def trace(case: CaseStore, blobs: BlobStore, result_id: str,
 def validate_crl_dimension_payload(case: CaseStore, blobs: BlobStore,
                                    result: dict) -> list[str]:
     """发布前与读时trace共用的CRL维度完整绑定核验。"""
-    from .catalog import APPROVED_WHEEL_SHA256, build_catalog_from_wheel
+    from .catalog import APPROVED_WHEEL_SHA256, load_approved_catalog
     from .kernels.crl import RULE_VERSION as CRL_RULE_VERSION, evaluate_crl_dimension
     from .qualification import (
         resolve_case_basis_proof_bindings,
@@ -772,7 +772,7 @@ def validate_crl_dimension_payload(case: CaseStore, blobs: BlobStore,
         broken.append("CRL维度catalog SHA256与批准wheel不一致")
     else:
         try:
-            expected_criteria = build_catalog_from_wheel()["dimensions"][
+            expected_criteria = load_approved_catalog()["dimensions"][
                 "CRL"]["registry"]["criteria"]
         except Exception as exc:
             broken.append(f"CRL批准catalog无法重建：{exc}")
@@ -1035,12 +1035,12 @@ def validate_dimension_payload(case: CaseStore, blobs: BlobStore,
     if result.get("input_digest") != digest \
             or result.get("result_id") != f"DIMR2::{dimension_id}::{digest}":
         broken.append("维度结果身份或冻结摘要不一致")
-    from .catalog import APPROVED_WHEEL_SHA256, build_catalog_from_wheel
+    from .catalog import APPROVED_WHEEL_SHA256, load_approved_catalog
     if frozen.get("catalog_sha256") != APPROVED_WHEEL_SHA256:
         broken.append("维度catalog SHA256与批准wheel不一致")
     else:
         try:
-            expected_criteria = build_catalog_from_wheel()["dimensions"][
+            expected_criteria = load_approved_catalog()["dimensions"][
                 dimension_id]["registry"]["criteria"]
         except Exception as exc:
             broken.append(f"维度catalog无法重建：{exc}")

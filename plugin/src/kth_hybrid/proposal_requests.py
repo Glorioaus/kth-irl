@@ -14,7 +14,7 @@ from .aggregation_profiles import (
 )
 from .catalog import (
     APPROVED_WHEEL_SHA256,
-    build_catalog_from_wheel,
+    load_approved_catalog,
     flatten_criteria,
 )
 from .contracts import (
@@ -81,7 +81,7 @@ def _catalog_body(catalog: dict) -> dict:
 
 @lru_cache(maxsize=1)
 def _approved_catalog_value() -> dict:
-    return build_catalog_from_wheel()
+    return load_approved_catalog()
 
 
 def approved_catalog() -> dict:
