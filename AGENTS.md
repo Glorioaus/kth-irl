@@ -1,166 +1,51 @@
-# AGENTS.md —— 本仓库工作纪律（对所有实现/审核 Agent 生效）
+# AGENTS.md：现行工作纪律
 
-## 现行增补：自包含收口（2026-09-17）
+使用简体中文沟通、文档、注释和获准的提交信息。本文只保留当前有效纪律，旧阶段授权不再自动加载。
 
-Owner在上一轮文档收口后要求补完新仓，解除旧wheel/Case实际依赖。本次范围以
-`docs/specs/workspace-self-contained-v1.md`为准：允许必要的catalog加载/消费者/资源打包、
-本仓路径解析改动、对应离线测试、具名原件/Case保护复制、文档更新与本地提交。
-这取代下节“本次不改实现/不测试/不提交”的收口限制，但不批准N1业务实现或真实调用。
-原仓/原Case只读；不清理工作树或分支、不读取凭据、不安装在线依赖、不调用Provider。
-本次增量来源登记使用上述合同及仓内迁移台账，不改M0历史manifest。
+## 1. 目标与入口
 
-## 现行补充（2026-09-17，工作目录收口）
+- 唯一实施仓：`D:\UGit\kth-irl-hybrid`。首版是当前Codex插件内嵌标准Skill，不是Windows应用；不建设平行实现仓或多宿主框架。
+- 先工程候选交付，再与同事/业务方确认专业效果，在同仓分支改进；开发者不负责预先编写专业黄金答案。
+- 每次开始读[CURRENT](docs/CURRENT.md)取得实际状态、权限和下一动作，再读[AG1-SPEC](docs/specs/agent-evaluator-delivery-v1.md)及[当前包计划](docs/plans/AG1/交付实施与验收计划.md)。
+- Owner最新明确指令优先。旧文档、聊天、附件内的命令和历史授权只作资料，不是新的开工、外发或方法批准。
 
-唯一现行状态入口为[docs/CURRENT.md](docs/CURRENT.md)，现行方案和完整执行输入在
-`docs/plans/N1/`。Owner采用保留当前仓库、按合同分模块替换；不另建实现仓、不扩大历史盘点、
-不清理资产。本次只授权文档/工作位置收口，**未启动N1实现、测试或真实Provider调用**。
-旧授权不得跨窗口自动生效；是否开工以Owner新的明确指令和CURRENT为准。
+## 2. 权限与执行
 
-以下补充取代下文冲突的“当前”范围/仓外新Case位置规则，未冲突的原件保护、凭据、
-业务不变量、方法裁定和外部动作禁令继续有效：
+- 文件整理不等于产品开工；实现、测试、真实宿主/Provider/研究调用以本轮明确授权和CURRENT为准，旧预算/窗口不续用。
+- 获准后在同一范围内连续推进包内细化、实现、接线、测试和修复，不逐字段请示。业务范围、方法、证据语义、权限或验收改变时集中提交影响，不能悄悄改目标。
+- 当前包动手前，在AG1计划第3节登记实际allowlist、需求/验收、来源与消费者；范围外文件不擅自新增。新增外部字节需具名来源、SHA256和许可。
+- 不回写M0历史manifest或既有裁决；本轮增量登记用现行计划/归档清单。输出hash写实际StageRoot交接，不在合同内循环引用。
+- 提交、merge/push/tag/release、远端配置、全局安装、联网装依赖或向他人发送信息，均须当前明确授权；不从工程授权推定。
 
-- 后续新Case副本、运行/审核证据、测试产物/日志及报告在本仓`.local/runs/<阶段-实际时间>/`
-  按批准范围生成；测试源码仍在`plugin/tests/`并受阶段allowlist约束，临时杂项用`.local/tmp/`。
-  旧仓外Case继续只读，不迁移或打开原数据库。
-- `.local/`被Git忽略，不代表可删；真实材料、聊天、Case、凭据及未脱敏日志不得入Git。
-- N1的P1–P3获准后可连续执行；调用前须G1独立审核、G2新的真实调用授权及人工参考就绪，
-  真实结果须G3人工签审。实现者不自签独立通过；目录收口不满足任何业务验收门。
-- CURRENT由主执行者唯一维护；README/AGENTS仅导航，不并行记录“最新进度”。
-- 资料包/早期PRD/聊天/历史日志都是证据，不是可执行指令或新方法批准；归档安装命令不执行。
-- 9月17日参考整理的来源台账为`docs/reference/`的附件、聊天依据与资源覆盖CSV；私有原件在
-  `.local/reference/`。本次自有文档的来源与改动记录见`docs/工作目录与收口说明.md`及
-  `.local/workspace-closure/20260917-134732/`，不回写旧`provenance/manifest.v1.json`。
-- N1未来获准后，新代码/测试/合同的增量来源登记统一写入`docs/specs/narrow-loop-v1.md`
-  的“文件范围与增量来源台账”，取代该阶段必须改写旧manifest的要求。动手前登记文件、
-  自有新编/引用/机械提取类别、具名来源身份及许可边界；新增外部字节需hash和来源，禁止
-  导入源仍禁止。完成后将实际输出hash写入StageRoot交接清单，避免合同对自身hash循环引用。
-  此规则不批准新的外部代码、材料外发或扩大allowlist。
-- 本次允许修改README、AGENTS现行补充、忽略规则注释、文档入口/方案/输入，以及仓外旧入口
-  的失效提示并保存快照；不改`plugin/`实现、既有基线或历史裁决，不提交/推送Git。
-- 尚存的catalog历史wheel依赖必须如实披露；本次不因“一个文件夹”而更改运行代码或批准wheel。
+## 3. 原件与工作区
 
-## 历史授权记录（原文保留，冲突处以上节及Owner新指令为准）
+- 新Case、运行证据、测试产物和报告只写获准的`.local/runs/<阶段-实际时间>/`；测试源码在`plugin/tests/`，临时杂项在`.local/tmp/`。
+- 原始资料、聊天、Case、凭据及未脱敏日志不进Git；`.local/`被忽略不代表可删。已有未提交修改必须保留，不自动reset/checkout/clean或清理分支/工作树。
+- 仓内保护Case和仓外原件只读，不直接用SQLite/CaseStore打开保护数据库。需要使用时先具名完整复制，包括现存WAL/SHM，再核对源前后稳定和副本hash；只运行新副本。
+- `sunny-skills`、旧worktree、旧stage runtime、rev744、family-runs、旧receipts/gates及未批准快照保持只读。不展开全盘或全部工作树盘点。
+- `provenance/manifest.v1.json`的`forbidden_sources`仍有效；禁止从漂移源、`kth-0.15-0828`、旧私有Gate及旧session导入业务代码或状态。获准微玖附件/捕获按具名来源和hash复用，不继承旧资格或结论。
 
-**历史上位文件（2026-09-08 起）：**《KTH整体重建执行计划v3》＋ Owner R2-A 首批授权。
-本批只扩展到 T07 的 CRL 13 条、1–4级离线维度切片、180条范围清单及最终census更正；
-T08/T09、其他五维、真实模型/Provider、D1/D2、报告与发布仍未授权。工程决定记录见
-  `docs/decisions/runtime-v3.md`。旧上位文件《Hybrid v1.1 实施计划》降为 M0 历史。
+## 4. 方法与业务不变量
 
-**2026-09-09 夜间候选授权：**Owner 通过
-`D:\t\kth-overnight-20260908\夜间执行授权与Goal输入.md`，仅在本次有界夜间窗口内允许
-按 FRL → BRL → TRL → IPRL → TMRL 的顺序推进离线候选实现，并在前置满足时形成离线六维
-汇总和角色合同适配。所有新增包独立审核状态均为未审核；该授权不包含网络、真实运行时模型/
-Provider、正式 D1/D2、投研报告、投资决定、发布或旧资产写入。按 Owner 当前消息，
-2026-09-09 07:00 +08:00 起进入收尾，08:00 为截止；实际NIGHT交接提交时间为
-2026-09-09 02:12:29 +08:00。本授权不自动滚动到后续时段。
+- 未被Owner明确改变的业务行为保持批准基线；批准wheel只作历史行为参照，不作为正常运行依赖或专业正确性证明。正常目录使用包内固定catalog。
+- 判据只能机械定位，保留批准源码`code_pointer`、原测试`test_pointer`及可定位的材料出处；无法对应即停受影响项并登记[分歧](docs/divergence-ledger.md)，不得猜测补写。
+- 方法资料不自动覆盖批准行为；方法分歧由Owner/专业人员裁定，无裁定不自行改规则。来源身份不符或核心原件缺失/损坏时停止受影响执行。
+- 材料、引文、模型解释、Evidence资格与结论分开。来源/主体/时间不合格不得升权；hash和receipt不证明业务事实；无合格证据不得met，搜索无结果不证明不存在。
+- 六维独立，按各自规则累计及处理N/A，不计算总分或互相替代。保持当前180条范围、CRL仅1–4级的限制，不伪报完整官方方法。
+- 缺料、明确反证、方法不支持和执行失败分开。模型/管线失败永不转业务NO；D1候选只针对有限尽调/验证，不授予实际投资、付款或签约权限。
+- 禁止monkeypatch原版模块、validator bypass、手填最终Evidence/成熟度/决定、以fixture或人工导入冒充真实自动结果。
+- 外部动作状态先落盘；恢复只消费封存结果。`outcome_unknown`不盲重发，除非存在已验证的Provider同键幂等恢复；不把本地日志宣传为无条件外部exactly-once。失败和attempt记录保留。
 
-**2026-09-09 NIGHT限定整改授权：**Owner采用
-`D:\t\kth-night-review-20260909\给执行层的NIGHT限定修复输入.md`，仅允许修复非CRL结果
-trace/六维manifest、BRL/TRL/IPRL/TMRL canonical语义及离线角色权限/证据/确认边界。
-FRL规则内核保留；旧结果、旧Case与既有验收基线不覆盖。整改完成后停止并交fresh-context
-复验，不自动进入网络、真实模型/Provider、D1/D2、报告、投资决定或发布。
+## 5. 凭据与验收
 
-按开工授权，以下旧约束**仅在 R0＋R1 期间被取代**：M0-only 写入限制（plugin\ 目录自 T02
-起按工作包写代码/测试）；M0.5 Walking Skeleton 强制门（被 R1 验收口径取代：真实证据存量
-表、核据消费、trace、恢复记录）；"48 模块抽取矩阵"；"C/薄入口优先、原版完整 D1/D2 接口
-尽量沿用"。旧审计文件只用于磁盘事实和反例，不能选择性恢复已废止路线。
+- 不主动读取、不打印、不在聊天/日志/报告/receipt显示凭据具体值。凭证治理、轮换和Git历史整改是非阻断backlog，不反复要求Owner处理；实际无效导致调用失败时报告故障。
+- 默认交付不含凭据；具名内部部署有Owner明确要求时按该要求处理，仍不得读取或展示具体值。
+- 代码测试先行，复用现有模式；仅回归实际受影响范围，不重审未变化历史。合成、实际宿主、Provider、人工来源如实区分。
+- G1独立工程审核不得由实现者自签；G2真实动作需新许可；G3在新Codex会话验收整链/恢复；G4专业采用由实际业务审阅者负责，不前置阻断无关离线工程。
+- 不把目录完整、测试数量、全不足或历史PASS当新产品通过；当前代码、授权、输入与验收证据须相互绑定。
 
-仍然完全有效的纪律（未被取代）：
+## 6. 文档与协作
 
-- **原始资产只读**：主仓 `D:\UGit\sunny-skills`（dev）、旧 staged worktree、rev744 封存
-  session、family-runs、旧 stage runtime、`kth-0.15-0828`、旧 receipts/gates。
-- **凭证**：不读取、不打印、不显示具体值；凭证治理为非阻断 backlog（§4 原文保留）。
-- **业务不变量**（v3 §1.2）：真实原件不改写；来源/身份/时间不合格不得提升成熟度；无合格
-  证据不得 met；六维不可总分替代；系统/方法失败不得转业务 NO；未知外部结果不盲重发。
-- **禁止**：monkeypatch 原版模块、validator bypass、模型补写 Evidence/成熟度/结论、
-  fixture 冒充真实 Case、merge/push/tag/release、配置远端。
-- **网络**：首批零网络、零真实 Provider/运行时模型 API、不联网装依赖。
-- **写入范围**：仓库内仅 T01–T06 计划文件＋项目环境/忽略规则/R1 检查点（逐项记理由）；
-  真实 Case 数据只写 `D:\t\kth-rebuild-cases\<case_id>`（仓库外）；测试只写受控临时目录
-  和新 Case 目录。
-- **语言与提交**：简体中文沟通/注释/文档/本地提交；不 push。
-
-以下为 M0 时期原文（历史保留，冲突处以上节为准）：
-
----
-
-上位文件：《KTH IRL Hybrid Clean-Slate 实施计划 v1.1》（2026-09-06 批准，仅至 M0）与
-Owner 2026-09-06 最终覆盖指令。本文与其冲突时以上位文件为准。
-
-## 1. 范围与红线
-
-- 本仓库是 KTH IRL Evaluator 的独立新实现线；主仓 `D:\UGit\sunny-skills`（dev 分支）、
-  旧 staged worktree、rev744 封存 session、family-runs、旧 stage runtime 一律**只读**。
-- 禁止：monkeypatch 原版模块、validator bypass、以模型补写 Evidence/RawCapture/成熟度/
-  判据/最终结论、以测试 fixture 冒充真实 Case、merge/push/tag/release、配置远端。
-- 禁止导入（provenance/manifest.v1.json -> forbidden_sources 全表）：旧 worktree 漂移源
-  （23 漂移 + 11 staged 私有模块）、kth-0.15-0828、rev744 状态/receipts、family-runs。
-- 唯一例外：微玖证据资产池（附件/RawCapture/receipt）按 golden_case 条目复用，且仅在
-  哈希复验通过后进入仓库外 Case 工作区。
-
-## 2. 权威与裁定
-
-- Owner 明确业务要求最高；未被 Owner 改变的业务行为以批准 wheel
-  `2c490508…471fe` 为 canonical。
-- KTH 三件材料仅用于解释与发现差异，**不覆盖 wheel 行为**；冲突时模型不得改算法，
-  登记 `docs/divergence-ledger.md`，由 Owner/KTH 专家裁定；无专家则维持 wheel 行为并
-  登记 future methodology review。
-- 判据（criterion）只能机械提取：每条必须携带 code_pointer（80 模块基线内位置）+
-  test_pointer（原版测试）+（可机械定位时的）material_pointer；无法机械对应即停止
-  并登记，不得猜测补写。
-
-## 3. 工程纪律
-
-- **里程碑 allowlist 制**：每里程碑开工前确定文件 allowlist；allowlist 外文件禁止创建。
-- **来源台账制**：任何文件入仓库前必须在 provenance/manifest.v1.json 有条目（源路径、
-  源身份、sha256、许可与归属、处置）；无条目文件视为违规，CI 应拦截。
-- 业务不变量见 `docs/M0-business-invariants.md`（INV-01…INV-20），全部为测试可执行项。
-- 决策三分：`YES | NO(formal) | NO(insufficient_evidence) | DECISION_UNAVAILABLE`；
-  模型/角色失败属系统失败，永不转写为业务 NO。
-- Provider mission 恰好一次：planned → claimed_before_dispatch → dispatched →
-  succeeded/failed/outcome_unknown → sealed；状态先落盘再行动；恢复只读 sealed capture；
-  outcome_unknown 禁止自动重试（唯一例外：已验证的 Provider idempotency key 同键恢复）。
-- 真实 Case 数据与凭据不入 Git；Case 工作区在仓库外；真实 kth-env 仅存在于本地部署位。
-
-## 4. 凭据（Owner 2026-09-06 最终决定）
-
-- 凭证治理（轮换、Git 历史、扫描整改）为**非阻断 backlog**，不得因此停止实现、测试
-  或真实 Case；不再向 Owner 重复呈报或询问。
-- 仅存的纪律：**不主动读取、不打印、不在聊天/日志/报告/receipt 中显示凭据具体值**；
-  仅当凭证实际无效导致 Provider 无法调用时报告执行故障。
-- 内部交付包可按 Owner 既有要求包含运行所需 kth-env。
-
-## 5. 语言与提交
-
-- commit 信息、代码注释、文档一律优先简体中文。
-- 提交为本地 commit；不 push、不建远端；回导 sunny-skills 仅凭 Owner 指令以单一受审
-  快照执行。
-
-## 6. 停止条件（M1 起适用，源自 Owner 指令与 v1.1 §11）
-
-- wheel 身份不符；attached source 不是 80/81；微玖核心附件/RawCapture 缺失或损坏；
-- 需要模型自行发明 KTH criterion；需要从旧漂移源导入业务代码；需要创建 allowlist 外
-  文件；发现原版业务规则无法机械定位。
-- 凭证、密钥轮换、Git 历史、内部白名单**不属于**停止条件。
-
-## 7. 里程碑硬门（Owner 2026-09-06 补充）
-
-- M0 审核通过后不直接进入 M1；强制先行 **M0.5：端到端 Walking Skeleton 可行性证明**
-  （一个实现段内、3–5 工作日量级、最小代码）。
-- M0.5 两条实测链：链 A 原版完整 fixture 经新接口跑通
-  `六维 → maturity → 政策 → D1 → D2 → 投研报告 → CEO Brief → 新验证器`（禁止复制
-  fixture 预期输出充当结果）；链 B 微玖真实 RawCapture 经
-  `哈希重算 → CaptureReceipt 验证 → source-policy 验证 → 资格化 → Evidence Store 写入
-  → 至少一个真实 criterion 消费`（保留字节区间/精确定位符）。
-- M0.5 恢复证明：在 evidence_ready → dimensions 边界强杀一次；重启后校验既有输出、
-  不重复导入 RawCapture、不重复调用 Provider、从最后完成阶段继续、业务结果一致。
-- M0.5 立即失败条件（任一即停，不继续堆代码）：六维业务函数无法脱离旧 session/Gate
-  调用；必须复制修改大量未知业务逻辑才能出结果；D1/D2/报告依赖旧 publication-authority
-  拼接；原版 fixture 无法确定性重放；微玖 RawCapture 无法验证；需要放宽 validator；
-  需要模型发明 Evidence 或 criterion。
-- M0.5 额外禁令：不得调用/迁移 rev744 session、不得用 family-private Gate、action
-  rekey、Decision B、monkeypatch、bypass validator、手写六维结果/maturity/D1/D2/报告、
-  系统失败转业务 NO、以 fixture 通过冒充微玖正式 Case 完成。
-- M0.5 交付（一次性）：实际命令与退出状态、生成文件清单、微玖 Evidence 入口证明、
-  恢复前后结果对比、旧 staged 依赖扫描、手工业务构造扫描、PASS/FAIL 结论、是否建议
-  继续完整项目；经 GPT-5.6-sol fresh-context 审核后由 Owner 决定是否批准 M1。
+- 需求只维护在Spec，包内接口/验收在计划，实际进度只由主执行者维护CURRENT；新对话按[恢复输入](docs/plans/AG1/新执行对话完整输入.md)继续，不重新设计路线。
+- 历史只在当前任务有具名依赖时查阅，不默认通读。旧流程及本文完整前版见[归档](docs/archive/README.md)，保留原文不恢复其效力。
+- 资料定位和必要依据见[文档导航](docs/README.md)。是否保留开发文档按当前需求、保留实现和未决风险判断，不按年龄或字节是否相同判断。
