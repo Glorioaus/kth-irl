@@ -1,0 +1,120 @@
+{
+  "schema_version": "kth-hybrid.r1_6-handoff.v1",
+  "generated_at": "2026-09-08T16:43:05+08:00",
+  "authorization": {
+    "instruction": "D:/t/kth-r15-review-20260908/发给Terra的R1.6双点修复指令.md",
+    "scope": "仅R1.6路径解析统一与合法别名第一方证明一致性；不授权R2或架构重设",
+    "reviewer_approval_claimed": false
+  },
+  "baseline": {
+    "branch": "codex/runtime-rebuild",
+    "start_head": "7ec57de89a43a11a0ee2db2c10ff14fbaf1cb639",
+    "implementation_commit": "91359fc",
+    "test_imported_package": "D:/UGit/kth-irl-hybrid/plugin/src/kth_hybrid/__init__.py",
+    "case_root": "D:/t/kth-rebuild-cases/weijiu-r1_6"
+  },
+  "changes": [
+    {"id": "P1", "title": "字段读取、关系校验、冻结与trace统一路径解析", "files": ["qualification.py", "runner.py", "audit.py"], "result": "slash/dot/bracket解析为同一实际token/record作用域"},
+    {"id": "P2", "title": "合法别名第一方资格与证明收集一致", "files": ["qualification.py", "runner.py", "audit.py"], "result": "冻结matched_subject及别名/归属实际证明，删证明trace失败"}
+  ],
+  "counterexamples": {
+    "before": {
+      "P1_slash_cross_record_control": "已拒绝，保留控制样本",
+      "P1_dot_cross_record_bypass": "FRL4-PITCH succeeded / trace通过",
+      "P1_bracket_cross_record_bypass": "FRL4-PITCH succeeded / trace通过",
+      "P1_dot_first_party_bypass": "qualified / succeeded / trace通过",
+      "P2_alias_owner_proof_not_frozen": "succeeded，删除ownership后trace通过且无document_subject绑定"
+    },
+    "after": {
+      "P1_slash_cross_record_control": "非succeeded",
+      "P1_dot_cross_record_bypass": "非succeeded",
+      "P1_bracket_cross_record_bypass": "非succeeded",
+      "P1_dot_first_party_bypass": "非qualified、非succeeded",
+      "P2_alias_owner_proof_not_frozen": "合法别名归属证明冻结；删除ownership或aliases后trace失败"
+    },
+    "paired_positive": "同记录slash/dot/bracket N/A均succeeded；规范名和合法别名第一方均关闭重开→runner→trace→重放成功",
+    "tests": "tests/test_r1_6_path_and_alias.py：4 failed（修复前）→ 10 passed（修复后）"
+  },
+  "test_runs": [
+    {
+      "name": "R1.6关联回归",
+      "command": "python -X utf8 -B -m pytest test_r1_6_path_and_alias + R1.5/A/B/C/qualification/vertical/R1.2/R1.3/method/audit相关文件 -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 128,
+      "skipped": 3,
+      "skip_note": "局部运行尚未设置R1.6真实Case门控；最终验证不依赖skip。"
+    },
+    {
+      "name": "R1.6新Case构建与幂等复跑",
+      "command": ".\\.venv\\Scripts\\python.exe -X utf8 -B D:\\t\\kth-rebuild-cases\\weijiu-r1_6\\audit\\build-case-r1_6.py",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_6/audit/build-case-r1_6.log",
+      "log_sha256": "6147e7b678f345905cdcbe121f28c6ada79b86680a43f37e3df5baa46188512e"
+    },
+    {
+      "name": "R1.6真实门控、inspect与三条trace",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_6'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_6='D:/t/kth-rebuild-cases/weijiu-r1_6'; python -m pytest tests/test_vertical_slice.py::TestRealCaseSlicesR16 -q；随后cli inspect及三条cli trace",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 3,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_6/audit/real-gate-r1_6.log",
+      "log_sha256": "e441ec382d0c0d713dcb829b62cfb93697543925a41a33a95c14eb34d48d5c23"
+    },
+    {
+      "name": "R1.6全套（新Case门控）",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_6'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_6='D:/t/kth-rebuild-cases/weijiu-r1_6'; .\\.venv\\Scripts\\python.exe -X utf8 -B -m pytest tests -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 229,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "warning_note": "zipfile重复成员拒绝测试触发Python UserWarning，测试通过。",
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_6/audit/full-suite-r1_6.log",
+      "log_sha256": "029ec80a5806d0171dc3f6977fb358e17ddd713788f907b09c7468e776d00f4a"
+    },
+    {
+      "name": "测试后数据库最终快照",
+      "command": "python -X utf8 -B -c <CaseStore计数并写snapshot-final-r1_6.json>",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_6/audit/snapshot-final-r1_6.log",
+      "log_sha256": "953f907c6c37990fe816ce132348242715fcd0e2edb4fbf9c93a70eb81911b80",
+      "output_ref": "D:/t/kth-rebuild-cases/weijiu-r1_6/audit/snapshot-final-r1_6.json",
+      "output_sha256": "bfc44c345db76cbd6a582a2e97a187d787c0d976ee363b45dcb8f6cd15da5058"
+    }
+  ],
+  "real_case": {
+    "case_basis_version": 1,
+    "subject": "微玖（苏州）光电科技有限公司（claimed，未工商核验）",
+    "aliases": ["Vijo Microelectronics", "微玖光电"],
+    "cutoff": "2026-08-27T03:02:29Z",
+    "government_timezone": {"rule": "+08:00", "source_family": "gov-agency", "resolved_utc": "2026-01-31T09:17:00+00:00"},
+    "mapping_review": "REV-R1-6-GOV-CRL1",
+    "results": {"qualified_confirmed_succeeded": 1, "needs_review_insufficient": 1, "rejected_insufficient": 1}
+  },
+  "final_snapshot": {
+    "business_objects": {"sources": 85, "imports": 87, "claims": 3, "qualifications": 3, "criterion_results": 3, "dependency_rows": 400, "logical_dependencies": 400, "distinct_dependency_blobs": 400},
+    "run_history": 9,
+    "version_history": {"case_basis_versions": 1, "time_evidence_revisions": 3, "mapping_reviews": 1}
+  },
+  "protection": {
+    "r1_5_records_sha256": "020ee2ab5241bb933c79454c0c36b2840257ee87de49fecf181cdccc09dee9f9",
+    "old_session_sha256": "dc3e31b086b9fdb9857a9179478b469791f458e35c1a3cf24b74776a28b49375",
+    "network": "零网络；未读凭证；未调用真实Provider/模型API；未改ACL/注册表；未运行旧修复脚本；未push/merge/tag/release"
+  },
+  "unresolved_items": [
+    "仅CRL1-C1实现；其余179条判据、六维、正式D1与报告均不在R1.6范围。",
+    "主体仍是claimed，未完成工商核验。",
+    "BP仍缺归属登记和可靠时间；公司报道当前定位与精确时间声明不一致。",
+    "受控映射与证明关系记录是执行方离线机制，不是独立审核结论。"
+  ],
+  "stop_condition": "已完成R1.6执行方交接包，停止送审；不自动进入R2。"
+}

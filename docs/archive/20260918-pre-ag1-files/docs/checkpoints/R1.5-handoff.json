@@ -1,0 +1,122 @@
+{
+  "schema_version": "kth-hybrid.r1_5-handoff.v1",
+  "generated_at": "2026-09-08T15:40:44+08:00",
+  "authorization": {
+    "instruction": "D:/t/kth-r14-review-20260908/发给Terra的R1.5限定修复指令.md",
+    "scope": "仅R1.5证明关系限定修复；不授权R2、架构重设、六维、正式D1、报告、网络或发布动作",
+    "reviewer_approval_claimed": false
+  },
+  "baseline": {
+    "branch": "codex/runtime-rebuild",
+    "start_head": "cb622ea282fc97906235478be1c7b9cec0465931",
+    "implementation_commit": "bebc2a6",
+    "test_imported_package": "D:/UGit/kth-irl-hybrid/plugin/src/kth_hybrid/__init__.py",
+    "case_root": "D:/t/kth-rebuild-cases/weijiu-r1_5"
+  },
+  "changes": [
+    {"id": "P1-01", "title": "N/A与第一方证明关系不可拼接", "files": ["qualification.py", "runner.py", "kernels/__init__.py", "audit.py"], "result": "同一原件、同一逻辑作用域关系校验；跨主体拼接拒绝"},
+    {"id": "P1-02", "title": "时区规则有可核验来源及适用域", "files": ["qualification.py", "runner.py", "audit.py"], "result": "结构化规则与来源族作用域重核；无源规则保持不确定"},
+    {"id": "P1-03", "title": "第一方证明持久化合同", "files": ["qualification.py", "runner.py", "audit.py"], "result": "SQLite JSON 解码、结构验证、关闭重开和runner全流程可用"},
+    {"id": "P1-04", "title": "实际别名证明进入闭包", "files": ["qualification.py", "runner.py", "audit.py"], "result": "别名记录绑定主体并冻结；删除导入后trace失败"}
+  ],
+  "counterexamples": {
+    "before": {
+      "B1_spliced_na_subject": "FRL4-PITCH succeeded / trace_ok=true",
+      "A1_unresolved_timezone_basis": "qualified / succeeded / trace_ok=true",
+      "A2_first_party_splice": "qualified",
+      "A3_persisted_first_party_positive": "direct qualified；runner needs_review / insufficient",
+      "C2_alias_proof_removed": "删除aliases证明后trace broken=[]"
+    },
+    "after": {
+      "B1_spliced_na_subject": "非succeeded",
+      "A1_unresolved_timezone_basis": "非qualified、非succeeded",
+      "A2_first_party_splice": "非qualified，身份非ok",
+      "A3_persisted_first_party_positive": "直接资格、关闭重开runner、trace与同输入重放均成功",
+      "C2_alias_proof_removed": "删除aliases证明后trace失败"
+    },
+    "tests": "tests/test_r1_5_proof_relations.py：5 failed（修复前）→ 5 passed（修复后）"
+  },
+  "test_runs": [
+    {
+      "name": "R1.5关联回归",
+      "command": "python -X utf8 -B -m pytest test_r1_5_proof_relations + A/B/C/qualification/vertical/R1.2/R1.3/method/audit相关文件 -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 118,
+      "skipped": 3,
+      "skip_note": "新真实Case门控变量尚未设置；最终验证不依赖skip。"
+    },
+    {
+      "name": "R1.5新Case构建与幂等复跑",
+      "command": ".\\.venv\\Scripts\\python.exe -X utf8 -B D:\\t\\kth-rebuild-cases\\weijiu-r1_5\\audit\\build-case-r1_5.py",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "note": "首次运行因bp_data未定义退出1；修正后在同一Case幂等复跑退出0，失败原文保留在同一日志。",
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_5/audit/build-case-r1_5.log",
+      "log_sha256": "7bcc93386d62949c394658e6f443dd92a9037c51643012da548cb3f95e4b919d"
+    },
+    {
+      "name": "R1.5真实门控、inspect与三条trace",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_5'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_5='D:/t/kth-rebuild-cases/weijiu-r1_5'; python -m pytest tests/test_vertical_slice.py::TestRealCaseSlicesR15 -q；随后cli inspect及三条cli trace",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 3,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_5/audit/real-gate-r1_5.log",
+      "log_sha256": "4a63c07042a60bfd2287080a05cd2a43d068aabde7e94f3375b44514ec84c7ee"
+    },
+    {
+      "name": "R1.5全套（新Case门控）",
+      "command": "$env:KTH_CASE_ROOT='D:/t/kth-rebuild-cases/weijiu-r1_5'; $env:KTH_REAL_SESSION_ROOT='D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session'; $env:KTH_REAL_CASE_DIR_5='D:/t/kth-rebuild-cases/weijiu-r1_5'; .\\.venv\\Scripts\\python.exe -X utf8 -B -m pytest tests -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 219,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "warning_note": "zipfile重复成员拒绝测试触发Python UserWarning，测试通过。",
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_5/audit/full-suite-r1_5.log",
+      "log_sha256": "c4c384c47ca4f8c22b1e69811b4a7e8f301036bf97194042facdcb28b27d1f38"
+    },
+    {
+      "name": "测试后数据库最终快照",
+      "command": "python -X utf8 -B -c <CaseStore计数并写snapshot-final-r1_5.json>",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1_5/audit/snapshot-final-r1_5.log",
+      "log_sha256": "19b02dac57975f6452927b4840092481cdb66e8049a1fa02d5ba89b924ae17a7",
+      "output_ref": "D:/t/kth-rebuild-cases/weijiu-r1_5/audit/snapshot-final-r1_5.json",
+      "output_sha256": "e2888c2320672145a21669696a071b4440f1dc59cfbe34ddbb22dfd0d3a1421d"
+    }
+  ],
+  "real_case": {
+    "case_basis_version": 1,
+    "subject": "微玖（苏州）光电科技有限公司（claimed，未工商核验）",
+    "aliases": ["Vijo Microelectronics", "微玖光电"],
+    "cutoff": "2026-08-27T03:02:29Z",
+    "government_timezone": {"rule": "+08:00", "source_family": "gov-agency", "resolved_utc": "2026-01-31T09:17:00+00:00"},
+    "mapping_review": "REV-R1-5-GOV-CRL1",
+    "results": {"qualified_confirmed_succeeded": 1, "needs_review_insufficient": 1, "rejected_insufficient": 1}
+  },
+  "final_snapshot": {
+    "business_objects": {"sources": 85, "imports": 91, "claims": 3, "qualifications": 3, "criterion_results": 3, "dependency_rows": 400, "logical_dependencies": 400, "distinct_dependency_blobs": 400},
+    "run_history": 9,
+    "version_history": {"case_basis_versions": 1, "time_evidence_revisions": 3, "mapping_reviews": 1}
+  },
+  "protection": {
+    "r1_4_records_sha256": "2856cc994a8791465f3b885fb17ef71e80030e40b9ac827c099dd3bf4f08d01f",
+    "old_session_sha256": "dc3e31b086b9fdb9857a9179478b469791f458e35c1a3cf24b74776a28b49375",
+    "network": "零网络；未读凭证；未调用真实Provider/模型API；未改ACL/注册表；未运行旧修复脚本；未push/merge/tag/release"
+  },
+  "unresolved_items": [
+    "仅CRL1-C1实现；其余179条判据、六维、正式D1与报告均不在R1.5范围。",
+    "主体仍是claimed，未完成工商核验。",
+    "BP同时缺归属登记和可靠时间；公司报道当前定位与精确时间声明不一致。",
+    "受控映射与证明关系记录是执行方离线机制，不是独立审核结论。"
+  ],
+  "stop_condition": "已完成R1.5执行方交接包，停止送审；不自动进入R2。"
+}

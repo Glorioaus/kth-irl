@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kth-hybrid"
+version = "0.1.0"
+description = "KTH IRL Evaluator 整体重建运行层（runtime-rebuild，R0+R1 首批）"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+kth-local = "kth_hybrid.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kth_hybrid = ["data/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+# 禁用 cacheprovider：执行边界测试限制写入，不需要 pytest 自身缓存。
+addopts = "-p no:cacheprovider"

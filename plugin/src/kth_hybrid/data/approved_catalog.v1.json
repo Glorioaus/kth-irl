@@ -1,0 +1,2375 @@
+{
+  "dimensions": {
+    "BRL": {
+      "code_pointer": "kth_irl.v1.brl_vertical::get_brl_registry()",
+      "criteria_count": 36,
+      "dispositions": [
+        "insufficient",
+        "met",
+        "not_applicable",
+        "not_met",
+        "partial"
+      ],
+      "getter": "get_brl_registry",
+      "levels_supported": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "module": "kth_irl.v1.brl_vertical",
+      "registry": {
+        "aspects": [
+          "business_model",
+          "market_opportunity",
+          "competition",
+          "sustainability"
+        ],
+        "claim_boundary": {
+          "internal_shadow": true,
+          "latest_2026_version_claimed": false,
+          "official_kth_assessment": false
+        },
+        "criteria": [
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL1-BM",
+            "eligible_evidence_classes": [
+              "business_concept",
+              "business_model_draft"
+            ],
+            "level": 1,
+            "text": "A business idea, value proposition or business model is stated, even if vague or unspecified."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL1-MO",
+            "eligible_evidence_classes": [
+              "market_analysis"
+            ],
+            "level": 1,
+            "text": "Some market hypothesis is stated, while insight into potential and size may remain limited."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL1-CO",
+            "eligible_evidence_classes": [
+              "competitor_analysis"
+            ],
+            "level": 1,
+            "text": "Some competition or alternative-solution hypothesis is stated, while insight may remain limited."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL1-SU",
+            "eligible_evidence_classes": [
+              "sustainability_analysis",
+              "sustainability_metrics"
+            ],
+            "level": 1,
+            "text": "The current awareness or lack of awareness of sustainability effects on the business idea is documented."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL2-BM",
+            "eligible_evidence_classes": [
+              "business_concept",
+              "business_model_draft"
+            ],
+            "level": 2,
+            "text": "The business concept is described in structured form, such as a value proposition or NABC."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL2-MO",
+            "eligible_evidence_classes": [
+              "market_analysis"
+            ],
+            "level": 2,
+            "text": "An initial overview of markets and their potential size is documented."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL2-CO",
+            "eligible_evidence_classes": [
+              "competitor_analysis"
+            ],
+            "level": 2,
+            "text": "Some competitors and/or alternative solutions are listed."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL2-SU",
+            "eligible_evidence_classes": [
+              "sustainability_analysis",
+              "sustainability_metrics"
+            ],
+            "level": 2,
+            "text": "There is some insight into why and how sustainability affects the business."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL3-BM",
+            "eligible_evidence_classes": [
+              "business_model_draft"
+            ],
+            "level": 3,
+            "text": "A draft business model is described, for example in canvas form."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL3-MO",
+            "eligible_evidence_classes": [
+              "market_analysis"
+            ],
+            "level": 3,
+            "text": "Possible target markets and first TAM/SAM estimates are described."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL3-CO",
+            "eligible_evidence_classes": [
+              "competitor_analysis"
+            ],
+            "level": 3,
+            "text": "The competitive landscape is described, for example in a matrix or positioning map."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL3-SU",
+            "eligible_evidence_classes": [
+              "sustainability_analysis",
+              "sustainability_metrics"
+            ],
+            "level": 3,
+            "text": "The SDGs or equivalent sustainability outcomes the business could target are first described."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL4-BM",
+            "eligible_evidence_classes": [
+              "economic_model"
+            ],
+            "level": 4,
+            "text": "First main cost, revenue and pricing calculations indicate possible economic viability."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL4-MO",
+            "eligible_evidence_classes": [
+              "market_analysis"
+            ],
+            "level": 4,
+            "text": "Possible target markets are well defined with TAM, SAM, SOM, value-chain and geographic boundaries."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL4-CO",
+            "eligible_evidence_classes": [
+              "competitor_analysis"
+            ],
+            "level": 4,
+            "text": "The project's proposed position in the competitive landscape is documented."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL4-SU",
+            "eligible_evidence_classes": [
+              "sustainability_analysis",
+              "sustainability_metrics"
+            ],
+            "level": 4,
+            "text": "A first assessment outlines material positive and negative sustainability impact."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL5-BM",
+            "eligible_evidence_classes": [
+              "market_feedback",
+              "qualified_pricing_test"
+            ],
+            "level": 5,
+            "text": "Key business-model assumptions, especially willingness to pay and pricing, are validated by qualified market feedback."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL5-MO",
+            "eligible_evidence_classes": [
+              "market_feedback"
+            ],
+            "level": 5,
+            "text": "Target-market descriptions and value-chain position are updated from qualified market feedback."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL5-CO",
+            "eligible_evidence_classes": [
+              "market_feedback"
+            ],
+            "level": 5,
+            "text": "Competitive position is updated from qualified market feedback."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL5-SU",
+            "eligible_evidence_classes": [
+              "sustainability_analysis",
+              "sustainability_metrics"
+            ],
+            "level": 5,
+            "text": "How sustainability may be integrated to create positive impact has been considered."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL6-BM",
+            "eligible_evidence_classes": [
+              "qualified_preorder",
+              "pilot_or_test_sale",
+              "commercial_sale"
+            ],
+            "level": 6,
+            "text": "The business model is validated by target customers in a realistic business scenario such as a pilot, test sale or qualified pre-order."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL6-MO",
+            "eligible_evidence_classes": [
+              "market_feedback",
+              "market_analysis"
+            ],
+            "level": 6,
+            "text": "A first target market and geographic focus are selected using relevant market input."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL6-CO",
+            "eligible_evidence_classes": [
+              "market_feedback",
+              "competitor_analysis"
+            ],
+            "level": 6,
+            "text": "Key differentiators or USPs are defined and used in the pitch based on relevant input."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL6-SU",
+            "eligible_evidence_classes": [
+              "sustainability_metrics",
+              "sustainability_analysis"
+            ],
+            "level": 6,
+            "text": "Key sustainability metrics are proposed."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL7-BM",
+            "eligible_evidence_classes": [
+              "commercial_sale"
+            ],
+            "level": 7,
+            "text": "The business model is validated by first commercial-term sales to several customers."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL7-MO",
+            "eligible_evidence_classes": [
+              "market_feedback",
+              "sales_forecast_validation"
+            ],
+            "level": 7,
+            "text": "Target-market and sales estimates are validated by market feedback."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL7-CO",
+            "eligible_evidence_classes": [
+              "market_feedback"
+            ],
+            "level": 7,
+            "text": "Differentiators or USPs are validated by market feedback and implemented in communication."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL7-SU",
+            "eligible_evidence_classes": [
+              "sustainability_metrics"
+            ],
+            "level": 7,
+            "text": "Sustainability metrics and monitoring/reporting methods are defined."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL8-BM",
+            "eligible_evidence_classes": [
+              "operating_metrics",
+              "financial_metrics",
+              "commercial_sale"
+            ],
+            "level": 8,
+            "text": "Sales and operating metrics show that the business model is viable regarding profit and growth."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL8-MO",
+            "eligible_evidence_classes": [
+              "market_analysis",
+              "market_expansion_record"
+            ],
+            "level": 8,
+            "text": "Additional target markets, including international possibilities, are described."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL8-CO",
+            "eligible_evidence_classes": [
+              "competitor_monitoring_record"
+            ],
+            "level": 8,
+            "text": "Continuous competitor monitoring is implemented."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL8-SU",
+            "eligible_evidence_classes": [
+              "sustainability_metrics"
+            ],
+            "level": 8,
+            "text": "Sustainability is integrated into the business and used to create business value and positive impact."
+          },
+          {
+            "applicable": true,
+            "aspect": "business_model",
+            "criterion_id": "BRL9-BM",
+            "eligible_evidence_classes": [
+              "financial_metrics",
+              "operating_metrics"
+            ],
+            "level": 9,
+            "text": "The operational business meets or exceeds expectations for profit, growth and scalability."
+          },
+          {
+            "applicable": true,
+            "aspect": "market_opportunity",
+            "criterion_id": "BRL9-MO",
+            "eligible_evidence_classes": [
+              "market_expansion_record"
+            ],
+            "level": 9,
+            "text": "Additional target markets are actively pursued and an internationalization strategy is in place."
+          },
+          {
+            "applicable": true,
+            "aspect": "competition",
+            "criterion_id": "BRL9-CO",
+            "eligible_evidence_classes": [
+              "competitor_monitoring_record"
+            ],
+            "level": 9,
+            "text": "Competitor monitoring covers new markets and future scenarios."
+          },
+          {
+            "applicable": true,
+            "aspect": "sustainability",
+            "criterion_id": "BRL9-SU",
+            "eligible_evidence_classes": [
+              "sustainability_metrics"
+            ],
+            "level": 9,
+            "text": "Operations, growth and sustainability are balanced and validated by metrics."
+          }
+        ],
+        "criterion_semantics": "derived_cumulative_four_aspect_gates_from_source_level_descriptions",
+        "dimension_boundary": {
+          "does_not_own": [
+            "problem_need_truth_and_importance",
+            "customer_task_frequency_severity_and_context",
+            "product_service_customer_benefit_and_adoption",
+            "product_form_or_technical_mechanism_sufficiency",
+            "crl_level_or_dimension_assessment_as_business_evidence"
+          ],
+          "governing_question": "Given a frozen customer problem and solution-benefit basis, can the venture configure, sell, deliver and capture enough value through an economically viable, competitive, sustainable and scalable business system?",
+          "owns": [
+            "business_concept_model_and_commercial_exchange",
+            "economic_market_opportunity_and_value_chain_position",
+            "pricing_revenue_cost_margin_and_cash_cycle",
+            "go_to_market_repeatability_and_commercial_sales",
+            "commercial_competitive_value_capture",
+            "sustainability_as_business_value",
+            "business_model_viability_repeatability_and_scalability"
+          ],
+          "shared_evidence_rule": "same_evidence_identity_requires_dimension_specific_claim_scope_and_inference"
+        },
+        "dimension_id": "BRL",
+        "dimension_source_version": "D/2025",
+        "levels_supported": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "registry_id": "KTH-BRL-D-2025-in-Compiled-F-2025",
+        "registry_sha256": "1ebddeb073d6a8b34f61092b7317a1a27e29be47c82072e2d419d31c441bad8c",
+        "registry_version": "brl-d-2025.internal-shadow.v2",
+        "schema_version": "kth-irl-brl-registry.v2",
+        "source": {
+          "aggregate_bundle_version": "F/2025",
+          "pages": [
+            7,
+            8
+          ],
+          "path": "sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+          "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47",
+          "source_id": "compiled_f"
+        }
+      }
+    },
+    "CRL": {
+      "code_pointer": "kth_irl.v1.crl_vertical::get_crl_registry()",
+      "criteria_count": 13,
+      "dispositions": [
+        "met",
+        "not_applicable",
+        "not_met",
+        "partial"
+      ],
+      "getter": "get_crl_registry",
+      "levels_supported": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "module": "kth_irl.v1.crl_vertical",
+      "registry": {
+        "claim_boundary": {
+          "internal_shadow": true,
+          "latest_2026_version_claimed": false,
+          "official_kth_assessment": false
+        },
+        "criteria": [
+          {
+            "applicable": true,
+            "criterion_id": "CRL1-C1",
+            "level": 1,
+            "text": "A possible market need, problem or opportunity hypothesis has been identified."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL1-C2",
+            "level": 1,
+            "text": "The possible customer and problem hypotheses are identifiable rather than absent."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL1-C3",
+            "level": 1,
+            "text": "At least initial knowledge of the market and possible customers exists."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL2-C1",
+            "level": 2,
+            "text": "Some market research is performed, typically derived from secondary sources."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL2-C2",
+            "level": 2,
+            "text": "Brief familiarity with the market, possible customers and their problems/needs, and alternatives."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL2-C3",
+            "level": 2,
+            "text": "There is a first reasonably clear description of the problem/need hypothesis."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL3-C1",
+            "level": 3,
+            "text": "Received feedback from primary market research, i.e. direct contacts with e.g. a few possible users/customers or persons with industry/market knowledge (experts)."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL3-C2",
+            "level": 3,
+            "text": "A more developed understanding of possible customers and possible customer segments."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL3-C3",
+            "level": 3,
+            "text": "The problem/need hypothesis is clear and updated after customer/user/expert feedback."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL4-C1",
+            "level": 4,
+            "text": "The problem/need and its importance is confirmed from multiple customers or users. Numbers are typically limited but depend on B2B/B2C and market structure."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL4-C2",
+            "level": 4,
+            "text": "Customer segmentation with initial basic customer profiles in place."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL4-C3",
+            "level": 4,
+            "text": "Identified who the user, paying customer, and decision maker is."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "CRL4-C4",
+            "level": 4,
+            "text": "A product/service hypothesis with clear positioning against customer alternatives is defined based on customer/user feedback."
+          }
+        ],
+        "criterion_semantics": "derived_cumulative_gate_from_source_level_descriptions",
+        "dimension_boundary": {
+          "does_not_own": [
+            "pricing_revenue_cost_margin_and_cash_cycle",
+            "economic_market_opportunity_and_value_chain_position",
+            "commercial_competitive_value_capture",
+            "business_model_viability_repeatability_and_scalability",
+            "sustainability_as_business_value"
+          ],
+          "governing_question": "Does a defined customer or user cohort have an important problem or need, and does the product or service create adopted customer value versus complete-system alternatives?",
+          "owns": [
+            "problem_need_truth_and_importance",
+            "customer_user_segment_and_role_identification",
+            "task_context_and_complete_system_alternatives",
+            "product_service_customer_benefit_and_adoption",
+            "active_use_and_sales_as_customer_traction"
+          ],
+          "shared_evidence_rule": "same_evidence_identity_requires_dimension_specific_claim_scope_and_inference"
+        },
+        "dimension_id": "CRL",
+        "dimension_source_version": "G/2022",
+        "levels_supported": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "registry_id": "KTH-CRL-G-2022-in-Compiled-F-2025",
+        "registry_sha256": "af20e2c17f8d92ce060983d4816501848c246db4a7a2680f967c5615d0f28289",
+        "registry_version": "crl-g-2022.internal-shadow.v2",
+        "schema_version": "kth-irl-crl-registry.v2",
+        "source": {
+          "pages": [
+            3,
+            4
+          ],
+          "path": "sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+          "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47",
+          "source_id": "compiled_f"
+        }
+      }
+    },
+    "FRL": {
+      "code_pointer": "kth_irl.v1.frl_vertical::get_frl_registry()",
+      "criteria_count": 36,
+      "dispositions": [
+        "insufficient",
+        "met",
+        "not_applicable",
+        "not_met",
+        "partial"
+      ],
+      "getter": "get_frl_registry",
+      "levels_supported": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "module": "kth_irl.v1.frl_vertical",
+      "registry": {
+        "claim_boundary": {
+          "internal_shadow": true,
+          "latest_2026_version_claimed": false,
+          "legal_or_accounting_advice": false,
+          "official_kth_assessment": false,
+          "valuation_or_investment_decision": false
+        },
+        "commitment_evidence_rule": {
+          "cash_is_not_soft_interest": true,
+          "financing_buckets": [
+            "cash_now",
+            "closed_or_drawable",
+            "binding_conditional",
+            "soft_or_nonbinding"
+          ],
+          "preorder_cash_keeps_delivery_and_refund_obligations_visible": true
+        },
+        "criteria": [
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL1-NEED",
+            "eligible_evidence_classes": [
+              "funding_need_hypothesis"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 1,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 1, funding_need",
+            "text": "Little insight exists into validation activities, costs or total funding need."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL1-OPTIONS",
+            "eligible_evidence_classes": [
+              "funding_option_hypothesis"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 1,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 1, funding_options",
+            "text": "Little insight exists into possible funding options."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL1-STATUS",
+            "eligible_evidence_classes": [
+              "funding_status_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 1,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 1, funding_status",
+            "text": "No funding has yet been obtained."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL1-PITCH",
+            "eligible_evidence_classes": [
+              "pitch_gap_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 1,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 1, funding_pitch",
+            "text": "The project description does not yet express funding-relevant business and market potential."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL2-NEED",
+            "eligible_evidence_classes": [
+              "validation_cost_estimate"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 2,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 2, funding_need",
+            "text": "Initial validation activities and costs for approximately one to six months are understood."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL2-OPTIONS",
+            "eligible_evidence_classes": [
+              "funding_source_identification"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 2,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 2, funding_options",
+            "text": "Potential sources for the initial validation are identified."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL2-STATUS",
+            "eligible_evidence_classes": [
+              "fundraising_activity_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 2,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 2, funding_status",
+            "text": "Efforts to obtain funding have started."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL2-PITCH",
+            "eligible_evidence_classes": [
+              "funding_description"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 2,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 2, funding_pitch",
+            "text": "A description suitable for seeking funding includes the business concept or NABC."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL3-NEED",
+            "eligible_evidence_classes": [
+              "development_budget_draft"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 3,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 3, funding_need",
+            "text": "A draft six-to-twelve-month activity and cost plan begins to express the total need."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL3-OPTIONS",
+            "eligible_evidence_classes": [
+              "instrument_eligibility_analysis"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 3,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 3, funding_options",
+            "text": "Own funds, soft funding, equity and loans and their requirements are understood."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL3-STATUS",
+            "eligible_evidence_classes": [
+              "bank_verified_cash",
+              "grant_award",
+              "closed_financing",
+              "drawable_facility",
+              "predictable_recurring_revenue_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 3,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 3, funding_status",
+            "text": "Sufficient usable funding exists to start validation."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL3-PITCH",
+            "eligible_evidence_classes": [
+              "funding_pitch"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 3,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 3, funding_pitch",
+            "text": "A first funding presentation covers relevant factors such as market potential."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL4-NEED",
+            "eligible_evidence_classes": [
+              "milestone_budget_and_plan"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 4,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 4, funding_need",
+            "text": "A defined six-to-twelve-month plan includes costs, risks and value milestones."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL4-OPTIONS",
+            "eligible_evidence_classes": [
+              "next_stage_source_map"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 4,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 4, funding_options",
+            "text": "Relevant funding sources for the next stage are identified."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL4-STATUS",
+            "eligible_evidence_classes": [
+              "bank_verified_cash",
+              "grant_award",
+              "closed_financing",
+              "drawable_facility",
+              "predictable_recurring_revenue_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 4,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 4, funding_status",
+            "text": "Usable funding is sufficient to execute the first steps of the project plan."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL4-PITCH",
+            "eligible_evidence_classes": [
+              "funding_pitch",
+              "funding_application"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 4,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 4, funding_pitch",
+            "text": "An oral or written funding pitch or application exists."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL5-NEED",
+            "eligible_evidence_classes": [
+              "time_phased_budget",
+              "profit_loss_forecast"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 5,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 5, funding_need",
+            "text": "Funding need is time-phased and supported by an initial profit-and-loss or budget forecast."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL5-OPTIONS",
+            "eligible_evidence_classes": [
+              "funding_roadmap",
+              "cap_table_impact_analysis"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 5,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 5, funding_options",
+            "text": "A funding roadmap considers suitable sources, investors and cap-table effects."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL5-STATUS",
+            "eligible_evidence_classes": [
+              "binding_conditional_commitment",
+              "closed_financing",
+              "grant_award"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 5,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 5, funding_status",
+            "text": "Some next-step funding may be present, while additional capital remains necessary for the following stage."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL5-PITCH",
+            "eligible_evidence_classes": [
+              "pitch_audience_test"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 5,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 5, funding_pitch",
+            "text": "The funding pitch has been tested with a relevant audience."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL6-NEED",
+            "eligible_evidence_classes": [
+              "cash_flow_forecast"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 6,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 6, funding_need",
+            "text": "Detailed financial projections include cash flow."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL6-OPTIONS",
+            "eligible_evidence_classes": [
+              "updated_funding_roadmap"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 6,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 6, funding_options",
+            "text": "The funding roadmap is updated and extends to seed, Series A or other relevant later stages."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL6-STATUS",
+            "eligible_evidence_classes": [
+              "funder_discussion_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 6,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 6, funding_status",
+            "text": "Relevant funders have discussed the ask, amount, use and valuation or equivalent terms."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL6-PITCH",
+            "eligible_evidence_classes": [
+              "pitch_feedback_revision"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 6,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 6, funding_pitch",
+            "text": "The pitch has been improved using relevant audience feedback."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL7-NEED",
+            "eligible_evidence_classes": [
+              "accounting_record",
+              "scenario_financial_model"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 7,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 7, funding_need",
+            "text": "Basic accounting shows current financial status and funding-need scenarios."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL7-OPTIONS",
+            "eligible_evidence_classes": [
+              "funding_roadmap",
+              "backup_financing_plan"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 7,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 7, funding_options",
+            "text": "The roadmap identifies target sources and backup financing alternatives."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL7-STATUS",
+            "eligible_evidence_classes": [
+              "term_sheet_discussion_record",
+              "signed_nonbinding_term_sheet"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 7,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 7, funding_status",
+            "text": "Concrete discussions with interested funders are near term-sheet level."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL7-PITCH",
+            "eligible_evidence_classes": [
+              "diligence_data_room"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 7,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 7, funding_pitch",
+            "text": "Supporting material for due diligence is complete."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL8-NEED",
+            "eligible_evidence_classes": [
+              "financial_monitoring_and_control_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 8,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 8, funding_need",
+            "text": "Financial monitoring and accounting control current status and forecast future funding needs."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL8-OPTIONS",
+            "eligible_evidence_classes": [
+              "updated_funding_roadmap"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 8,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 8, funding_options",
+            "text": "The funding roadmap is continuously updated against forecast and progress."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL8-STATUS",
+            "eligible_evidence_classes": [
+              "bank_verified_cash",
+              "closed_financing",
+              "drawable_facility",
+              "predictable_recurring_revenue_record"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 8,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 8, funding_status",
+            "text": "Funds received or predictable recurring revenue provide approximately twelve months of runway."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL8-PITCH",
+            "eligible_evidence_classes": [
+              "business_plan",
+              "funding_pitch"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 8,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 8, funding_pitch",
+            "text": "The funding material includes a complete business plan."
+          },
+          {
+            "aspect_id": "funding_need",
+            "criterion_id": "FRL9-NEED",
+            "eligible_evidence_classes": [
+              "scaleup_funding_need_forecast"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 9,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 9, funding_need",
+            "text": "The next funding need reflects scale-up plans, performance and forecast."
+          },
+          {
+            "aspect_id": "funding_options",
+            "criterion_id": "FRL9-OPTIONS",
+            "eligible_evidence_classes": [
+              "long_term_financing_strategy"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 9,
+            "na_policy": "never",
+            "source_locator": "Compiled F/2025 p.14, FRL 9, funding_options",
+            "text": "A long-term financing strategy covers the scale-up stage."
+          },
+          {
+            "aspect_id": "funding_status",
+            "criterion_id": "FRL9-STATUS",
+            "eligible_evidence_classes": [
+              "funder_interest_record",
+              "binding_conditional_commitment"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 9,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 9, funding_status",
+            "text": "Suitable next-stage sources show concrete interest in supporting a longer runway."
+          },
+          {
+            "aspect_id": "funding_pitch",
+            "criterion_id": "FRL9-PITCH",
+            "eligible_evidence_classes": [
+              "updated_funding_materials"
+            ],
+            "gate_rule": "required_cumulative_if_applicable",
+            "level": 9,
+            "na_policy": "explicit_no_external_financing_only",
+            "source_locator": "Compiled F/2025 p.14, FRL 9, funding_pitch",
+            "text": "Pitch, business plan and supporting material are continuously updated."
+          }
+        ],
+        "criterion_semantics": "all_applicable_detailed_rows_are_required_cumulative_gates",
+        "dimension_boundary": {
+          "does_not_own": [
+            "customer_or_business_model_viability",
+            "technical_or_ip_readiness",
+            "company_valuation_or_fair_price",
+            "portfolio_fit_or_investment_decision",
+            "cross_dimension_score_or_vote"
+          ],
+          "governing_question": "Can the project obtain, legally use, govern and preserve enough capital on survivable terms to reach the next evidence-producing value milestone?",
+          "owns": [
+            "milestone_relative_funding_need",
+            "cash_runway_working_capital_and_financing_gap",
+            "source_instrument_and_financing_sequence_fit",
+            "funding_commitment_status_and_closing_evidence",
+            "funding_pitch_accounting_forecast_and_financial_controls",
+            "dilution_control_covenants_and_downside_financing_survival"
+          ]
+        },
+        "dimension_id": "FRL",
+        "edition": "F/2025",
+        "levels_supported": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "registry_id": "KTH-FRL-F-2025-INTERNAL-SHADOW",
+        "registry_sha256": "d90611310b54de68a89794d29cf57c8ad3ca4adfcbe1dae859973b51309da573",
+        "registry_version": "frl-f-2025.internal-shadow.v1",
+        "schema_version": "kth-irl-frl-registry.v1",
+        "source": {
+          "detailed_criteria_page": 14,
+          "path": "sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+          "summary_page_not_counted_as_criteria": 13,
+          "version_footer": "Version F released 2025"
+        },
+        "source_pages": [
+          13,
+          14
+        ],
+        "source_sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47"
+      }
+    },
+    "IPRL": {
+      "code_pointer": "kth_irl.v1.iprl_vertical::get_iprl_registry()",
+      "criteria_count": 32,
+      "dispositions": [
+        "insufficient",
+        "met",
+        "not_applicable",
+        "not_met",
+        "partial"
+      ],
+      "getter": "get_iprl_registry",
+      "levels_supported": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "module": "kth_irl.v1.iprl_vertical",
+      "registry": {
+        "claim_boundary": {
+          "internal_shadow": true,
+          "latest_2026_version_claimed": false,
+          "legal_opinion": false,
+          "official_kth_assessment": false
+        },
+        "criteria": [
+          {
+            "applicable": true,
+            "criterion_id": "IPRL1-C1",
+            "eligible_evidence_classes": [
+              "ip_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "Results or ideas are hypothesized to contain a possible form of IPR."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL1-C2",
+            "eligible_evidence_classes": [
+              "ip_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "Any current ideas about possible IPR remain speculative."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL1-C3",
+            "eligible_evidence_classes": [
+              "ip_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "The current absence or presence of description and documentation of possible IPR is recorded."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL1-C4",
+            "eligible_evidence_classes": [
+              "ip_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "Current knowledge or uncertainty about ownership, use rights and other legal aspects is recorded."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL1-C5",
+            "eligible_evidence_classes": [
+              "ip_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "Current knowledge or uncertainty about uniqueness, technical field, state of the art and publications is recorded."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL2-C1",
+            "eligible_evidence_classes": [
+              "ip_asset_inventory"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "Different forms of IPR that exist or could arise during development are mapped."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL2-C2",
+            "eligible_evidence_classes": [
+              "ip_asset_inventory",
+              "ip_asset_description"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "Specific possible IPR ideas are identified, even if not yet well described or defined."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL2-C3",
+            "eligible_evidence_classes": [
+              "executed_assignment",
+              "founder_employee_contractor_agreement",
+              "inventor_creator_record",
+              "license_agreement",
+              "ownership_record"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "Relevant agreements, inventors or creators, ownership and use rights are identified and clarified."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL2-C4",
+            "eligible_evidence_classes": [
+              "contract_restriction_review",
+              "ip_policy_record"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "Applicable IP policies and potential contractual restrictions are identified."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL3-C1",
+            "eligible_evidence_classes": [
+              "ip_priority_record"
+            ],
+            "gate_rule": "required",
+            "level": 3,
+            "text": "The forms of IPR that are key or most important and could or should be protected are considered."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL3-C2",
+            "eligible_evidence_classes": [
+              "ip_asset_description"
+            ],
+            "gate_rule": "required",
+            "level": 3,
+            "text": "Possible key IPR is described in enough detail to evaluate protection possibilities."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL3-C3",
+            "eligible_evidence_classes": [
+              "prior_art_search",
+              "self_search_record",
+              "state_of_art_analysis"
+            ],
+            "gate_rule": "required",
+            "level": 3,
+            "text": "Protection possibilities are evaluated through searches of publications, prior art or state-of-the-art solutions."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL3-C4",
+            "eligible_evidence_classes": [
+              "professional_analysis",
+              "professional_search"
+            ],
+            "gate_rule": "optional",
+            "level": 3,
+            "text": "Initial professional searches or analysis of prior art or conflicting IPR may be performed."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL4-C1",
+            "eligible_evidence_classes": [
+              "professional_protectability_analysis"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "Possibilities for protecting key IPR are confirmed through professional searches or analysis."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL4-C2",
+            "eligible_evidence_classes": [
+              "professional_analysis",
+              "protection_priority_record"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "Key IPR and protection priorities are analyzed for their value to the business or project."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL4-C3",
+            "eligible_evidence_classes": [
+              "early_filing"
+            ],
+            "gate_rule": "optional",
+            "level": 4,
+            "text": "An early less-elaborate application or registration may be filed."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL5-C1",
+            "eligible_evidence_classes": [
+              "ip_strategy_draft"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "A draft IPR strategy analyzes how different IPR can protect and create business value."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL5-C2",
+            "eligible_evidence_classes": [
+              "formal_application"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "A first complete formal application or registration of key IPR is filed with professional support."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL5-C3",
+            "eligible_evidence_classes": [
+              "executed_assignment",
+              "ownership_agreement"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "Basic agreements are in place to establish control of key IPR."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL6-C1",
+            "eligible_evidence_classes": [
+              "professional_ip_strategy"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "A complete professionally validated IPR strategy supports the business strategy."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL6-C2",
+            "eligible_evidence_classes": [
+              "complementary_ip_inventory"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "Possible complementary or additional IPR to protect is identified."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL6-C3",
+            "eligible_evidence_classes": [
+              "dependency_analysis",
+              "fto_assessment",
+              "ip_landscape_analysis"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "An initial freedom-to-operate assessment maps active rightsholders, key rights and possible restrictions or dependencies."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL6-C4",
+            "eligible_evidence_classes": [
+              "office_action_record",
+              "positive_authority_response"
+            ],
+            "gate_rule": "one_of:application_response_resolution",
+            "level": 6,
+            "text": "A positive authority response on applications is received and analyzed."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL6-C5",
+            "eligible_evidence_classes": [
+              "professional_response_analysis"
+            ],
+            "gate_rule": "one_of:application_response_resolution",
+            "level": 6,
+            "text": "If no positive response exists, the response is professionally analyzed and prospects remain supportable."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL7-C1",
+            "eligible_evidence_classes": [
+              "national_regional_phase_record"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "The key application or registration has entered relevant national or regional phase according to the IPR strategy."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL7-C2",
+            "eligible_evidence_classes": [
+              "dependency_analysis",
+              "fto_assessment"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "A more complete freedom-to-operate assessment establishes dependencies on or restrictions by other IPR."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL8-C1",
+            "eligible_evidence_classes": [
+              "agreement_management_record",
+              "ip_management_process"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "The IPR strategy is implemented through proactive protection, professional agreement management and a process for securing new IPR."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL8-C2",
+            "eligible_evidence_classes": [
+              "granted_right"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "Key IPR is granted in a first business-relevant country or region with relevant scope."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL8-C3",
+            "eligible_evidence_classes": [
+              "complementary_filing"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "Complementary or additional IPR applications or registrations are filed."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL9-C1",
+            "eligible_evidence_classes": [
+              "ip_business_value_evidence"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "The IPR strategy is proven to support and create value for the business."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL9-C2",
+            "eligible_evidence_classes": [
+              "maintained_right"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "Key and complementary IPR is granted and maintained in several business-relevant countries."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "IPRL9-C3",
+            "eligible_evidence_classes": [
+              "external_ip_access_agreement"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "Agreements provide access to all necessary external IPR."
+          }
+        ],
+        "criterion_semantics": "source_level_description_rows_with_required_optional_and_one_of_gates",
+        "dimension_boundary": {
+          "does_not_own": [
+            "technical_performance_or_feasibility",
+            "customer_problem_or_adoption_truth",
+            "business_model_viability_or_unit_economics",
+            "team_capability_or_financial_readiness",
+            "investment_or_project_decision"
+          ],
+          "governing_question": "Has the project identified the value-bearing knowledge and rights it owns or must access, chosen a business-relevant appropriability and protection strategy, and reduced ownership, freedom-to-operate and execution risk to the claimed level?",
+          "owns": [
+            "ip_asset_identification_and_inventory",
+            "rights_provenance_ownership_and_use_rights",
+            "protectability_and_protection_strategy",
+            "formal_filings_registrations_grants_and_maintenance",
+            "freedom_to_operate_and_external_ip_dependencies",
+            "trade_secret_and_confidentiality_controls",
+            "ip_management_and_business_value_alignment"
+          ],
+          "shared_evidence_rule": "same_evidence_identity_requires_ip_specific_claim_scope_and_cannot_prove_boundary"
+        },
+        "dimension_id": "IPRL",
+        "dimension_source_version": "F/2022",
+        "levels_supported": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "registry_id": "KTH-IPRL-F-2022-in-Compiled-F-2025",
+        "registry_sha256": "c20fe8c5fb220291b3435d6efa8001d2e51b196cdd59129f76f8e8f2a1fd610c",
+        "registry_version": "iprl-f-2022.internal-shadow.v1",
+        "schema_version": "kth-irl-iprl-registry.v1",
+        "source": {
+          "aggregate_bundle_version": "F/2025",
+          "pages": [
+            9,
+            10
+          ],
+          "path": "sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+          "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47",
+          "source_id": "compiled_f"
+        }
+      }
+    },
+    "TMRL": {
+      "code_pointer": "kth_irl.v1.tmrl_vertical::get_tmrl_registry()",
+      "criteria_count": 38,
+      "dispositions": [
+        "insufficient",
+        "met",
+        "not_applicable",
+        "not_met",
+        "partial"
+      ],
+      "getter": "get_tmrl_registry",
+      "levels_supported": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "module": "kth_irl.v1.tmrl_vertical",
+      "registry": {
+        "claim_boundary": {
+          "identity_overlay_may_set_readiness": false,
+          "internal_shadow": true,
+          "latest_2026_version_claimed": false,
+          "official_kth_assessment": false,
+          "relationship_is_automatic_penalty": false
+        },
+        "criteria": [
+          {
+            "applicable": true,
+            "criterion_id": "TMRL1-C1",
+            "eligible_evidence_classes": [
+              "team_needs_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "The current team typically lacks necessary competencies in key areas such as technology or business."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL1-C2",
+            "eligible_evidence_classes": [
+              "team_needs_hypothesis"
+            ],
+            "gate_rule": "required",
+            "level": 1,
+            "text": "Current insight into the competencies and external resources needed to verify and develop the idea is limited."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL2-C1",
+            "eligible_evidence_classes": [
+              "team_capability_snapshot"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "Only limited competencies or capacity are currently present, typically one or two people."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL2-C2",
+            "eligible_evidence_classes": [
+              "team_needs_hypothesis",
+              "competency_gap_record"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "There is a first idea of additional people or competencies needed to verify or develop the idea."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL2-C3",
+            "eligible_evidence_classes": [
+              "project_goal_record"
+            ],
+            "gate_rule": "required",
+            "level": 2,
+            "text": "There is a first idea of the project's overall goal."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL3-C1",
+            "eligible_evidence_classes": [
+              "team_capability_snapshot"
+            ],
+            "gate_rule": "required",
+            "level": 3,
+            "text": "One or more people possess some, but not all, necessary competencies and capacity to begin verifying the idea."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL3-C2",
+            "eligible_evidence_classes": [
+              "competency_gap_record"
+            ],
+            "gate_rule": "required",
+            "level": 3,
+            "text": "Gaps in competencies, capacity and team diversity are identified."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL3-C3",
+            "eligible_evidence_classes": [
+              "hiring_or_access_plan"
+            ],
+            "gate_rule": "required",
+            "level": 3,
+            "text": "An initial near-term plan identifies how to find prioritized competencies."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL4-C1",
+            "eligible_evidence_classes": [
+              "execution_route_record"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "The team or individual has a clear idea of how to take the idea to market or another intended route."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL4-C2",
+            "eligible_evidence_classes": [
+              "champion_commitment_record"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "At least one champion is present and committed to driving the idea forward."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL4-C3",
+            "eligible_evidence_classes": [
+              "team_capability_snapshot",
+              "team_capability_matrix"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "Several, but not all, necessary competencies are present."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL4-C4",
+            "eligible_evidence_classes": [
+              "hiring_or_access_plan"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "A plan to obtain additional competencies and capacity is in place and initiated with diversity considered."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL4-C5",
+            "eligible_evidence_classes": [
+              "team_alignment_record"
+            ],
+            "gate_rule": "required",
+            "level": 4,
+            "text": "The team has started discussions about future roles, commitment and ownership."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL5-C1",
+            "eligible_evidence_classes": [
+              "founder_team_operating_record"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "An initial founding team works together, spends significant time and jointly has the main competencies and capacity to start building the startup."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL5-C2",
+            "eligible_evidence_classes": [
+              "team_alignment_record",
+              "executed_role_commitment_record"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "The team is aligned on roles, shared goals and vision, with clear commitment such as time spent."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL5-C3",
+            "eligible_evidence_classes": [
+              "executed_ownership_agreement"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "The team has a signed agreement on shares, with ownership aligned to past and future commitment and contribution."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL5-C4",
+            "eligible_evidence_classes": [
+              "recruitment_execution_record"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "Activities to add competencies and capacity are in progress with diversity considered."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL5-C5",
+            "eligible_evidence_classes": [
+              "knowledge_system_record"
+            ],
+            "gate_rule": "required",
+            "level": 5,
+            "text": "Initial systems, processes or tools share knowledge and information within the team."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL6-C1",
+            "eligible_evidence_classes": [
+              "team_capability_matrix"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "A complementary and diverse founding team is capable of starting to build a business."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL6-C2",
+            "eligible_evidence_classes": [
+              "team_capability_matrix",
+              "executive_role_record"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "All key near-term competencies and capacity are present, including a clear CEO."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL6-C3",
+            "eligible_evidence_classes": [
+              "accountability_operating_record"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "The committed team demonstrates responsibility and accountability."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL6-C4",
+            "eligible_evidence_classes": [
+              "recruitment_execution_record",
+              "board_advisor_record"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "Recruitment of advisors or board members has started with board diversity considered."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL6-C5",
+            "eligible_evidence_classes": [
+              "team_risk_management_record"
+            ],
+            "gate_rule": "required",
+            "level": 6,
+            "text": "The team is aware of material team-performance risks such as conflict, burnout, mental health or politics."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL7-C1",
+            "eligible_evidence_classes": [
+              "team_operating_record"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "A well-functioning team with clear roles is in place."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL7-C2",
+            "eligible_evidence_classes": [
+              "organization_charter"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "Goals, vision, purpose and culture are clearly articulated and documented to support development."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL7-C3",
+            "eligible_evidence_classes": [
+              "organization_growth_plan"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "A longer-term plan describes how to build the organization and grow the team over approximately two years."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL7-C4",
+            "eligible_evidence_classes": [
+              "learning_development_process"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "Processes, systems and a plan for continuous learning and staff development are implemented."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL7-C5",
+            "eligible_evidence_classes": [
+              "board_advisor_operating_record"
+            ],
+            "gate_rule": "required",
+            "level": 7,
+            "text": "The board and advisors operate and support business and organizational development."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL8-C1",
+            "eligible_evidence_classes": [
+              "management_team_record"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "A clear leadership and management team with relevant professional experience is in place."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL8-C2",
+            "eligible_evidence_classes": [
+              "board_advisor_operating_record"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "A competent and diverse board and relevant advisors are in place and professionally used."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL8-C3",
+            "eligible_evidence_classes": [
+              "hr_policy_process"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "HR policies, processes and responsibility support good HR practices and team diversity."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL8-C4",
+            "eligible_evidence_classes": [
+              "recruitment_execution_record"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "Necessary recruitment under the longer-term plan is ongoing to secure competencies, capacity and diversity."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL8-C5",
+            "eligible_evidence_classes": [
+              "training_motivation_record"
+            ],
+            "gate_rule": "required",
+            "level": 8,
+            "text": "All levels of the organization are properly trained and motivated."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL9-C1",
+            "eligible_evidence_classes": [
+              "organization_performance_record"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "The organization is high performing and well functioning, including cooperation and social environment."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL9-C2",
+            "eligible_evidence_classes": [
+              "learning_performance_record"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "All levels of the organization actively engage in continuous learning and development."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL9-C3",
+            "eligible_evidence_classes": [
+              "continuous_improvement_record"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "Organizational culture, structure and processes are continuously improved and developed."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL9-C4",
+            "eligible_evidence_classes": [
+              "incentive_alignment_record"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "Incentives and rewards align the whole organization to reach goals and perform well."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TMRL9-C5",
+            "eligible_evidence_classes": [
+              "management_continuity_record"
+            ],
+            "gate_rule": "required",
+            "level": 9,
+            "text": "The management team is maintained, developed and performs over time."
+          }
+        ],
+        "criterion_semantics": "all_source_level_description_rows_are_required_cumulative_gates",
+        "dimension_boundary": {
+          "does_not_own": [
+            "technical_performance_or_feasibility",
+            "customer_problem_or_adoption_truth",
+            "business_model_viability_or_unit_economics",
+            "ip_ownership_protectability_or_freedom_to_operate",
+            "funding_or_financial_readiness",
+            "investment_or_project_decision"
+          ],
+          "governing_question": "Does the project have the verified people, current capability and capacity, commitment, collaboration, governance and organizational learning needed to perform the root execution mission at the claimed stage?",
+          "owns": [
+            "root_execution_capability_and_capacity",
+            "role_coverage_and_key_person_dependency",
+            "commitment_collaboration_accountability_and_governance",
+            "identity_role_and_work_history_claim_qualification",
+            "team_relationship_causal_risk_and_safeguards",
+            "execution_learning_recovery_and_knowledge_sharing",
+            "ownership_incentives_hiring_board_hr_and_organization_building"
+          ],
+          "shared_evidence_rule": "identity_overlay_is_mandatory_but_cannot_set_tmrl_and_each_shared_fact_requires_a_team_specific_claim_and_inference"
+        },
+        "dimension_id": "TMRL",
+        "dimension_source_version": "E/2022",
+        "levels_supported": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "registry_id": "KTH-TMRL-E-2022-interim-in-Compiled-F-2025",
+        "registry_sha256": "5b58eab414b3dfe585887d2f3fc96e9d962395e69eff0fe790cf2182dd9ff43a",
+        "registry_version": "tmrl-e-2022.interim-pending-revision.internal-shadow.v1",
+        "schema_version": "kth-irl-tmrl-registry.v1",
+        "source": {
+          "aggregate_bundle_version": "F/2025",
+          "pages": [
+            11,
+            12
+          ],
+          "path": "sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+          "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47",
+          "source_id": "compiled_f"
+        },
+        "source_status": "interim_pending_revision"
+      }
+    },
+    "TRL": {
+      "code_pointer": "kth_irl.v1.trl_vertical::get_trl_registry()",
+      "criteria_count": 25,
+      "dispositions": [
+        "insufficient",
+        "met",
+        "not_applicable",
+        "not_met",
+        "partial"
+      ],
+      "getter": "get_trl_registry",
+      "levels_supported": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "module": "kth_irl.v1.trl_vertical",
+      "registry": {
+        "claim_boundary": {
+          "internal_shadow": true,
+          "latest_2026_version_claimed": false,
+          "official_kth_assessment": false
+        },
+        "criteria": [
+          {
+            "applicable": true,
+            "criterion_id": "TRL1-C1",
+            "eligible_evidence_classes": [
+              "concept_description",
+              "requirements_record",
+              "test_record"
+            ],
+            "level": 1,
+            "text": "Research results with potential benefits or useful applications identified."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL1-C2",
+            "eligible_evidence_classes": [
+              "concept_description",
+              "requirements_record",
+              "test_record"
+            ],
+            "level": 1,
+            "text": "A vague initial idea of a technology to be developed exists."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL2-C1",
+            "eligible_evidence_classes": [
+              "concept_description",
+              "requirements_record",
+              "test_record"
+            ],
+            "level": 2,
+            "text": "A potential technology concept is defined and described."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL2-C2",
+            "eligible_evidence_classes": [
+              "concept_description",
+              "requirements_record",
+              "test_record"
+            ],
+            "level": 2,
+            "text": "Practical applications may be defined or researched but remain speculative without proof that the technology works."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL3-C1",
+            "eligible_evidence_classes": [
+              "lab_test",
+              "independent_test",
+              "test_record"
+            ],
+            "level": 3,
+            "text": "Laboratory analytical or experimental tests of important parameters, features or functions show the concept could work and be feasible."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL3-C2",
+            "eligible_evidence_classes": [
+              "r_and_d_record",
+              "lab_test",
+              "test_record"
+            ],
+            "level": 3,
+            "text": "Active R&D is initiated to develop the technology further."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL3-C3",
+            "eligible_evidence_classes": [
+              "requirements_record",
+              "lab_test",
+              "relevant_environment_test",
+              "test_record"
+            ],
+            "level": 3,
+            "text": "A first idea of end-user requirements, specifications or use cases exists."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL4-C1",
+            "eligible_evidence_classes": [
+              "lab_test",
+              "independent_test",
+              "test_record"
+            ],
+            "level": 4,
+            "text": "Basic components are integrated and shown to work together and produce desired results in a laboratory environment."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL4-C2",
+            "eligible_evidence_classes": [
+              "lab_test",
+              "independent_test",
+              "test_record"
+            ],
+            "level": 4,
+            "text": "Test results give initial evidence that the integrated technology concept will work."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL5-C1",
+            "eligible_evidence_classes": [
+              "relevant_environment_test",
+              "independent_test"
+            ],
+            "level": 5,
+            "text": "Basic components are integrated and tested in a more realistic form in a relevant environment."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL5-C2",
+            "eligible_evidence_classes": [
+              "relevant_environment_test",
+              "independent_test"
+            ],
+            "level": 5,
+            "text": "Test results give evidence indicating that the technology will work."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL5-C3",
+            "eligible_evidence_classes": [
+              "relevant_environment_test",
+              "independent_test"
+            ],
+            "level": 5,
+            "text": "The relevant environment simulates the most important and most stressing aspects of the operational environment."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL5-C4",
+            "eligible_evidence_classes": [
+              "requirements_record",
+              "relevant_environment_test"
+            ],
+            "level": 5,
+            "text": "More defined end-user requirements, specifications or use cases are based on user feedback."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL6-C1",
+            "eligible_evidence_classes": [
+              "relevant_environment_test",
+              "independent_test"
+            ],
+            "level": 6,
+            "text": "A representative model or prototype has been shown to actually work in a relevant environment."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL6-C2",
+            "eligible_evidence_classes": [
+              "relevant_environment_test",
+              "manufacturing_record"
+            ],
+            "level": 6,
+            "text": "The representative model or prototype is near or at operational specification and supports evaluation of technical or manufacturing feasibility."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL6-C3",
+            "eligible_evidence_classes": [
+              "relevant_environment_test",
+              "independent_test"
+            ],
+            "level": 6,
+            "text": "Demonstration meets most important performance requirements."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL7-C1",
+            "eligible_evidence_classes": [
+              "operational_demonstration",
+              "independent_test"
+            ],
+            "level": 7,
+            "text": "A prototype near or at the complete technology has been shown to work in an operational environment."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL7-C2",
+            "eligible_evidence_classes": [
+              "operational_demonstration",
+              "independent_test"
+            ],
+            "level": 7,
+            "text": "The operational environment addresses all operational requirements and specifications where end users will use the technology."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL7-C3",
+            "eligible_evidence_classes": [
+              "requirements_record",
+              "operational_demonstration"
+            ],
+            "level": 7,
+            "text": "Complete end-user requirements, specifications or use cases are in place."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL8-C1",
+            "eligible_evidence_classes": [
+              "actual_operation",
+              "independent_operation_record"
+            ],
+            "level": 8,
+            "text": "The complete technology has been proven to work in actual operations by first users."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL8-C2",
+            "eligible_evidence_classes": [
+              "manufacturing_record",
+              "actual_operation",
+              "independent_operation_record"
+            ],
+            "level": 8,
+            "text": "The technology is complete, functional, compatible and producible for the user."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL8-C3",
+            "eligible_evidence_classes": [
+              "actual_operation",
+              "independent_operation_record"
+            ],
+            "level": 8,
+            "text": "The technology meets all performance requirements and specifications."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL8-C4",
+            "eligible_evidence_classes": [
+              "actual_operation",
+              "independent_operation_record"
+            ],
+            "level": 8,
+            "text": "End users use the technology on their own in day-to-day actual operations."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL9-C1",
+            "eligible_evidence_classes": [
+              "longitudinal_operation",
+              "independent_operation_record"
+            ],
+            "level": 9,
+            "text": "Complete technology is scalable and proven to work in actual operations by several users over time."
+          },
+          {
+            "applicable": true,
+            "criterion_id": "TRL9-C2",
+            "eligible_evidence_classes": [
+              "continuous_improvement_record",
+              "longitudinal_operation"
+            ],
+            "level": 9,
+            "text": "Continuous development, improvement and optimization of technology and production is ongoing."
+          }
+        ],
+        "criterion_semantics": "derived_cumulative_gate_from_source_level_descriptions",
+        "dimension_id": "TRL",
+        "dimension_source_version": "G/2022",
+        "levels_supported": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "registry_id": "KTH-TRL-G-2022-in-Compiled-F-2025",
+        "registry_sha256": "63c7e8a73a0847d4432e422c5e631a8e55920a0fdec7aabd6c0f56d110f452f8",
+        "registry_version": "trl-g-2022.internal-shadow.v1",
+        "schema_version": "kth-irl-trl-registry.v1",
+        "source": {
+          "aggregate_bundle_version": "F/2025",
+          "pages": [
+            5,
+            6
+          ],
+          "path": "sources/kth/KTH-Innovation-Readiness-Level_Compiled_F_print.pdf",
+          "sha256": "c7deea75809751c29f2e8d085ec627558b1ec4fe50840ed4ec872f776bca3c47",
+          "source_id": "compiled_f"
+        }
+      }
+    }
+  },
+  "generated_by": "2026-09-17 批准wheel隔离目录getter机械冻结；正常运行只读本工件",
+  "schema_version": "kth-hybrid.catalog.v1",
+  "totals": {
+    "criteria": 180
+  },
+  "wheel_sha256": "2c49050858555ebb063a7b82177ee43e7caf7d2b93e2319998d7d0b047a471fe"
+}

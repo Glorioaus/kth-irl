@@ -1,0 +1,130 @@
+{
+  "schema_version": "kth-hybrid.r2b-frl-handoff.v1",
+  "generated_at": "2026-09-09T00:56:58+08:00",
+  "status": "执行方本地自检通过，独立审核待进行",
+  "authorization": {
+    "overnight": "D:/t/kth-overnight-20260908/夜间执行授权与Goal输入.md",
+    "frl": "D:/t/kth-r2a1-review-20260908/给执行者的R2-B-FRL开工指令.md",
+    "scope": "FRL36条及融资主体离线候选；本夜授权允许自检后继续下一离线包"
+  },
+  "baseline": {
+    "start_head": "4dfe4d9896cda8341a5d20ccc4de5d0215e2cca6",
+    "implementation_commit": "bf7db2cfd5d64d4ebccc00b1ce964b1299c6a4dd",
+    "branch": "codex/runtime-rebuild",
+    "case": "D:/t/kth-rebuild-cases/weijiu-r2b",
+    "copied_records_sha256": "493deb41afabd1b6053e64f042c7afb600578770f364ce09bbe5b04146d1a302"
+  },
+  "implementation": {
+    "rule_module": "plugin/src/kth_hybrid/kernels/frl.py",
+    "runner": "kth_hybrid.runner.run_frl_dimension_slice",
+    "trace": "kth_hybrid.audit.trace_dimension_result",
+    "review_table": "dimension_evidence_reviews",
+    "result_table": "dimension_results",
+    "rule_version": "kth-hybrid.frl.r2b.v1",
+    "rule_count": 36,
+    "na_policy": {"never": 27, "explicit_no_external_financing_only": 9}
+  },
+  "historical_reuse": [
+    {
+      "path": "approved wheel kth_irl/v1/frl_vertical.py",
+      "sha256": "96097ff0a837369d036702517a48580f80a63665164c49519643602722154ada",
+      "used_for": "registry、证据类别、受限N/A、累计门"
+    },
+    {
+      "path": "D:/UGit/sunny-skills/plugins/kth-irl-evaluator/skills/kth-irl-frl-specialist/SKILL.md",
+      "sha256": "fe8f9c910bc8d74d358ce693c5180c1846963a3f3e6cfedd079fb85e1408c9ea",
+      "used_for": "融资主体、资金确定性、共享单元和决定边界"
+    }
+  ],
+  "real_case": {
+    "financing_entity_id": "FIN-WEIJU-COMPANY",
+    "assessment_unit_refs": ["UNIT-WEIJU-COMPANY-CURRENT-CASE"],
+    "scope_import_sha256": "5bb8dbf84d7f1085783a72ce2a52f7ecd3618cf13339233816d6e3e20fef2751",
+    "result_id": "DIMR2::FRL::16f3409dc98d9b85ec8e533de4c92f4bc10ef8b2977b4f6a3e70b58242f558cc",
+    "input_digest": "16f3409dc98d9b85ec8e533de4c92f4bc10ef8b2977b4f6a3e70b58242f558cc",
+    "result_blob_sha256": "47b458cf835c83ce9df79d931c98349092076faba433ff29f849a18787bb2073",
+    "native_counts": {"insufficient": 36},
+    "attained_level": 0,
+    "first_unmet_level": 1,
+    "qualification_binding_count": 0,
+    "trace_ok": true,
+    "replay_same_result": true,
+    "dimension_history_count": 2,
+    "history_note": "保留一次错评估单元输入形成的execution_failed结果；未删除失败历史"
+  },
+  "test_runs": [
+    {
+      "name": "FRL规则和真实门控run03",
+      "command": "KTH_CASE_ROOT=weijiu-r2b KTH_REAL_CASE_DIR_FRL=weijiu-r2b pytest test_r2b_frl.py test_r2b_frl_runner.py -q",
+      "exit_code": 0,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/real-gate-r2b-frl-run03.log",
+      "log_sha256": "abe9fd3e7ca151547def810a7a40f4e8e7fd424537539b2a2b064fa53c5ba23f"
+    },
+    {
+      "name": "最终集成全套",
+      "command": "KTH_CASE_ROOT/KTH_REAL_CASE_DIR_6/KTH_REAL_CASE_DIR_R2A/KTH_REAL_CASE_DIR_FRL=weijiu-r2b pytest tests -q",
+      "exit_code": 0,
+      "passed": 320,
+      "failed": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/full-suite-r2b-frl.log",
+      "log_sha256": "573ce630f4e78fe85520c6bdd85e22852153feefa5c72784ad9985df3fefcf64"
+    },
+    {
+      "name": "批准源码FRL纵向窄对照run02",
+      "command": "PYTHONPATH=<approved-source>/src pytest test_v1_pvs6_frl_vertical.py -q",
+      "exit_code": 1,
+      "passed": 6,
+      "failed": 1,
+      "failure": "原版目录os.replace在Windows返回WinError5",
+      "log_ref": "D:/t/kth-overnight-work-20260908/original-frl-vertical-run02.log",
+      "log_sha256": "44f1953d1b3499b2745ecbc1feff77a17f188dc643237beebd8e2a0342c78ace"
+    },
+    {
+      "name": "真实runner重放与trace",
+      "exit_code": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/real-runner-trace-r2b-frl.log",
+      "log_sha256": "bba59232f15c9d36bea9491278148cc35869729e54e503c43adcb64f64d9458f"
+    },
+    {
+      "name": "最终FRL快照",
+      "exit_code": 0,
+      "output_ref": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/r2b-frl-final-snapshot.json",
+      "output_sha256": "5dc8318b2ca5137c564f02fee57ae146917f6d535f4c8d91bd78fb128efc395d"
+    }
+  ],
+  "failed_runs_preserved": [
+    {
+      "log": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/real-gate-r2b-frl.log",
+      "sha256": "9f4cb70ed727ca2a9442ddf7a3382fd7b55be1fbf90a6d653b436928bc8edf81",
+      "reason": "遗漏KTH_CASE_ROOT，执行边界拒绝越界数据库"
+    },
+    {
+      "log": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/real-gate-r2b-frl-run02.log",
+      "sha256": "b3db87b1209bc6ca9b83543a676a2523297edfdbdec29b014b7d6d53f9addbb6",
+      "reason": "真实门控评估单元引用与封存scope不一致，结果按设计execution_failed"
+    }
+  ],
+  "final_snapshot": {
+    "records_sha256": "303059a5b6edb6d68fe77bae0ede39dd2b13fe496753a815ac06dbe594ac338b",
+    "runs": 42,
+    "coverage": {"total": 180, "crl_implemented": 13, "frl_candidate": 36, "later_unimplemented": 131},
+    "snapshot_ref": "D:/t/kth-rebuild-cases/weijiu-r2b/audit/r2b-frl-final-snapshot.json",
+    "snapshot_sha256": "5dc8318b2ca5137c564f02fee57ae146917f6d535f4c8d91bd78fb128efc395d"
+  },
+  "protection": {
+    "r2a1_records_sha256": "493deb41afabd1b6053e64f042c7afb600578770f364ce09bbe5b04146d1a302",
+    "r2a_records_sha256": "82470ac923d03c1aec22bac3bff2ea1a5715f8297d40df2f6a21d6931fe3b094",
+    "r1_6_records_sha256": "285dc517d9975a309d83e9fad470dc6435910f41999a579e8d1a97336b425dc2",
+    "old_session_sha256": "dc3e31b086b9fdb9857a9179478b469791f458e35c1a3cf24b74776a28b49375"
+  },
+  "unresolved": [
+    "真实Case没有FRL专属合格review或资金台账，36条保持insufficient",
+    "当前只冻结公司级Case单元，产品级评估单元尚未建立",
+    "候选实现尚未独立审核，不形成正式评估或投资决定"
+  ]
+}

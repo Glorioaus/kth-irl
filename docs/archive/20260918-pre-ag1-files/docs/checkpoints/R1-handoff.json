@@ -1,0 +1,186 @@
+{
+  "schema_version": "kth-hybrid.r1-handoff.v1",
+  "generated_at": "2026-09-08T00:55:00+08:00",
+  "authorization": {
+    "plan": "KTH整体重建执行计划v3（2026-09-07）",
+    "instruction": "D:/t/kth-implementation-plan-20260907/发给GLM的R0-R1开工指令-v3.md",
+    "scope": "仅R0+R1：T01–T06＋I/O历史交接、audit/trace、证据census、R1交接工件",
+    "explicitly_not_authorized": ["R2/T07–T15", "正式D1", "merge/push/tag/release", "远端配置", "回导主仓", "微玖进入尽调"],
+    "reviewer_approval_claimed": false
+  },
+  "branch": "codex/runtime-rebuild",
+  "base_commit": "23f2d9a4361a5dc28e311a6b2b1edcbbcf411381 (main, M0根提交)",
+  "code_commit": "c4cb646（T01–T06 共6个本地提交：b2441ee/78362fe/9f32934/4b182f5/471caa1/c4cb646；本交接文件随下一个检查点提交入库）",
+  "environment": {
+    "python": "3.12.10 (miniforge)",
+    "venv": "D:/UGit/kth-irl-hybrid/plugin/.venv（--system-site-packages，离线 --no-index 安装 kth-hybrid 0.1.0 editable）",
+    "key_local_libraries": ["pytest 9.0.3", "PyPDF2 3.0.1", "python-docx 1.2.0", "sqlite3 3.49.2"],
+    "network": "零网络；未加载凭证；未调用真实Provider/运行时模型API"
+  },
+  "changed_files": [
+    "AGENTS.md", "README.md",
+    "docs/decisions/runtime-v3.md", "docs/specs/business-contract-v1.md", "docs/specs/method-scope-v1.md",
+    "plugin/pyproject.toml",
+    "plugin/src/kth_hybrid/__init__.py", "plugin/src/kth_hybrid/catalog.py",
+    "plugin/src/kth_hybrid/contracts.py", "plugin/src/kth_hybrid/store.py",
+    "plugin/src/kth_hybrid/journal.py", "plugin/src/kth_hybrid/audit.py",
+    "plugin/src/kth_hybrid/intake.py", "plugin/src/kth_hybrid/census.py",
+    "plugin/src/kth_hybrid/qualification.py", "plugin/src/kth_hybrid/dimensions.py",
+    "plugin/src/kth_hybrid/kernels/__init__.py", "plugin/src/kth_hybrid/runner.py",
+    "plugin/src/kth_hybrid/cli.py",
+    "plugin/tests/conftest.py", "plugin/tests/test_catalog.py",
+    "plugin/tests/test_execution_boundary.py", "plugin/tests/test_store.py",
+    "plugin/tests/test_recovery.py", "plugin/tests/test_audit_trace.py",
+    "plugin/tests/test_intake.py", "plugin/tests/test_evidence_census.py",
+    "plugin/tests/test_real_capture_readonly.py", "plugin/tests/test_qualification.py",
+    "plugin/tests/test_vertical_slice.py", "plugin/tests/test_method_boundaries.py"
+  ],
+  "changed_files_stat": "31 files, +4988/-19",
+  "test_runs": [
+    {
+      "name": "全套最终验证",
+      "command": "KTH_CASE_ROOT=D:/t/kth-rebuild-cases/weijiu-r1 KTH_REAL_SESSION_ROOT=D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session KTH_REAL_CASE_DIR=D:/t/kth-rebuild-cases/weijiu-r1 ./.venv/Scripts/python -m pytest tests/ -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin",
+      "exit_code": 0,
+      "passed": 102, "failed": 0, "skipped_or_untested": 0,
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1/audit/final-test-run-20260908.log",
+      "log_sha256": "9bfed621f0bcd33e1c6892d3a47e50700a5cd8b7dc5b975f6d194de6d7b7e3de"
+    },
+    {
+      "name": "T02 判据目录与执行边界",
+      "command": "./.venv/Scripts/python -m pytest tests/test_catalog.py tests/test_execution_boundary.py -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 18, "failed": 0, "skipped_or_untested": 0, "log_ref": null
+    },
+    {
+      "name": "T03 存储/恢复/trace",
+      "command": "./.venv/Scripts/python -m pytest tests/test_store.py tests/test_recovery.py tests/test_audit_trace.py -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 25, "failed": 0, "skipped_or_untested": 0, "log_ref": null
+    },
+    {
+      "name": "T04 导入与盘点（合成）",
+      "command": "./.venv/Scripts/python -m pytest tests/test_intake.py tests/test_evidence_census.py -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 16, "failed": 0, "skipped_or_untested": 0, "log_ref": null
+    },
+    {
+      "name": "T04 真实封存session只读盘点",
+      "command": "KTH_REAL_SESSION_ROOT=... ./.venv/Scripts/python -m pytest tests/test_real_capture_readonly.py -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 10, "failed": 0, "skipped_or_untested": 0, "log_ref": "包含于全套日志"
+    },
+    {
+      "name": "T05 资格判断",
+      "command": "./.venv/Scripts/python -m pytest tests/test_qualification.py -q",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 12, "failed": 0, "skipped_or_untested": 0, "log_ref": null
+    },
+    {
+      "name": "T06 边界与切片（含真实Case门控2项）",
+      "command": "./.venv/Scripts/python -m pytest tests/test_method_boundaries.py tests/test_vertical_slice.py -q（带环境变量）",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": 21, "failed": 0, "skipped_or_untested": "2 skipped（未设环境变量时）",
+      "log_ref": "包含于全套日志"
+    },
+    {
+      "name": "真实盘点导入CLI（幂等重跑）",
+      "command": "./.venv/Scripts/python -m kth_hybrid.census --session-root .../session --case-dir D:/t/kth-rebuild-cases/weijiu-r1 --import",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "passed": null, "failed": 0,
+      "skipped_or_untested": "非pytest；产物见evidence_census_ref",
+      "log_ref": "D:/t/kth-rebuild-cases/weijiu-r1/audit/census-rerun-20260908.log",
+      "log_sha256": "50fe81367b0734ff6548f0645e8f1514c7ebf1f7cfd1ac229835ffd73a5ba04a"
+    },
+    {
+      "name": "CLI演示（inspect×1、trace×2）",
+      "command": "./.venv/Scripts/python -m kth_hybrid.cli inspect|trace --case-dir ... [--result-id ...]",
+      "cwd": "D:/UGit/kth-irl-hybrid/plugin", "exit_code": 0,
+      "log_ref": "audit/cli-inspect-20260908.txt (sha256 94560373…)；cli-trace-bp (5ebe1099…)；cli-trace-cap (48112f54…)"
+    }
+  ],
+  "evidence_census_ref": {
+    "path": "D:/t/kth-rebuild-cases/weijiu-r1/audit/evidence-census.json",
+    "sha256": "bdd2c6b65e8d33571599f2ab067c4c48dd102ab5e815ce40212b34c10793a68a",
+    "chinese_summary": "D:/t/kth-rebuild-cases/weijiu-r1/audit/证据存量.md",
+    "counts": {
+      "L0": {"清单捕获": 80, "实读": 76, "不可读": 4, "附件": 2, "放弃传输": 2, "簿记": 2},
+      "L1": {"非空正文": 36, "零字节": 40, "哈希与receipt一致": 76, "evidence_eligible=false": 76},
+      "L2": {"不同正文hash": 18, "同hash组": 5, "最大组": 12, "独立性": "未知"},
+      "L3": {"已审Claim": 2, "qualified": 1, "rejected": 1, "未完成主张提取的来源": 22},
+      "L4": {"succeeded": 1, "insufficient": 1, "native_disposition": "均null"}
+    }
+  },
+  "trace_refs": [
+    {
+      "result_id": "RESR::CLM-REAL-BP-CRL1::CRL1-C1",
+      "chain": "CRL1-C1 → QUALR::CLM-REAL-BP-CRL1 → CLM-REAL-BP-CRL1 → ATT::d2d8a79d6b5202e6 → blob d2d8a79d…84e8（BP附件原件）",
+      "locator": "pdf_page 投影第4页（PyPDF2 3.0.1 重核文本hash一致）",
+      "output": "D:/t/kth-rebuild-cases/weijiu-r1/audit/cli-trace-bp-20260908.txt",
+      "output_sha256": "5ebe1099330de9860c7ed6eee0a99f94c04a079b32cff897a2c23dce2dd0ca0"
+    },
+    {
+      "result_id": "RESR::CLM-REAL-CAP-CRL2::CRL2-C1",
+      "chain": "CRL2-C1 → 资格rejected（晚抓取无发布证明）→ CLM-REAL-CAP-CRL2 → CAP::718e402e82d5fb1c → blob 718e402e…f1b1c（公司报道正文）",
+      "locator": "byte_range [33267,33542)（区间hash重核一致）",
+      "output": "D:/t/kth-rebuild-cases/weijiu-r1/audit/cli-trace-cap-20260908.txt",
+      "output_sha256": "48112f543484f89edd9c38f3750c971bb31bc7495b9730eb929120a32924f8be"
+    },
+    {
+      "real_slices_record": "D:/t/kth-rebuild-cases/weijiu-r1/audit/real-slices-20260908.json",
+      "sha256": "f067a31c7e568200d21093358c02bb6fd1042238500cb89caaeea2a9fbbfe744"
+    }
+  ],
+  "recovery_refs": {
+    "io_first_check": {
+      "path": "D:/t/kth-rebuild-cases/weijiu-r1/audit/io-first-check-20260908.json",
+      "sha256": "a5c7629f84b4306d19b9a8b4cef74be493d733f05a4f103ae2633e82c88f2f60"
+    },
+    "tests": [
+      "test_real_process_kill_before_db_commit_leaves_orphan（真实进程终止，孤立工件保留可识别）",
+      "test_real_process_kill_after_db_commit_preserves_transaction（WAL恢复，已提交事务完整）",
+      "test_two_workers_cannot_both_claim / test_concurrent_claims_through_two_connections（唯一认领）",
+      "test_expired_worker_cannot_commit_after_reclaim（fencing，失败attempt留存）",
+      "test_dispatch_then_crash_is_outcome_unknown_no_blind_redispatch / test_crash_after_dispatch_is_outcome_unknown_no_blind_redispatch（计数型恰好一次派发，未知结果不盲重发）",
+      "test_blob_between_file_and_db_commit_is_orphan_not_success（落盘/提交间隙）"
+    ]
+  },
+  "io_findings": [
+    "目录级 os.replace 到已存在目标：全新短路径仍确定性 WinError5，3次有界重试(0.5/2.0s)耗尽仍失败——历史22个测试错误的调用形态属此语义，非瞬态权限问题；新存储以文件级replace+SQLite提交规避",
+    "文件级 os.replace、write+fsync+reread、目录改名（目标不存在）均正常",
+    "SQLite WAL 提交后独立进程重开验证正常（崩溃后已提交事务完整）",
+    "shutil.rmtree 对含只读文件目录 WinError5（清理路径注意，不影响存储提交机制）",
+    "4条清单捕获 PermissionError 不可读（目录：13a964b…、c50df109…、fb22cf18…、fb8e46f2…），与上轮审核一致；未做任何ACL/注册表/提权操作",
+    "I/O历史（H2/H3/H4/H6）只读学习，未运行旧脚本、未全局monkeypatch"
+  ],
+  "method_deltas": [
+    "R1窄规则内核 kth-hybrid.kernels.r1-narrow.v1：用途类→仅级别1信息性判据；显式声明为工程窄规则，非方法批准；级别>1按不足处理并注明规则上限",
+    "产品状态与原生处置分列：native_disposition 全部 null（未调用原版vertical，如实记录）；产品succeeded不冒充原生met",
+    "CRL：levels_supported=[1,2,3,4]；CRL原生dispositions无insufficient（提案被拒并登记）；级别5–9→method_unsupported（不伪报不转业务NO）",
+    "FRL na_policy 实测：27行never/9行explicit_no_external_financing_only（共36）；受限行N/A需显式无外部融资声明，非法N/A被拒",
+    "TMRL：身份叠加不得设定团队判据（identity verdict非ok或subject_scope含糊→不能支持）",
+    "180条判据=批准wheel当前实现条目（13/36/25/38/32/36），全部internal_shadow=true，未写成KTH全集"
+  ],
+  "unresolved_items": [
+    "4条不可读捕获的实质影响与是否提运维需求（Owner决定；本轮零ACL/注册表操作）",
+    "来源族/转载关系未审（5个同hash组、最大组12条），独立性分母未定",
+    "22个来源未完成主张提取与资格化；全量语义资格审查属R2(T09)",
+    "CRL 5–9范围裁定包（方法负责人/KTH专家）与180条逐判据规则对照（T07）",
+    "BP自述主体（苏州法人）与评估主体（武汉法人）关系未核验，影响第一方材料主体范围解释",
+    "附件复制登记时间晚于截止71分钟：第一方材料按文档自述日期资格化的口径已记录，正式报告期如需新时点应新建评估依据",
+    "真实Provider/模型链路未测（零网络授权下用计数型模拟替身，已如实标记simulated）"
+  ],
+  "actual_time": {
+    "segments": 1,
+    "wall_clock": "约50分钟（2026-09-08 00:05–00:54 +0800，连续无中断）",
+    "note": "单执行段实际墙钟；不以token数折算人日；远低于5工作日上限",
+    "first_commit": "b2441ee 2026-09-08 00:10:07 +0800",
+    "last_code_commit": "c4cb646 2026-09-08 00:51:07 +0800"
+  },
+  "self_assessment": {
+    "verdict": "PASS（限R1范围，自评，待独立验收）",
+    "basis": "真实入口、规则消费、分层盘点、trace、困难边界、恢复六项均有实证（见R1.md对照表）",
+    "limits": "六维全量规则对照/正式D1/真实Provider不在R1范围；22来源未完成主张提取如实显示",
+    "r2_readiness": "存储/台账/审计/资格/CLI基础设施可复用；R2主要成本在逐判据规则追溯与测试矩阵"
+  }
+}

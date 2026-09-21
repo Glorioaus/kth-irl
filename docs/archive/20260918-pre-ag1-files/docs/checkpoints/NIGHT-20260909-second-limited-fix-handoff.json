@@ -1,0 +1,212 @@
+{
+  "schema_version": "kth-hybrid.night-second-limited-fix-handoff.v1",
+  "generated_at": "2026-09-09T20:11:53+08:00",
+  "status": "执行方二次限定整改候选完成；fresh-context Astra独立复验待进行",
+  "authorization": {
+    "owner_adoption": "当前执行对话中Owner明确采用并授权二次限定修复输入",
+    "instruction": "D:/t/kth-night-limited-fix-review-20260909/给执行层的NIGHT二次限定修复输入.md",
+    "scope": "仅五类剩余P1；不授权R2后续、网络、真实模型/Provider、D1/D2、报告、投资决定或发布"
+  },
+  "baseline": {
+    "branch": "codex/runtime-rebuild",
+    "start_head": "cdbc1270a2f68f6294c68af613e0747ed21aea71",
+    "test_commit": "3aad996b43afb8760cf58abb843e01da00218955",
+    "last_green_code_commit": "96b7d1ba179c70d7469ab26b0b8fa9d3da3de34f",
+    "worktree_status_at_code_head": "clean"
+  },
+  "changes": [
+    {
+      "id": "WP1",
+      "title": "CRL准则正文read-time trace",
+      "files": ["plugin/src/kth_hybrid/audit.py"],
+      "result": "完整重算dimension并绑定SQLite行；伪造准则正文使trace和manifest拒绝"
+    },
+    {
+      "id": "WP2",
+      "title": "view/license内容摘要、canonical权限与confirmation闭包",
+      "files": ["plugin/src/kth_hybrid/aggregate.py", "plugin/src/kth_hybrid/roles.py"],
+      "result": "所有角色入口重核view/license；拒绝旧ID正文改写、空引用和canonical越权文本"
+    },
+    {
+      "id": "WP3",
+      "title": "BRL非有限经营指标",
+      "files": ["plugin/src/kth_hybrid/kernels/brl.py", "plugin/src/kth_hybrid/store.py"],
+      "result": "NaN/Infinity在写入边界和内核均不能支持准则"
+    },
+    {
+      "id": "WP4",
+      "title": "TRL9-C1准则级多用户纵向门",
+      "files": ["plugin/src/kth_hybrid/kernels/trl.py"],
+      "result": "两个允许证据类统一要求至少两个去重用户和明确期间"
+    },
+    {
+      "id": "WP5",
+      "title": "TMRL逐主体受控身份overlay",
+      "files": [
+        "plugin/src/kth_hybrid/kernels/tmrl.py",
+        "plugin/src/kth_hybrid/runner.py",
+        "plugin/src/kth_hybrid/store.py",
+        "plugin/src/kth_hybrid/audit.py"
+      ],
+      "result": "Case记录、同记录字段证明、runner冻结与trace重核闭环；overlay不直接定级"
+    }
+  ],
+  "versions": {
+    "crl": "kth-hybrid.crl.r2a.v1",
+    "brl": "kth-hybrid.brl.night.v3",
+    "trl": "kth-hybrid.trl.night.v3",
+    "iprl": "kth-hybrid.iprl.night.v2",
+    "tmrl": "kth-hybrid.tmrl.night.v3",
+    "frl": "kth-hybrid.frl.r2b.v1",
+    "result_contract": "kth-hybrid.dimension-result.v2",
+    "manifest": "kth-hybrid.aggregation-manifest.v1",
+    "view": "kth-hybrid.offline-six-dimension-view.v2",
+    "role": "kth-hybrid.offline-deliberation.v2"
+  },
+  "counterexamples": {
+    "before": {
+      "baseline_head": "cdbc1270a2f68f6294c68af613e0747ed21aea71",
+      "imported_package": "D:/t/kth-night-second-fix-work-20260909/baseline-cdbc127/plugin/src/kth_hybrid/__init__.py",
+      "passed": 1,
+      "failed": 25,
+      "exit_code": 1,
+      "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/night-second-fix-counterexamples-before-baseline.log",
+      "sha256": "2266d6247078c609115fe440e1bab612495dad953354ff4cc31baf4b80787e1d"
+    },
+    "after": {
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/night-second-fix-counterexamples-final.log",
+      "sha256": "5a9635ca66462af72d63dc06914a1d2119e0fe6b81499319aa023af98c637941"
+    }
+  },
+  "test_runs": [
+    {
+      "name": "NIGHT二次限定真实门控",
+      "command_scope": "十个test_night模块，KTH_CASE_ROOT仅指向新门控副本父目录；KTH_REAL_CASE_DIR_BRL/NIGHT指向新Case副本",
+      "passed": 206,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/night-second-fix-real-gate-final.log",
+      "sha256": "05a2bbe79f2c28427db145d0937eedc00acd4e1a90fe0f032b8fe478af3922a4"
+    },
+    {
+      "name": "最终全套",
+      "command_scope": "tests全套；真实变量分别指向R1.6、R2-A.1与NIGHT新副本；KTH_REAL_SESSION_ROOT只读",
+      "passed": 526,
+      "failed": 0,
+      "skipped": 0,
+      "warnings": 1,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/full-suite-night-second-fix-final.log",
+      "sha256": "98caf60e663104c97c1bf311f9e4d8c53c9530a7926919af31a4a6854c6acd2d"
+    },
+    {
+      "name": "FRL/IPRL专项回归",
+      "passed": 93,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/frl-iprl-regression-final.log",
+      "sha256": "940bceb55fe764a671617034887d1237e0d853053b2638ad35f973941ad70b7d"
+    },
+    {
+      "name": "非CRL trace与manifest隔离窄测",
+      "passed": 3,
+      "failed": 0,
+      "exit_code": 0,
+      "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/non-crl-trace-regression-final.log",
+      "sha256": "4a9bc0c59ab1271db07e24365ea1c28c67f6ab56893c373c8bb7485844b4c6a2"
+    }
+  ],
+  "canonical": {
+    "codes": [
+      "BRL_WEAK_COMMITMENT_FOR_LEVEL",
+      "IPRL_RIGHT_STATUS_NOT_VERIFIED",
+      "TMRL_EXECUTED_AGREEMENT_REQUIRED"
+    ],
+    "code_probe_log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/canonical-contract-probe-second-fix.log",
+    "code_probe_sha256": "637f310549b0d157b3239a0d751cd1ee9728efa5dc4a5ddf44f050b23f1f304c",
+    "role_authority_passed": 9,
+    "role_authority_log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/canonical-role-authority-final.log",
+    "role_authority_sha256": "8a15b22be726860ee4accec7843f1f8688f38620782e4b33c0596ae577ce1928"
+  },
+  "real_candidate": {
+    "case": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2",
+    "source_case": "D:/t/kth-night-fix-final-cases-20260909/night-fix",
+    "copy_file_count": 1844,
+    "copy_total_bytes": 70793646,
+    "source_tree_sha256": "f3facdc5d8dfcc144981ed1f0ee1fa10105d52d66a8f5afd6e40dae837322e77",
+    "destination_tree_sha256_before_modification": "f3facdc5d8dfcc144981ed1f0ee1fa10105d52d66a8f5afd6e40dae837322e77",
+    "copy_proof": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/copy-origin-proof.json",
+    "copy_proof_sha256": "3cbc545798ced2433682c0b022843ccdc637695036b74e1043a8192c7ff3c699",
+    "records_sha256": "230181d54bb90f9517a921183a27c99c89d093e9715951d4e0bdce8c81dc68e6",
+    "counts": {
+      "sources": 85,
+      "claims": 3,
+      "qualifications": 3,
+      "criterion_results": 3,
+      "import_records": 89,
+      "runs": 105,
+      "case_basis_versions": 1,
+      "source_time_evidence": 3,
+      "mapping_reviews": 1,
+      "crl_evidence_reviews": 1,
+      "crl_dimension_results": 2,
+      "dimension_evidence_reviews": 0,
+      "dimension_results": 14,
+      "tmrl_identity_overlays": 0
+    },
+    "manifest_id": "AGGMAN::34cf170ccf9b60ec4e92ff75200f1a52987e75cab7354a2e6e1a616be2a7f2a7",
+    "manifest_sha256": "68aec751bccb36a05d211d05903bd0699ea85db5ba6a97e2dda0f7bb87950901",
+    "view_id": "OFFLINE6::a8330048f05873a75f0b7e85a00da0e9c4bcf9e8baff6a41b9c494fad85c4eb3",
+    "view_sha256": "273b16640105a3f0eba3248b1cd8805319d58e2f2971937a50c56d6ea2d51f13",
+    "role_sha256": "fd8825f9206ca088c61490782c5d46718debd17b49c780bf10f6f9ab5f56fc1a",
+    "all_traces_ok": true,
+    "source_rebuild_byte_equal": true,
+    "non_crl_review_counts": {"BRL": 0, "TRL": 0, "IPRL": 0, "TMRL": 0, "FRL": 0},
+    "business_result": "五个非CRL维度保持insufficient/0级；未造身份overlay或真实业务正例"
+  },
+  "result_ids": {
+    "CRL": "CRLR2A::364e41be3c22a70cc7ff236697b734284d4ded0e2768719d0f0b14ac56c478f5",
+    "BRL": "DIMR2::BRL::cb37fab71955e1768bed6c1a74af91ec57fb1f5a85698356b6deb1c4d20e3ff0",
+    "TRL": "DIMR2::TRL::489c3d226ad06d422315466ecabdbc0d12aaf72c4581ef45e474ddd86b113bf7",
+    "IPRL": "DIMR2::IPRL::60d2c21a7c6a293d9f2cea68cc69b64155b8e3b1fc2df526f668a4f6ba5e7322",
+    "TMRL": "DIMR2::TMRL::5e773308804368fc626dfcd5ed473b48386cf5c7da5fa11acac62c01083c9a78",
+    "FRL": "DIMR2::FRL::c0eb24fc6f33d9f6e1c659da0fb2228f38b19a6a88204d69d6f009b7c3bbb0b6"
+  },
+  "artifact_hashes": {
+    "brl_result": "b80260bf007d98f9900420ae0abe8a3d8f0dc57510ea06563f61159f9ef72c97",
+    "trl_result": "299ba247e9c606204105a4a0613b321c1b92a8a6a3590a323eafc8be4c038ccb",
+    "tmrl_result": "adbfafc09d2a8c6c0f1ec8677d62cf93b91d1877894669e7a7126373f492905c",
+    "build_log": "c9ab4f50235009186025f29ffcb6aefbdcb9f5adde3685bbcf514119409d0a61",
+    "protection_json": "079117d65808cfa32c7069641b264881864d99f6f9b6fdec33315cdb38c1154a"
+  },
+  "snapshot": {
+    "path": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/final-snapshot-night-second-fix.json",
+    "sha256": "523cc75477a8d75804ae45e117aa31e62087f48e84be9a5d85fe656c12b4f17a",
+    "log": "D:/t/kth-night-second-fix-final-cases-20260909/night-fix2/audit/final-snapshot-night-second-fix.log",
+    "log_sha256": "c0710032b67e1339f1589824e497dd6260cfc892fcebb5782df336afb4db4a1f",
+    "handoff_content_commit": "9c18aa7ab25a644584b80ebcb52f107a857ef659"
+  },
+  "protection": {
+    "weijiu_r2b_records_sha256": "0771daaf0c5bb66b898b24c5ee95fba466d3d7bab0bc6d5d2d32ed5e4abc5b31",
+    "first_limited_final_records_sha256": "357735471514db88d7ae1c27a297ca8e1a7e5b799fca126e02a8c50607c6ff69",
+    "r2a1_records_sha256": "493deb41afabd1b6053e64f042c7afb600578770f364ce09bbe5b04146d1a302",
+    "r2a_records_sha256": "82470ac923d03c1aec22bac3bff2ea1a5715f8297d40df2f6a21d6931fe3b094",
+    "r1_6_records_sha256": "285dc517d9975a309d83e9fad470dc6435910f41999a579e8d1a97336b425dc2",
+    "old_session_file": "D:/t/kth-phase8-real-session-e7edcba32c19969a317f4bca/session/session.json",
+    "old_session_sha256": "dc3e31b086b9fdb9857a9179478b469791f458e35c1a3cf24b74776a28b49375",
+    "all_unchanged": true
+  },
+  "limits": [
+    "本地自检不是独立验收通过",
+    "未联网、未读取凭证、未调用真实模型或Provider",
+    "未进入D1/D2、报告、投资决定或发布",
+    "第一轮Case、旧Case和旧session均未覆盖"
+  ],
+  "stop_condition": "二次限定整改包完成后停止，交新的fresh-context Astra独立复验"
+}

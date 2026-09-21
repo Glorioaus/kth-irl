@@ -1,0 +1,302 @@
+"""T05/R1.1：资格判断 v2——有源CaseBasis、三含义身份、严格时间、反例集。
+
+v2 变化：BASIS 必须带 subject_source_basis；第一方需 document_subject 与评估
+主体一致；document_self_date 需合法日期＋定位；文件名日期仅候选。
+"""
+
+from __future__ import annotations
+
+import json
+import pytest
+
+from kth_hybrid.contracts import sha256_hex
+from kth_hybrid.qualification import (
+    GapOutcome,
+    QualificationOutcome,
+    parse_iso_datetime,
+    qualify_claim,
+)
+from kth_hybrid.store import BlobStore, CaseStore
+
+SUBJECT = "武汉微玖光电科技有限公司"
+CUTOFF = "2026-08-27T03:02:29Z"
+BASIS = {
+    "subject_legal_name": SUBJECT,
+    "subject_aliases": ["微玖"],
+    "evidence_cutoff": CUTOFF,
+    "subject_source_basis": json.dumps({
+        "kind": "field_reference",
+        "path": "case:identity-plan.json#/subjects/0/canonical_name_claimed",
+        "status": "claimed"}, ensure_ascii=False),
+}
+
+
+@pytest.fixture()
+def sealed_case(tmp_path):
+    """封存主体身份文档的Case（v4：主体依据须解析到封存字段值）。"""
+    blobs = BlobStore(tmp_path / "blobs")
+    case = CaseStore(tmp_path / "records.sqlite3")
+    ref = blobs.put_bytes(json.dumps(
+        {"subjects": [{"canonical_name_claimed": SUBJECT}]},
+        ensure_ascii=False).encode("utf-8"))
+    case.add_import_record("case_provenance", "session:identity-plan.json",
+                           ref.sha256)
+    yield case
+    case.close()
+
+REPORT = (
+    f"{SUBJECT}预期2030年全球AR眼镜出货超过2000万台，对应芯片市场150-200亿元。"
+    "本段为受控测试原文。"
+).encode("utf-8")
+INDUSTRY = "MicroLED行业整体处于中试阶段，多家厂商推进量产。本段为受控测试原文。".encode(
+    "utf-8"
+)
+
+
+@pytest.fixture()
+def blobs(tmp_path):
+    return BlobStore(tmp_path / "blobs")
+
+
+def _source(sha256: str, size: int, **overrides):
+    base = {
+        "source_id": "SRC-X", "blob_sha256": sha256, "byte_length": size,
+        "capture_status": "raw_capture_validated", "source_family": "news-media",
+        "retrieved_at": "2026-08-28T02:43:19Z", "published_at": None,
+        "published_at_provenance": "历史捕获无发布时间证明",
+        "document_subject": None, "document_subject_basis": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def _claim(cid: str, sha: str, text: str, start: int, end: int, **overrides):
+    base = {
+        "claim_id": cid, "source_id": "SRC-X", "locator_kind": "byte_range",
+        "locator_start": start, "locator_end": end,
+        "excerpt_sha256": sha, "excerpt_text": text,
+        "interpretation": "测试解释", "subject_scope": SUBJECT,
+    }
+    base.update(overrides)
+    return base
+
+
+def _range(data: bytes, start: int, end: int):
+    excerpt = data[start:end]
+    return _claim("CLM-X", sha256_hex(excerpt), excerpt.decode("utf-8"), start, end)
+
+
+def test_iso_datetime_parsing():
+    assert parse_iso_datetime("2026-08-27T03:02:29Z") is not None
+    assert parse_iso_datetime("2026-08-27") is not None
+    assert parse_iso_datetime("2026/08/27") is None      # 非法格式
+    assert parse_iso_datetime("") is None
+    assert parse_iso_datetime(None) is None
+    left = parse_iso_datetime("2026-08-27T03:02:29Z")
+    right = parse_iso_datetime("2026-08-27T11:02:29+08:00")  # 同一时刻
+    assert left == right  # 时区规范化，不做字符串比较
+
+
+def test_case_basis_without_source_is_rejected(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT))
+    with pytest.raises(ValueError, match="subject_source_basis"):
+        qualify_claim(claim, source, blobs,
+                      {"subject_legal_name": SUBJECT, "subject_aliases": [],
+                       "evidence_cutoff": CUTOFF})
+
+
+def test_qualified_narrow_claim_with_located_publication_time(blobs, sealed_case):
+    # v4：published_at 需结构化定位（自报过去时间不构成证明）
+    doc = REPORT.decode("utf-8") + " 发布时间：2026-07-20T09:30:00Z。"
+    data = doc.encode("utf-8")
+    ref = blobs.put_bytes(data)
+    pos = doc.find("2026-07-20T09:30:00Z")
+    ls = len(doc[:pos].encode("utf-8"))
+    le = ls + len("2026-07-20T09:30:00Z".encode("utf-8"))
+    start, end = 0, len(SUBJECT.encode("utf-8"))
+    excerpt = data[start:end]
+    claim = _claim("CLM-Q", sha256_hex(excerpt), excerpt.decode("utf-8"), start, end)
+    source = _source(ref.sha256, len(data), published_at="2026-07-20T09:30:00Z",
+                     published_at_provenance="正文发布时间",
+                     published_at_locator={"kind": "byte_range", "start": ls,
+                                           "end": le})
+    outcome = qualify_claim(claim, source, blobs, BASIS, review_attempt="t",
+                            case=sealed_case)
+    assert isinstance(outcome, QualificationOutcome)
+    assert outcome.status == "qualified"
+    assert all(j.verdict == "ok" for j in outcome.verdicts)
+    assert outcome.allowed_uses == ["third_party_reported_fact"]
+    source2 = _source(ref.sha256, len(data), published_at="2026-07-20T09:30:00Z",
+                      published_at_provenance="自报无定位")
+    outcome2 = qualify_claim(claim, source2, blobs, BASIS, case=sealed_case)
+    assert outcome2.time_judgment.verdict == "fail"
+
+
+def test_first_party_requires_matching_document_subject(blobs, sealed_case):
+    dated = (REPORT.decode("utf-8") + " 文档日期：2026年7月16日。").encode("utf-8")
+    ref = blobs.put_bytes(dated)
+    text = dated.decode("utf-8")
+    pos = text.find("2026年7月16日")
+    dstart = len(text[:pos].encode("utf-8"))
+    dend = dstart + len("2026年7月16日".encode("utf-8"))
+    claim = _range(dated, 0, len(SUBJECT.encode("utf-8")))
+    common = dict(
+        byte_length=len(dated),
+        source_family="owner_attachment", capture_status="attachment",
+        retrieved_at=None, published_at=None,
+        published_at_provenance="附件无发布时间",
+        time_evidence={"kind": "document_self_date", "date": "2026-07-16",
+                       "basis": "封面自述",
+                       "date_locator": {"kind": "byte_range", "start": dstart,
+                                        "end": dend}},
+    )
+    spos = text.find(SUBJECT)
+    ss = len(text[:spos].encode("utf-8"))
+    se = ss + len(SUBJECT.encode("utf-8"))
+    review = blobs.put_bytes(json.dumps({
+        "subject": SUBJECT,
+        "document_sha256": ref.sha256,
+    }, ensure_ascii=False).encode("utf-8"))
+    sealed_case.add_import_record(
+        "case_provenance", "session:document-subject-review.json", review.sha256)
+    same = _source(ref.sha256, len(dated), document_subject=SUBJECT,
+                   document_subject_basis={
+                       "kind": "case_field_reference",
+                       "path": "case:document-subject-review.json#/subject",
+                       "document_sha256_path":
+                           "case:document-subject-review.json#/document_sha256",
+                   }, **common)
+    outcome = qualify_claim(claim, same, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "qualified"
+    assert "company_self_statement" in outcome.allowed_uses
+    assert "document_dated_statement" in outcome.allowed_uses
+
+    other = _source(ref.sha256, len(dated),
+                    document_subject="微玖（苏州）光电科技有限公司",
+                    document_subject_basis={"kind": "byte_range", "start": ss,
+                                            "end": se}, **common)
+    outcome2 = qualify_claim(claim, other, blobs, BASIS, case=sealed_case)
+    assert outcome2.status == "needs_review", "文档自识主体≠评估主体：不得第一方通过"
+    assert any("实体关系" in c for c in outcome2.cannot_prove)
+
+
+def test_document_self_date_requires_locator(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT), source_family="owner_attachment",
+                    capture_status="attachment", retrieved_at=None, published_at=None,
+                    document_subject=SUBJECT,
+                    time_evidence={"kind": "document_self_date",
+                                   "date": "2026-07-16", "basis": "无定位"})
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.time_judgment.verdict == "fail"
+    assert outcome.status == "rejected"
+
+
+def test_wrong_time_late_retrieval_rejects(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT))  # 无发布时间，抓取晚于截止
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "rejected"
+    assert outcome.time_judgment.verdict == "fail"
+    assert "内容在证据截止前已存在" in outcome.cannot_prove
+
+
+def test_industry_review_cannot_prove_subject_claim(blobs, sealed_case):
+    ref = blobs.put_bytes(INDUSTRY)
+    claim = _range(INDUSTRY, 0, 11)  # "MicroLED行"（字节对齐区间），正文不含主体
+    source = _source(ref.sha256, len(INDUSTRY), published_at="2026-07-01T00:00:00Z")
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "rejected"
+    assert outcome.identity_judgment.verdict == "fail"
+    assert "行业综述" in outcome.identity_judgment.basis
+
+
+def test_empty_502_body_never_qualifies(blobs, sealed_case):
+    ref = blobs.put_bytes(b"")
+    claim = {
+        "claim_id": "CLM-E", "source_id": "SRC-E", "locator_kind": "byte_range",
+        "locator_start": 0, "locator_end": 1, "excerpt_sha256": "0" * 64,
+        "excerpt_text": "", "interpretation": "", "subject_scope": SUBJECT,
+    }
+    source = _source(ref.sha256, 0, capture_status="blocked/empty_body")
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "rejected"
+    assert outcome.source_judgment.verdict == "fail"
+
+
+def test_search_summary_family_is_discovery_only(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT), source_family="search_summary",
+                    published_at="2026-07-20T00:00:00Z")
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "rejected"
+    assert "source_discovery" in outcome.allowed_uses  # 仅来源发现
+
+
+def test_same_body_hash_group_not_independent(blobs, sealed_case):
+    doc = REPORT.decode("utf-8") + " 发布于2026年7月20日。"
+    data = doc.encode("utf-8")
+    ref = blobs.put_bytes(data)
+    pos = doc.find("2026年7月20日")
+    ds = len(doc[:pos].encode("utf-8"))
+    de = ds + len("2026年7月20日".encode("utf-8"))
+    claim = _range(data, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(
+        ref.sha256, len(data),
+        time_evidence={"kind": "document_self_date", "date": "2026-07-20",
+                       "date_locator": {"kind": "byte_range", "start": ds,
+                                        "end": de}})
+    outcome = qualify_claim(claim, source, blobs, BASIS, same_body_sources=12, case=sealed_case)
+    assert outcome.status == "needs_review"
+    assert outcome.independence_judgment.verdict == "unknown"
+    assert "来源独立性（同hash组）" in outcome.cannot_prove
+
+
+def test_locator_out_of_range_yields_gap(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _claim("CLM-O", "0" * 64, "x", 100000, 200000)
+    source = _source(ref.sha256, len(REPORT))
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert isinstance(outcome, GapOutcome)
+    assert outcome.gap_type == "invalid_locator"
+
+
+def test_excerpt_hash_mismatch_yields_gap(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _claim("CLM-H", "0" * 64, "x", 0, 10)
+    source = _source(ref.sha256, len(REPORT))
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert isinstance(outcome, GapOutcome)
+    assert outcome.gap_type == "excerpt_hash_mismatch"
+
+
+def test_unreadable_blob_yields_gap(blobs, sealed_case):
+    claim = _claim("CLM-U", "0" * 64, "x", 0, 10)
+    source = _source("e" * 64, 10)  # 对象仓中不存在
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert isinstance(outcome, GapOutcome)
+    assert outcome.gap_type == "original_bytes_unreadable"
+
+
+def test_candidate_eligible_flag_does_not_decide(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    claim["eligible"] = True  # 伪造候选标签
+    source = _source(ref.sha256, len(REPORT))  # 时间不合格
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "rejected"  # eligible=true 被四类判断推翻
+
+
+def test_unknown_publication_time_needs_review(blobs, sealed_case):
+    ref = blobs.put_bytes(REPORT)
+    claim = _range(REPORT, 0, len(SUBJECT.encode("utf-8")))
+    source = _source(ref.sha256, len(REPORT), retrieved_at=None,
+                    published_at=None, published_at_provenance="发布时间未知")
+    outcome = qualify_claim(claim, source, blobs, BASIS, case=sealed_case)
+    assert outcome.status == "needs_review"
+    assert outcome.time_judgment.verdict == "unknown"
