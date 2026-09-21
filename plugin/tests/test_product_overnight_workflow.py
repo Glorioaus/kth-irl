@@ -815,7 +815,7 @@ def test_v5_global_request_digest_schema_migrates_without_losing_requests(
             "PRAGMA foreign_key_check").fetchall() == []
         assert migrated.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-                    "kth-hybrid.store.v12"
+                    "kth-hybrid.store.v13"
     finally:
         migrated.close()
 
@@ -961,10 +961,10 @@ def test_old_database_migrates_and_journal_uses_same_records_database(tmp_path):
         tables = {row[0] for row in workflow.store._conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"workflow_jobs", "attachment_imports", "text_projections",
-                "review_requests", "review_responses", "tasks"} <= tables
+                "review_requests", "review_responses", "tasks", "product_objects"} <= tables
         assert workflow.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-                    "kth-hybrid.store.v12"
+                    "kth-hybrid.store.v13"
         workflow.journal.ensure_task("mechanical:test", "input-1")
         verifier = Journal(db)
         assert verifier.task_state("mechanical:test")["input_id"] == "input-1"
@@ -1055,7 +1055,7 @@ def test_v4_duplicate_attachment_rows_migrate_to_one_canonical_object(
             "PRAGMA foreign_key_check").fetchall() == []
         assert migrated.store._conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == \
-                    "kth-hybrid.store.v12"
+                    "kth-hybrid.store.v13"
         with pytest.raises(sqlite3.IntegrityError):
             with migrated.store._conn:
                 migrated.store._conn.execute(

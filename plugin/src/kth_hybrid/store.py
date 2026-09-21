@@ -16,6 +16,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 import tempfile
+import uuid
 from pathlib import Path
 from threading import RLock
 
@@ -32,7 +33,7 @@ class BudgetRejected(RuntimeError):
     """Provider 用量预留/结算违反上界或状态合同；事务已回滚。"""
 
 
-_SCHEMA_VERSION = "kth-hybrid.store.v12"
+_SCHEMA_VERSION = "kth-hybrid.store.v13"
 WORKFLOW_REVIEW_MATERIALIZATION_SCHEMA = "workflow_review_materialization.v1"
 _WORKFLOW_REVIEW_MATERIALIZATION_BODY_FIELDS = {
     "schema_version", "job_id", "request_id", "request_input_digest",
@@ -105,8 +106,134 @@ def validate_workflow_review_materialization(
     return json.loads(_strict_json_dumps(item, label="workflow review物化sidecar"))
 
 
+PRODUCT_RECORD_SCHEMA = "ag1.product-record.v1"
+_PRODUCT_BODY_TYPES = {
+    "submission": {
+        "run_id": str, "contract_version": str, "case_id": str,
+        "product_contract": str, "request": dict, "blockers": list, "inputs": list,
+    },
+    "task": {
+        "contract_version": str, "run_id": str, "case_id": str, "role": str,
+        "payload": dict, "allowed_materials": list, "host_session_id": str,
+        "coverage_digest": str, "input_digest": str, "task_id": str,
+    },
+    "dispatch": {
+        "task_id": str, "run_id": str, "input_digest": str, "role": str,
+        "context_id": str, "source_mode": str, "token": int, "attempt_no": int,
+        "started_at": str, "contract_version": str, "independence_status": str,
+        "case_id": str, "dispatch_id": str,
+    },
+    "response": {"task_id": str, "blob_sha256": str, "result_digest": str},
+    "consumption": {"task_id": str, "result_digest": str, "execution_status": str},
+    "scope_candidate": {
+        "coverage_digest": str, "units": list, "run_id": str, "task_id": str,
+        "response_digest": str, "source_mode": str, "candidate_digest": str,
+    },
+    "scope": {
+        "candidate_digest": str, "actor": str, "confirmed_at": str, "subject": dict,
+        "evidence_cutoff": str, "units": list, "action": (dict, type(None)),
+        "permissions": dict, "changes": dict, "run_id": str, "source_mode": str,
+        "coverage_digest": str, "scope_digest": str,
+    },
+    "coverage_part": {
+        "schema_version": str, "run_id": str, "inputs_digest": str,
+        "coverage_digest": str, "collection": str, "part_index": int,
+        "start": int, "count": int, "items": list, "part_digest": str,
+    },
+}
+_PRODUCT_COVERAGE_TYPES = {
+    "ag1.coverage.v1": {
+        "schema_version": str, "run_id": str, "inputs_digest": str,
+        "received_count": int, "entries": list, "segments": list,
+        "unprocessed": list, "coverage_digest": str,
+    },
+    "ag1.coverage.index.v1": {
+        "schema_version": str, "run_id": str, "inputs_digest": str,
+        "received_count": int, "coverage_digest": str, "counts": dict,
+        "parts": list, "index_digest": str,
+    },
+}
+
+
+def _validate_product_body(object_id: str, run_id: str, kind: str, body: dict) -> None:
+    """共同读写边界只校验记录类型和身份，业务资格仍由领域消费者重建。"""
+    if not all(isinstance(value, str) and value.strip()
+               for value in (object_id, run_id, kind)) or not isinstance(body, dict):
+        raise ValueError("integrity: AG1产品对象身份或正文类型非法")
+    if kind == "coverage":
+        version = body.get("schema_version")
+        schema = _PRODUCT_COVERAGE_TYPES.get(version) if isinstance(version, str) else None
+    else:
+        schema = _PRODUCT_BODY_TYPES.get(kind)
+    if schema is None or set(body) != set(schema):
+        raise ValueError(f"integrity: {kind}未登记或正文不符合封闭字段合同")
+    for key, required in schema.items():
+        choices = required if isinstance(required, tuple) else (required,)
+        if type(body[key]) not in choices:
+            raise ValueError(f"integrity: {kind}.{key}类型非法")
+        if type(body[key]) is str and not body[key].strip():
+            raise ValueError(f"integrity: {kind}.{key}身份或文本为空")
+        if key.endswith(("_digest", "_sha256")) and not is_sha256_hex(body[key]):
+            raise ValueError(f"integrity: {kind}.{key}摘要身份非法")
+    if "run_id" in body and body["run_id"] != run_id:
+        raise ValueError(f"integrity: {kind}正文与索引run归属不一致")
+    if kind == "submission":
+        expected_id = run_id
+    elif kind == "task":
+        expected_id = body["task_id"]
+    elif kind in {"dispatch", "response", "consumption"}:
+        prefix = {"dispatch": "DISPATCH", "response": "RESPONSE",
+                  "consumption": "CONSUMED"}[kind]
+        expected_id = f"{prefix}::{body['task_id']}"
+    elif kind in {"scope_candidate", "scope", "coverage"}:
+        prefix = {"scope_candidate": "SCOPE-CANDIDATE", "scope": "SCOPE",
+                  "coverage": "COVERAGE"}[kind]
+        expected_id = f"{prefix}::{run_id}"
+    else:
+        if body["schema_version"] != "ag1.coverage.part.v1":
+            raise ValueError("integrity: coverage_part合同版本不支持")
+        expected_id = (
+            f"COVERAGE-PART::{run_id}::{body['coverage_digest']}::{body['part_index']}")
+    if object_id != expected_id:
+        raise ValueError(f"integrity: {kind}实际对象键与正文身份不一致")
+    for key in ("received_count", "part_index", "start", "count", "token", "attempt_no"):
+        if key in body and body[key] < (1 if key in {"count", "token", "attempt_no"} else 0):
+            raise ValueError(f"integrity: {kind}.{key}超出有效范围")
+
+
+def _decode_product_record(row) -> dict:
+    if sha256_hex(row["body_json"].encode("utf-8")) != row["digest"]:
+        raise ValueError("integrity: AG1产品对象摘要不一致")
+    try:
+        record = json.loads(row["body_json"])
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ValueError("integrity: AG1产品对象JSON损坏") from exc
+    if not isinstance(record, dict):
+        raise ValueError("integrity: AG1产品对象不是对象")
+    if record.get("schema_version") == PRODUCT_RECORD_SCHEMA:
+        if set(record) != {"schema_version", "object_id", "run_id", "kind", "body"} \
+                or any(record[key] != row[key] for key in ("object_id", "run_id", "kind")):
+            raise ValueError("integrity: AG1产品包络与实际索引身份不一致")
+        body = record["body"]
+    else:
+        # 旧裸正文只经同一类型/身份规则读取，不自动迁移或重写原件。
+        body = record
+    _validate_product_body(row["object_id"], row["run_id"], row["kind"], body)
+    return body
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS product_objects (
+    object_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_product_objects_run
+    ON product_objects(run_id, kind, object_id);
 CREATE TABLE IF NOT EXISTS case_basis (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     subject_legal_name TEXT NOT NULL,
@@ -649,6 +776,154 @@ class CaseStore:
             if not self._conn.in_transaction:
                 raise RuntimeError("发布事务在验证完成前被提前结束")
             self._conn.execute("COMMIT")
+
+    @contextmanager
+    def product_read_view(self):
+        """为AG1读取建立同一连接、同一时点的只读视图。"""
+        if self._conn.in_transaction:
+            raise RuntimeError("AG1产品读取不能嵌套已有事务")
+        self._conn.execute("BEGIN")
+        try:
+            yield self
+        finally:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+
+    def read_product_task_records(self) -> dict:
+        """读取AG1任务及其执行关系，保留真实对象键作为完整性分母。"""
+        rows = self._conn.execute(
+            "SELECT object_id,run_id,kind,digest,body_json "
+            "FROM product_objects ORDER BY object_id"
+        ).fetchall()
+        objects = []
+        for row in rows:
+            objects.append({
+                "object_id": row["object_id"],
+                "run_id": row["run_id"],
+                "kind": row["kind"],
+                "body": _decode_product_record(row),
+            })
+        journal_tasks = [
+            dict(row) for row in self._conn.execute(
+                "SELECT * FROM tasks WHERE task_key LIKE 'TASK::%' "
+                "ORDER BY task_key"
+            ).fetchall()
+        ]
+        attempts = [
+            dict(row) for row in self._conn.execute(
+                "SELECT * FROM task_attempts WHERE task_key LIKE 'TASK::%' "
+                "ORDER BY task_key,attempt_no"
+            ).fetchall()
+        ]
+        return {
+            "objects": objects,
+            "journal_tasks": journal_tasks,
+            "attempts": attempts,
+        }
+
+    def put_product_object(self, object_id: str, *, run_id: str,
+                           kind: str, body: dict) -> dict:
+        """AG1有类型的不可变对象；索引、正文、列表共同经过同一读写边界。"""
+        _validate_product_body(object_id, run_id, kind, body)
+        body_json = _strict_json_dumps(body, label="AG1产品正文")
+        packed = _strict_json_dumps({
+            "schema_version": PRODUCT_RECORD_SCHEMA, "object_id": object_id,
+            "run_id": run_id, "kind": kind, "body": body,
+        }, label="AG1产品包络")
+        digest = sha256_hex(packed.encode("utf-8"))
+        with self.immediate_transaction():
+            self._conn.execute(
+                "INSERT OR IGNORE INTO product_objects"
+                "(object_id,run_id,kind,digest,body_json) VALUES (?,?,?,?,?)",
+                (object_id, run_id, kind, digest, packed))
+            row = self._conn.execute(
+                "SELECT * FROM product_objects WHERE object_id=?", (object_id,)
+            ).fetchone()
+            existing = _decode_product_record(row)
+            if row["run_id"] != run_id or row["kind"] != kind \
+                    or _strict_json_dumps(existing, label="既有AG1正文") != body_json:
+                raise ValueError("immutable: AG1对象身份冲突，禁止覆盖")
+        return self.get_product_object(object_id, run_id=run_id, kind=kind)
+
+    def product_case_id(self) -> str:
+        """独立Case的派发身份不同；复制既有Case用于恢复时保持身份。"""
+        with self.immediate_transaction():
+            self._conn.execute(
+                "INSERT OR IGNORE INTO meta(key,value) VALUES ('ag1_case_id',?)",
+                (str(uuid.uuid4()),))
+            return self._conn.execute(
+                "SELECT value FROM meta WHERE key='ag1_case_id'").fetchone()["value"]
+
+    def get_product_object(self, object_id: str, *, run_id: str | None = None,
+                           kind: str | None = None) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM product_objects WHERE object_id=?", (object_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        if (run_id is not None and run_id != row["run_id"]) \
+                or (kind is not None and kind != row["kind"]):
+            raise ValueError("integrity: AG1对象正文或归属不一致")
+        return _decode_product_record(row)
+
+    def list_product_objects(self, run_id: str, kind: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT object_id FROM product_objects WHERE run_id=? AND kind=? "
+            "ORDER BY object_id", (run_id, kind)).fetchall()
+        return [self.get_product_object(row["object_id"], run_id=run_id, kind=kind)
+                for row in rows]
+
+    def assert_product_task_inventory(self, records: dict | None = None) -> None:
+        """以任务及所有执行关系的并集作为分母，禁止孤儿记录逃逸。"""
+        records = records or self.read_product_task_records()
+        objects = records["objects"]
+        by_id = {item["object_id"]: item for item in objects}
+        tasks = {
+            item["object_id"]: item for item in objects if item["kind"] == "task"
+        }
+        journal = {
+            item["task_key"]: item for item in records["journal_tasks"]
+        }
+        attempts_by_task: dict[str, list[dict]] = {}
+        for attempt in records["attempts"]:
+            attempts_by_task.setdefault(attempt["task_key"], []).append(attempt)
+        relation_kinds = {"dispatch", "response", "consumption", "scope_candidate"}
+        relation_task_ids = set()
+        for item in objects:
+            if item["kind"] in relation_kinds:
+                task_id = item["body"]["task_id"]
+                relation_task_ids.add(task_id)
+                if task_id not in tasks:
+                    raise ValueError(
+                        "integrity: AG1执行关系引用不存在的产品任务")
+        for task_key in set(attempts_by_task) - set(tasks):
+            raise ValueError("integrity: AG1 attempt没有产品任务父项")
+        for task_key, row in journal.items():
+            task = tasks.get(task_key)
+            if task is None or task["body"]["input_digest"] != row["input_id"]:
+                raise ValueError("integrity: Journal产品任务丢失对象或输入身份不符")
+        for task_id, item in tasks.items():
+            task = item["body"]
+            body = {key: value for key, value in task.items()
+                    if key not in {"task_id", "input_digest"}}
+            if task_id != "TASK::" + sha256_hex(
+                    json.dumps(body, ensure_ascii=False, sort_keys=True,
+                               separators=(",", ":"), allow_nan=False).encode("utf-8")
+            ) or task["input_digest"] != sha256_hex(
+                    json.dumps(body, ensure_ascii=False, sort_keys=True,
+                               separators=(",", ":"), allow_nan=False).encode("utf-8")
+            ):
+                raise ValueError("integrity: 产品任务正文摘要无法重建")
+            run_item = by_id.get(task["run_id"])
+            if run_item is None or run_item["kind"] != "submission":
+                raise ValueError("integrity: Journal产品任务失去run归属")
+            run = run_item["body"]
+            if run["case_id"] != task["case_id"] \
+                    or run["contract_version"] != task["contract_version"]:
+                raise ValueError("integrity: Journal产品任务失去Case/合同归属")
+            if task_id not in journal and (
+                    attempts_by_task.get(task_id) or task_id in relation_task_ids):
+                raise ValueError("integrity: 执行关系缺少Journal任务父项")
 
     def _migrate(self) -> None:
         """已建库增量迁移：保留R1数据并升级本地工作流至store.v6。"""

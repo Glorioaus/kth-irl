@@ -1,14 +1,14 @@
 {
   "name": "plugin",
   "version": "0.1.0",
-  "description": "KTH IRL Evaluator 本地可恢复工作流候选入口",
+  "description": "KTH评估候选插件，内嵌标准Skill与可恢复产品工具",
   "author": {
     "name": "KTH 本地工程组"
   },
   "interface": {
     "displayName": "KTH Local Evaluator",
     "shortDescription": "本地附件、专业复核队列与核验追溯",
-    "longDescription": "调用同一 kth-local CLI 管理本地 Case、附件投影、受控专业复核、状态恢复与核验包导出。",
+    "longDescription": "通过内嵌kth-irl-evaluator Skill组织材料评估候选。包内工具负责持久化与恢复；真实业务执行须另获授权，工程与专业验收分列。",
     "developerName": "KTH 本地工程组",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],

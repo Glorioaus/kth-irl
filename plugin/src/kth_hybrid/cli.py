@@ -18,6 +18,7 @@ from typing import Any
 from .aggregate import build_offline_dimension_view, validate_offline_dimension_view
 from .audit import render_trace, trace, trace_crl_dimension, trace_dimension_result
 from .contracts import sha256_hex
+from .intake import IntakeRejected
 from .proposal_requests import (
     ProposalQueueRejected,
     approved_catalog,
@@ -25,7 +26,7 @@ from .proposal_requests import (
 )
 from .qualification import resolve_case_basis_proof_bindings
 from .review_queue import ReviewQueueRejected
-from .store import BlobStore, CaseStore
+from .store import BlobStore, CaseStore, StoreIntegrityError
 from .workflow import LocalWorkflow, WorkflowRejected
 
 TITLE = "【证据与判据核验，非正式评估报告】"
@@ -91,7 +92,7 @@ def _load_json_file(path: Path, *, label: str) -> Any:
         return json.loads(data.decode("utf-8"))
     except CliRejected:
         raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError) as exc:
         raise CliRejected(f"{label}读取或JSON解析失败：{path}：{exc}") from exc
 
 
@@ -746,6 +747,21 @@ def _build_parser() -> ChineseArgumentParser:
     parser = ChineseArgumentParser(prog="kth-local")
     sub = parser.add_subparsers(dest="command", required=True,
                                 parser_class=ChineseArgumentParser)
+    agent = sub.add_parser("agent", help="插件Skill内部产品服务入口")
+    agent_sub = agent.add_subparsers(
+        dest="agent_command", required=True, parser_class=ChineseArgumentParser)
+    for name in ("prepare", "status", "tasks", "prepare-task", "begin-task",
+                 "submit", "advance", "materials", "batches", "propose-scope",
+                 "confirm-scope", "scope"):
+        operation = agent_sub.add_parser(name)
+        _add_case_dir(operation)
+        if name in {"status", "tasks", "prepare-task", "advance", "materials",
+                    "batches", "propose-scope", "confirm-scope", "scope"}:
+            operation.add_argument("--run-id", required=True)
+        if name in {"begin-task", "submit", "propose-scope"}:
+            operation.add_argument("--task-id", required=True)
+        if name in {"prepare", "prepare-task", "begin-task", "submit", "confirm-scope"}:
+            operation.add_argument("--input", required=True)
     inspect_parser = sub.add_parser("inspect", help="证据与判据核验视图")
     _add_case_dir(inspect_parser)
     trace_parser = sub.add_parser("trace", help="按精确ID追溯工件")
@@ -868,6 +884,46 @@ def _build_parser() -> ChineseArgumentParser:
 
 def _dispatch(args: argparse.Namespace) -> int:
     case_dir = Path(args.case_dir)
+    if args.command == "agent":
+        from .product_session import ProductSession
+
+        if args.agent_command != "prepare":
+            _require_case(case_dir)
+        payload = (_load_json_file(Path(args.input), label="Agent输入")
+                   if hasattr(args, "input") else None)
+        with ProductSession(case_dir) as session:
+            operation = args.agent_command
+            if operation == "prepare":
+                result = session.prepare_submission(payload)
+            elif operation == "status":
+                result = session.status(args.run_id)
+            elif operation == "tasks":
+                result = session.pending_tasks(args.run_id)
+            elif operation == "prepare-task":
+                if not isinstance(payload, dict) or set(payload) != {"role", "payload"}:
+                    raise CliRejected("prepare-task字段必须为role/payload")
+                result = session.prepare_task(args.run_id, **payload)
+            elif operation == "begin-task":
+                if not isinstance(payload, dict) \
+                        or set(payload) != {"context_id", "source_mode"}:
+                    raise CliRejected("begin-task字段必须为context_id/source_mode")
+                result = session.begin_task(args.task_id, **payload)
+            elif operation == "submit":
+                result = session.submit_host_result(args.task_id, payload)
+            elif operation == "materials":
+                result = session.materials(args.run_id)
+            elif operation == "batches":
+                result = session.discovery_batches(args.run_id)
+            elif operation == "propose-scope":
+                result = session.propose_scope(args.run_id, task_id=args.task_id)
+            elif operation == "confirm-scope":
+                result = session.confirm_scope(args.run_id, payload)
+            elif operation == "scope":
+                result = session.scope(args.run_id)
+            else:
+                result = session.advance(args.run_id)
+        _print_json(result)
+        return 0
     if args.command == "case" and args.case_command == "create":
         with LocalWorkflow(case_dir) as workflow:
             result = workflow.initialize_case(
@@ -1103,6 +1159,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _dispatch(args)
     except (CliRejected, WorkflowRejected, ProposalQueueRejected,
+            IntakeRejected, StoreIntegrityError,
             ReviewQueueRejected, KeyError,
             ValueError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"错误：{exc}", file=sys.stderr)
